@@ -1,0 +1,15 @@
+{
+  "database-url-var": "DATABASE_URL",
+  "migrations-dir": "migrations",
+  "dir": "migrations",
+  "migration-file-language": "sql",
+  "ignore-pattern": "\\..*",
+  "schema": "public",
+  "decamelize": false,
+  "create-schema": true,
+  "single-transaction": true,
+  "check-order": true,
+  "verbose": true,
+  "ssl": true,
+  "reject-unauthorized": false
+}

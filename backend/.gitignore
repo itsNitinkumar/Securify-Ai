@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+
+# Documentation files (except README)
+*_GUIDE.md
+*_SETUP.md
+ENV_CONFIG_PATTERN.md
