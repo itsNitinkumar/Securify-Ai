@@ -1,8 +1,13 @@
 import { Router } from 'express';
 import userRoutes from './user.routes';
+import authRoutes from './auth.routes';
 
 const router = Router();
 
+// Auth routes
+router.use('/auth', authRoutes);
+
+// User routes
 router.use('/users', userRoutes);
 
 // Health check

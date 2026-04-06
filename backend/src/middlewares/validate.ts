@@ -23,3 +23,55 @@ export const validateUserInput = (
 
   next();
 };
+
+export const validateSignup = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const { name, email, password } = req.body;
+
+  if (!name || !email || !password) {
+    throw new ApiError(400, 'Name, email, and password are required');
+  }
+
+  if (!validateEmail(email)) {
+    throw new ApiError(400, 'Invalid email format');
+  }
+
+  if (password.length < 12) {
+    throw new ApiError(400, 'Password must be at least 12 characters long');
+  }
+
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password)) {
+    throw new ApiError(400, 'Password must contain both uppercase and lowercase letters');
+  }
+
+  if (!/\d/.test(password)) {
+    throw new ApiError(400, 'Password must contain at least one number');
+  }
+
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    throw new ApiError(400, 'Password must contain at least one special character');
+  }
+
+  next();
+};
+
+export const validateSignin = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    throw new ApiError(400, 'Email and password are required');
+  }
+
+  if (!validateEmail(email)) {
+    throw new ApiError(400, 'Invalid email format');
+  }
+
+  next();
+};

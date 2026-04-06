@@ -1,11 +1,11 @@
 import { Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 import { AuthRequest } from '../types';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
 import { config } from '../config/env';
+import AuthModel from '../models/auth.model';
 
-// Placeholder for JWT verification
-// Install: npm install jsonwebtoken @types/jsonwebtoken
 export const protect = asyncHandler(
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     const token = req.headers.authorization?.split(' ')[1];
@@ -14,11 +14,25 @@ export const protect = asyncHandler(
       throw new ApiError(401, 'Not authorized, no token');
     }
 
-    // TODO: Verify JWT token and attach user to request
-    // import jwt from 'jsonwebtoken';
-    // const decoded = jwt.verify(token, config.jwt.secret);
-    // req.user = await UserModel.findById(decoded.id);
+    try {
+      const decoded = jwt.verify(token, config.jwt.secret) as { id: number; email: string };
+      const user = await AuthModel.findById(decoded.id);
+      
+      if (!user) {
+        throw new ApiError(401, 'User not found');
+      }
 
-    next();
+      req.user = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      };
+
+      next();
+    } catch (error) {
+      throw new ApiError(401, 'Not authorized, invalid token');
+    }
   }
 );
