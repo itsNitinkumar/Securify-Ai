@@ -31,16 +31,27 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@types/archiver": "^7.0.0",
+    "@types/multer": "^2.1.0",
+    "@types/pdfkit": "^0.17.5",
+    "@types/sharp": "^0.31.1",
+    "archiver": "^7.0.1",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
+    "docx": "^9.6.1",
     "dotenv": "^17.4.0",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
+    "googleapis": "^171.4.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "openai": "^6.34.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
-    "pg": "^8.20.0"
+    "pdfkit": "^0.18.0",
+    "pg": "^8.20.0",
+    "sharp": "^0.34.5"
   }
 }

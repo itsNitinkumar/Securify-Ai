@@ -4,10 +4,18 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Validate required environment variables
+//have to change it durnign the google drive upload
 const requiredEnvVars = ['DATABASE_URL',
   'PORT',
   'JWT_SECRET',
-  'JWT_EXPIRE'];
+  'JWT_EXPIRE'
+,
+  'FRONTEND_URL',
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'GOOGLE_CALLBACK_URL',
+  
+];
 
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
@@ -31,5 +39,14 @@ export const config = {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     callbackUrl: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/api/v1/auth/google/callback',
+  },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+  },
+  googleDrive: {
+    clientId: process.env.GOOGLE_DRIVE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_DRIVE_CLIENT_SECRET || '',
+    redirectUri: process.env.GOOGLE_DRIVE_REDIRECT_URI || '',
+    refreshToken: process.env.GOOGLE_DRIVE_REFRESH_TOKEN || '',
   },
 };
