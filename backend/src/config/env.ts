@@ -32,8 +32,8 @@ export const config = {
     url: process.env.DATABASE_URL!,
   },
   jwt: {
-    secret: process.env.JWT_SECRET as string,
-    expire: process.env.JWT_EXPIRE as string,
+    secret: process.env.JWT_SECRET!,
+    expire: process.env.JWT_EXPIRE!,
   },
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
