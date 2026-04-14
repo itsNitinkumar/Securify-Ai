@@ -1,14 +1,19 @@
-import { Response, NextFunction } from 'express';
+import { Response, NextFunction, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
-import { AuthRequest } from '../types';
+import { AuthRequest, UserRole } from '../types';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
 import { config } from '../config/env';
 import AuthModel from '../models/auth.model';
 
-export const protect = asyncHandler(
+export const protect = asyncHandler<AuthRequest>(
   async (req: AuthRequest, res: Response, next: NextFunction) => {
-    const token = req.headers.authorization?.split(' ')[1];
+    // Check for token in Authorization header or cookies
+    let token = req.headers.authorization?.split(' ')[1];
+
+    if (!token && req.cookies?.token) {
+      token = req.cookies.token;
+    }
 
     if (!token) {
       throw new ApiError(401, 'Not authorized, no token');
@@ -17,7 +22,7 @@ export const protect = asyncHandler(
     try {
       const decoded = jwt.verify(token, config.jwt.secret) as { id: number; email: string };
       const user = await AuthModel.findById(decoded.id);
-      
+
       if (!user) {
         throw new ApiError(401, 'User not found');
       }
@@ -26,6 +31,7 @@ export const protect = asyncHandler(
         id: user.id,
         email: user.email,
         name: user.name,
+        role: user.role as UserRole,
         created_at: user.created_at,
         updated_at: user.updated_at,
       };
@@ -35,4 +41,19 @@ export const protect = asyncHandler(
       throw new ApiError(401, 'Not authorized, invalid token');
     }
   }
-);
+) as any;
+
+// Role-based access control middleware
+export const requireRole = (...allowedRoles: UserRole[]): any => {
+  return ((req: AuthRequest, _res: Response, next: NextFunction) => {
+    if (!req.user) {
+      throw new ApiError(401, 'Not authenticated');
+    }
+
+    if (!allowedRoles.includes(req.user.role)) {
+      throw new ApiError(403, `Access denied. Required role: ${allowedRoles.join(' or ')}`);
+    }
+
+    next();
+  }) as any;
+};

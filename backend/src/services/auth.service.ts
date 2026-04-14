@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import AuthModel from '../models/auth.model';
 import { config } from '../config/env';
 import ApiError from '../utils/ApiError';
@@ -27,7 +27,7 @@ class AuthService {
     const token = jwt.sign(
       { id: user.id, email: user.email },
       config.jwt.secret,
-      { expiresIn: config.jwt.expire }
+      { expiresIn: config.jwt.expire } as SignOptions
     );
 
     return {
@@ -35,6 +35,8 @@ class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role,
+        status: user.status,
         created_at: user.created_at,
       },
       token,
@@ -48,6 +50,21 @@ class AuthService {
       throw new ApiError(401, 'Invalid email or password');
     }
 
+    // Check if user status is pending
+    if (user.status === 'pending') {
+      throw new ApiError(403, 'Your account is pending approval by a manager');
+    }
+
+    // Check if user is suspended
+    if (user.status === 'suspended') {
+      throw new ApiError(403, 'Your account has been suspended');
+    }
+
+    // Check if user has a password (not OAuth user)
+    if (!user.password) {
+      throw new ApiError(401, 'Invalid email or password');
+    }
+
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
@@ -58,7 +75,7 @@ class AuthService {
     const token = jwt.sign(
       { id: user.id, email: user.email },
       config.jwt.secret,
-      { expiresIn: config.jwt.expire }
+      { expiresIn: config.jwt.expire } as SignOptions
     );
 
     return {
@@ -66,6 +83,8 @@ class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role,
+        status: user.status,
         created_at: user.created_at,
       },
       token,
@@ -82,6 +101,8 @@ class AuthService {
       id: user.id,
       name: user.name,
       email: user.email,
+      role: user.role,
+      status: user.status,
       created_at: user.created_at,
     };
   }

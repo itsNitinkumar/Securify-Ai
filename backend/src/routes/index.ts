@@ -6,6 +6,9 @@ import evidenceRoutes from './evidence.routes';
 import projectRoutes from './project.routes';
 import reportRoutes from './report.routes';
 import dashboardRoutes from './dashboard.routes';
+import templateRoutes from './template.routes';
+import findingLibraryRoutes from './finding-library.routes';
+import commentRoutes from './comment.routes';
 
 const router = Router();
 
@@ -27,8 +30,17 @@ router.use('/findings', findingRoutes);
 // Evidence routes
 router.use('/evidence', evidenceRoutes);
 
+// Comment routes
+router.use('/comments', commentRoutes);
+
 // Report routes
 router.use('/reports', reportRoutes);
+
+// Template routes
+router.use('/templates', templateRoutes);
+
+// Finding Library routes
+router.use('/finding-library', findingLibraryRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

@@ -26,8 +26,8 @@ pool.on('error', (err) => {
 
 // Test connection on startup
 pool.query('SELECT NOW()')
-  .then(() => console.log('✅ Database connection test successful'))
-  .catch((err) => console.error('❌ Database connection test failed:', err.message));
+  .then(() => console.log('Database connection test successful'))
+  .catch((err) => console.error('Database connection test failed:', err.message));
 
 // Keep connection warm with periodic pings (every 5 minutes)
 // This helps avoid cold starts on Neon free tier
@@ -35,9 +35,9 @@ if (process.env.NODE_ENV !== 'test') {
   setInterval(async () => {
     try {
       await pool.query('SELECT 1');
-      console.log('🔄 Database connection keepalive ping');
+      console.log('Database connection keepalive ping');
     } catch (err: any) {
-      console.error('⚠️  Keepalive ping failed:', err.message);
+      console.error('Keepalive ping failed:', err.message);
     }
   }, 5 * 60 * 1000); // 5 minutes
 }

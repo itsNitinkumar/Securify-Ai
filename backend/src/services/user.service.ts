@@ -23,8 +23,8 @@ class UserService {
     return await UserModel.create(email, name);
   }
 
-  static async updateUser(id: number, name: string): Promise<User> {
-    const user = await UserModel.update(id, name);
+  static async updateUser(id: number, name: string, role?: string): Promise<User> {
+    const user = await UserModel.update(id, name, role);
     if (!user) {
       throw new ApiError(404, 'User not found');
     }
@@ -36,6 +36,14 @@ class UserService {
     if (!deleted) {
       throw new ApiError(404, 'User not found');
     }
+  }
+
+  static async approveUser(id: number, role?: string): Promise<User> {
+    const user = await UserModel.approve(id, role);
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+    return user;
   }
 }
 

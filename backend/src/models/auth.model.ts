@@ -5,6 +5,8 @@ interface User {
   name: string;
   email: string;
   password?: string;
+  role: string;
+  status: string;
   oauth_provider?: string;
   oauth_id?: string;
   created_at: Date;
@@ -32,7 +34,7 @@ async function retryQuery<T>(
         throw error;
       }
 
-      console.log(`⚠️  Database query failed (attempt ${i + 1}/${maxRetries}), retrying in ${delay}ms...`);
+      console.log(`Database query failed (attempt ${i + 1}/${maxRetries}), retrying in ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }

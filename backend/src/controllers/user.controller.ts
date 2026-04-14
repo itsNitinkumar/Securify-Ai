@@ -23,8 +23,8 @@ class UserController {
 
   static updateUser = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
-    const { name } = req.body;
-    const user = await UserService.updateUser(id, name);
+    const { name, role } = req.body;
+    const user = await UserService.updateUser(id, name, role);
     ApiResponse.success(res, 200, 'User updated successfully', user);
   });
 
@@ -32,6 +32,13 @@ class UserController {
     const id = parseInt(req.params.id);
     await UserService.deleteUser(id);
     ApiResponse.success(res, 200, 'User deleted successfully');
+  });
+
+  static approveUser = asyncHandler(async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const { role } = req.body;
+    const user = await UserService.approveUser(id, role);
+    ApiResponse.success(res, 200, 'User approved successfully', user);
   });
 }
 

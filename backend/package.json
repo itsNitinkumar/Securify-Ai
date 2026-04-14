@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "migrate:create": "node-pg-migrate create --migration-file-language sql",
     "migrate:up": "dotenv -e .env -- node-pg-migrate up",
-    "migrate:down": "dotenv -e .env -- node-pg-migrate down"
+    "migrate:down": "dotenv -e .env -- node-pg-migrate down",
+    "setup:manager": "node create-initial-manager.js"
   },
   "keywords": [],
   "author": "",
@@ -42,6 +43,7 @@
     "docx": "^9.6.1",
     "dotenv": "^17.4.0",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.3.2",
     "express-session": "^1.19.0",
     "googleapis": "^171.4.0",
     "helmet": "^8.1.0",

@@ -39,7 +39,7 @@ passport.use(
 
         return done(null, user);
       } catch (error) {
-        console.error('❌ Error in Google OAuth strategy:', error);
+        console.error('Error in Google OAuth strategy:', error);
         return done(error as Error, undefined);
       }
     }

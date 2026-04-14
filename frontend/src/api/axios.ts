@@ -1,18 +1,18 @@
 import axios from 'axios';
 
 const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1',
   timeout: 10000,
+  withCredentials: true, // Important: Send cookies with requests
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // Important for cookies
 });
 
-// Request interceptor
+// Request interceptor - Cookies are sent automatically, no need for Authorization header
 axiosInstance.interceptors.request.use(
   (config) => {
-    // Cookies are sent automatically with withCredentials: true
+    // Cookies are automatically included with withCredentials: true
     return config;
   },
   (error) => {
@@ -22,8 +22,13 @@ axiosInstance.interceptors.request.use(
 
 // Response interceptor
 axiosInstance.interceptors.response.use(
-  (response) => response.data,
+  (response) => response,
   (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid - redirect to login
+      localStorage.removeItem('user');
+      window.location.href = '/signin';
+    }
     const message = error.response?.data?.message || 'Something went wrong';
     return Promise.reject(new Error(message));
   }

@@ -35,6 +35,10 @@ export const config = {
     secret: process.env.JWT_SECRET!,
     expire: process.env.JWT_EXPIRE!,
   },
+  session: {
+    timeout: parseInt(process.env.SESSION_TIMEOUT || '1800000', 10), // 30 minutes default
+    warningTime: parseInt(process.env.SESSION_WARNING_TIME || '300000', 10), // 5 minutes warning
+  },
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',

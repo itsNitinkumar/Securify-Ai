@@ -6,10 +6,13 @@ export interface ApiResponse<T = unknown> {
   data?: T;
 }
 
+export type UserRole = 'analyst' | 'reviewer' | 'manager' | 'client';
+
 export interface User {
   id: number;
   email: string;
   name: string;
+  role: UserRole;
   created_at: Date;
   updated_at: Date;
 }

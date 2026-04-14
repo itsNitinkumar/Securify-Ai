@@ -4,15 +4,17 @@ import jwt, { SignOptions } from "jsonwebtoken";
 import AuthController from '../controllers/auth.controller';
 import { validateSignup, validateSignin } from '../middlewares/validate';
 import { protect } from '../middlewares/auth';
+import { authLimiter } from '../middlewares/rateLimiter';
 import { config } from '../config/env';
 
 const router = Router();
 
-// Regular auth routes
-router.post('/signup', validateSignup, AuthController.signup);
-router.post('/signin', validateSignin, AuthController.signin);
-router.post('/signout', AuthController.signout);
-router.get('/profile', protect, AuthController.getProfile);
+// Regular auth routes with rate limiting
+router.post('/signup', authLimiter, validateSignup, AuthController.signup);
+router.post('/signin', authLimiter, validateSignin, AuthController.signin);
+router.post('/signout', AuthController.signout as any);
+router.get('/profile', protect, AuthController.getProfile as any);
+router.get('/session', protect, AuthController.getSessionInfo as any);
 
 // Google OAuth routes
 router.get('/google', passport.authenticate('google', { 
@@ -45,17 +47,28 @@ router.get('/google/callback',
   }
 );
 
-        // Set cookie
+        // Set cookie (for cookie-based auth if needed)
         res.cookie('token', token, {
           httpOnly: true,
           secure: config.env === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
           maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
         console.log('✅ Google OAuth successful for user:', user.email);
-        // Redirect to frontend
-        res.redirect(`${config.frontendUrl}/?auth=success`);
+        
+        // Redirect to frontend with token in URL (for localStorage)
+        const userData = encodeURIComponent(JSON.stringify({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role
+        }));
+        
+        const redirectUrl = `${config.frontendUrl}/auth/callback?token=${token}&user=${userData}`;
+        console.log('🔄 Redirecting to:', redirectUrl);
+        
+        res.redirect(redirectUrl);
       } catch (error) {
         console.error('❌ Error generating token:', error);
         res.redirect(`${config.frontendUrl}/signin?error=token_generation_failed`);

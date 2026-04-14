@@ -19,6 +19,7 @@ const SignUpPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [pendingApproval, setPendingApproval] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,8 +29,22 @@ const SignUpPage = () => {
     try {
       const response = await authApi.signup(formData);
       
-      // Store token
-      localStorage.setItem('token', response.data.token);
+      console.log('Signup response:', response.data);
+      
+      // Check if account requires approval
+      if (response.data.data?.requiresApproval) {
+        console.log('Account requires approval - showing pending screen');
+        setPendingApproval(true);
+        return;
+      }
+      
+      console.log('Account active - redirecting to dashboard');
+      
+      // Token is set as httpOnly cookie by backend for active users
+      // Store user info if needed
+      if (response.data.data?.user) {
+        localStorage.setItem('user', JSON.stringify(response.data.data.user));
+      }
       
       // Redirect to dashboard or home
       navigate('/');
@@ -92,10 +107,52 @@ const SignUpPage = () => {
         <div className="w-full max-w-md space-y-8 py-8">
           <Logo size="md" className="lg:hidden mb-8" />
 
-          <div className="space-y-3">
-            <h2 className="text-4xl font-bold tracking-tight">Authorization Request</h2>
-            <p className="text-[#adaaaa]">Establish your credentials to access the sentinel protocol.</p>
-          </div>
+          {pendingApproval ? (
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <h2 className="text-4xl font-bold tracking-tight">Account Pending Approval</h2>
+                <p className="text-[#adaaaa]">Your account has been created successfully and is awaiting manager approval.</p>
+              </div>
+
+              <Card className="p-6 border-l-2 border-[#ffa500]">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-[#ffa50020] flex items-center justify-center">
+                      <Loader2 className="text-[#ffa500] animate-spin" size={24} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-[#ffffff]">Awaiting Authorization</p>
+                      <p className="text-xs text-[#adaaaa]">A manager will review your request</p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 pt-2">
+                    <p className="text-xs text-[#adaaaa]">
+                      <span className="font-medium text-[#ffffff]">Email:</span> {formData.email}
+                    </p>
+                    <p className="text-xs text-[#adaaaa]">
+                      <span className="font-medium text-[#ffffff]">Name:</span> {formData.name}
+                    </p>
+                  </div>
+
+                  <div className="pt-4 border-t border-[#49484726]">
+                    <p className="text-xs text-[#adaaaa]">
+                      You will receive an email notification once your account is approved. You can then sign in with your credentials.
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              <Button variant="secondary" className="w-full" onClick={() => navigate('/signin')}>
+                Return to Sign In
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-3">
+                <h2 className="text-4xl font-bold tracking-tight">Authorization Request</h2>
+                <p className="text-[#adaaaa]">Establish your credentials to access the sentinel protocol.</p>
+              </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
@@ -201,7 +258,7 @@ const SignUpPage = () => {
           </div>
 
           <Button variant="secondary" className="w-full" asChild>
-            <a href="http://localhost:5000/api/v1/auth/google">
+            <a href={`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'}/auth/google`}>
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                 <path fill="#EA4335" d="M5.26620003,9.76452941 C6.19878754,6.93863203 8.85444915,4.90909091 12,4.90909091 C13.6909091,4.90909091 15.2181818,5.50909091 16.4181818,6.49090909 L19.9090909,3 C17.7818182,1.14545455 15.0545455,0 12,0 C7.27006974,0 3.1977497,2.69829785 1.23999023,6.65002441 L5.26620003,9.76452941 Z"/>
                 <path fill="#34A853" d="M16.0407269,18.0125889 C14.9509167,18.7163016 13.5660892,19.0909091 12,19.0909091 C8.86648613,19.0909091 6.21911939,17.076871 5.27698177,14.2678769 L1.23746264,17.3349879 C3.19279051,21.2936293 7.26500293,24 12,24 C14.9328362,24 17.7353462,22.9573905 19.834192,20.9995801 L16.0407269,18.0125889 Z"/>
@@ -222,6 +279,8 @@ const SignUpPage = () => {
           <p className="text-center text-[10px] font-technical uppercase tracking-wider text-[#494847] pt-4">
             SYSTEM ARCHITECTURE OPTIMIZED FOR HIGH AVAILABILITY
           </p>
+            </>
+          )}
         </div>
       </div>
     </div>

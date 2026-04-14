@@ -1,13 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 
-type AsyncFunction = (
-  req: Request,
+type AsyncFunction<T = Request> = (
+  req: T,
   res: Response,
   next: NextFunction
 ) => Promise<void | Response>;
 
-const asyncHandler = (fn: AsyncFunction) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+const asyncHandler = <T = Request>(fn: AsyncFunction<T>) => {
+  return (req: T, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 };

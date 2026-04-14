@@ -9,8 +9,11 @@ export const userApi = {
   create: (data: { email: string; name: string }) =>
     axiosInstance.post<ApiResponse<User>>('/users', data),
   
-  update: (id: number, data: { name: string }) =>
+  update: (id: number, data: { name: string; role?: string }) =>
     axiosInstance.put<ApiResponse<User>>(`/users/${id}`, data),
+  
+  approve: (id: number, role?: string) =>
+    axiosInstance.patch<ApiResponse<User>>(`/users/${id}/approve`, { role }),
   
   delete: (id: number) => axiosInstance.delete<ApiResponse>(`/users/${id}`),
 };

@@ -1,28 +1,105 @@
-import { Outlet, Link } from 'react-router-dom';
+import { Outlet, Link, useLocation } from 'react-router-dom';
+import { LayoutDashboard, BookOpen, Users, Activity, Settings, Bell, HelpCircle, FolderOpen, Search } from 'lucide-react';
+import Logo from '@/components/common/Logo';
 
 const MainLayout = () => {
+  const location = useLocation();
+
+  const navItems = [
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/projects', label: 'Projects', icon: FolderOpen },
+    { path: '/finding-library', label: 'Finding Library', icon: BookOpen },
+    { path: '/search', label: 'Search', icon: Search },
+    { path: '/activity', label: 'Activity Logs', icon: Activity },
+    { path: '/users', label: 'Users', icon: Users },
+    { path: '/settings', label: 'RBAC Settings', icon: Settings },
+  ];
+
+  const isActive = (path: string) => {
+    if (path === '/') return location.pathname === '/';
+    return location.pathname.startsWith(path);
+  };
+
   return (
-    <div className="min-h-screen bg-background">
-      <nav className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link to="/" className="text-2xl font-bold text-primary">
-              MyApp
-            </Link>
-            <div className="flex gap-6">
-              <Link to="/" className="text-foreground hover:text-primary transition">
-                Home
+    <div className="min-h-screen bg-surface flex">
+      {/* Sidebar */}
+      <aside className="w-64 bg-surface-low border-r border-outline flex flex-col">
+        {/* Logo */}
+        <div className="p-6 border-b border-outline">
+          <Logo size="lg" />
+          <div className="mt-2 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+            <span className="text-xs text-on-surface-variant font-technical">
+              SENTINEL_NODE_01
+            </span>
+          </div>
+          <span className="text-xs text-primary">STATUS: SECURE</span>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 p-4 space-y-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.path);
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                  active
+                    ? 'bg-primary/10 text-primary border border-primary/20'
+                    : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-sm font-medium">{item.label}</span>
               </Link>
-              <Link to="/users" className="text-foreground hover:text-primary transition">
-                Users
-              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Bottom Actions */}
+        <div className="p-4 border-t border-outline space-y-2">
+          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-high hover:text-on-surface transition-all">
+            <HelpCircle className="w-5 h-5" />
+            <span className="text-sm">Support</span>
+          </button>
+          <button className="w-full bg-primary text-surface hover:bg-primary/90 px-4 py-3 rounded-lg font-medium text-sm transition-all">
+            🚀 INIT_SCAN
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Top Bar */}
+        <header className="h-16 bg-surface-low border-b border-outline flex items-center justify-between px-6">
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-semibold text-on-surface">
+              {navItems.find((item) => isActive(item.path))?.label || 'Dashboard'}
+            </h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <button className="relative p-2 rounded-lg hover:bg-surface-high transition-colors">
+              <Bell className="w-5 h-5 text-on-surface-variant" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
+            </button>
+            <button className="p-2 rounded-lg hover:bg-surface-high transition-colors">
+              <HelpCircle className="w-5 h-5 text-on-surface-variant" />
+            </button>
+            <div className="flex items-center gap-3 pl-4 border-l border-outline">
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                <span className="text-sm font-semibold text-primary">A</span>
+              </div>
             </div>
           </div>
-        </div>
-      </nav>
-      <main className="container mx-auto px-4 py-8">
-        <Outlet />
-      </main>
+        </header>
+
+        {/* Page Content */}
+        <main className="flex-1 overflow-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 };
