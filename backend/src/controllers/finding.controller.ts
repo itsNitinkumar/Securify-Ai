@@ -7,6 +7,29 @@ import ApiError from '../utils/ApiError';
 import  asyncHandler from '../utils/asyncHandler';
 
 class FindingController {
+  // Generate finding content using AI (without creating a finding)
+  static generateContent = asyncHandler(async (req: Request, res: Response) => {
+    const { evidence, severity } = req.body;
+    const user = (req as any).user;
+
+    if (!evidence || !severity) {
+      throw new ApiError(400, 'Evidence and severity are required');
+    }
+
+    // Generate finding content using OpenAI (don't save to database)
+    const aiResult = await OpenAIService.generateFinding({
+      evidence,
+      severity,
+      role: user.role || 'analyst',
+    });
+
+    // Return AI-generated content only
+    res.json({
+      success: true,
+      data: aiResult,
+    });
+  });
+
   // Generate finding using AI
   static generateFinding = asyncHandler(async (req: Request, res: Response) => {
     const { evidence, severity, project_id } = req.body;
@@ -30,6 +53,64 @@ class FindingController {
       created_by: user.id,
       steps_to_reproduce: aiResult.steps_to_reproduce,
       references: aiResult.references,
+    });
+
+    // Create initial version
+    await VersionService.createVersion(finding.id, finding, user.id);
+
+    // Log activity
+    await ActivityLogService.log({
+      user_id: user.id,
+      action: 'CREATE_FINDING',
+      entity_type: 'finding',
+      entity_id: finding.id,
+      details: { title: finding.title, severity: finding.severity },
+      ip_address: req.ip || req.socket.remoteAddress,
+      user_agent: req.get('user-agent'),
+    });
+
+    res.status(201).json({
+      success: true,
+      data: finding,
+    });
+  });
+
+  // Create finding manually (without AI)
+  static createFinding = asyncHandler(async (req: Request, res: Response) => {
+    const {
+      title,
+      description,
+      severity,
+      impact,
+      remediation,
+      steps_to_reproduce,
+      references,
+      project_id,
+      cvss_score,
+      cwe_id,
+      owasp_category,
+    } = req.body;
+    const user = (req as any).user;
+
+    if (!title || !severity) {
+      throw new ApiError(400, 'Title and severity are required');
+    }
+
+    // Save to database
+    const finding = await FindingModel.create({
+      title,
+      description: description || '',
+      severity,
+      impact: impact || '',
+      remediation: remediation || '',
+      steps_to_reproduce: steps_to_reproduce || [],
+      references: references || [],
+      project_id: project_id || null,
+      created_by: user.id,
+      cvss_score: cvss_score || null,
+      cwe_id: cwe_id || null,
+      owasp_category: owasp_category || null,
+      status: 'draft',
     });
 
     // Create initial version
@@ -119,8 +200,15 @@ class FindingController {
     }
 
     // Access control
-    if (user.role === 'analyst' && finding.created_by !== user.id) {
-      throw new ApiError(403, 'Only the creator can edit this finding');
+    if (user.role === 'analyst') {
+      // Analysts can only edit their own findings
+      if (finding.created_by !== user.id) {
+        throw new ApiError(403, 'Only the creator can edit this finding');
+      }
+      // Analysts can edit if status is draft or changes_requested
+      if (finding.status !== 'draft' && finding.status !== 'changes_requested') {
+        throw new ApiError(403, 'Cannot edit finding with current status');
+      }
     }
 
     if (user.role === 'reviewer') {
@@ -182,13 +270,14 @@ class FindingController {
     });
   });
 
-  // Approve finding (Manager only)
+  // Approve finding (Reviewer and Manager)
   static approveFinding = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = (req as any).user;
 
-    if (user.role !== 'manager') {
-      throw new ApiError(403, 'Only managers can approve findings');
+    // Both Reviewers and Managers can approve findings
+    if (user.role !== 'reviewer' && user.role !== 'manager') {
+      throw new ApiError(403, 'Only reviewers and managers can approve findings');
     }
 
     const finding = await FindingModel.findById(parseInt(id));
@@ -197,14 +286,117 @@ class FindingController {
       throw new ApiError(404, 'Finding not found');
     }
 
+    if (finding.status !== 'pending_review') {
+      throw new ApiError(400, 'Only findings pending review can be approved');
+    }
+
     const updatedFinding = await FindingModel.update(parseInt(id), {
       status: 'approved',
       approved_by: user.id,
+      reviewed_by: user.id,
+    });
+
+    // Log activity
+    await ActivityLogService.log({
+      user_id: user.id,
+      action: 'APPROVE_FINDING',
+      entity_type: 'finding',
+      entity_id: parseInt(id),
+      details: { title: finding.title },
+      ip_address: req.ip || req.socket.remoteAddress,
+      user_agent: req.get('user-agent'),
     });
 
     res.json({
       success: true,
       data: updatedFinding,
+    });
+  });
+
+  // Request changes (Reviewer/Manager only)
+  static requestChanges = asyncHandler(async (req: Request, res: Response) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { comment } = req.body;
+    const user = (req as any).user;
+
+    if (user.role !== 'manager' && user.role !== 'reviewer') {
+      throw new ApiError(403, 'Only managers and reviewers can request changes');
+    }
+
+    const finding = await FindingModel.findById(parseInt(id));
+
+    if (!finding) {
+      throw new ApiError(404, 'Finding not found');
+    }
+
+    if (finding.status !== 'pending_review') {
+      throw new ApiError(400, 'Only findings pending review can have changes requested');
+    }
+
+    const updatedFinding = await FindingModel.update(parseInt(id), {
+      status: 'changes_requested',
+      reviewed_by: user.id,
+    });
+
+    // Log activity with comment
+    await ActivityLogService.log({
+      user_id: user.id,
+      action: 'REQUEST_CHANGES',
+      entity_type: 'finding',
+      entity_id: parseInt(id),
+      details: { title: finding.title, comment: comment || 'No comment provided' },
+      ip_address: req.ip || req.socket.remoteAddress,
+      user_agent: req.get('user-agent'),
+    });
+
+    res.json({
+      success: true,
+      data: updatedFinding,
+      message: 'Changes requested successfully',
+    });
+  });
+
+  // Submit finding for review
+  static submitForReview = asyncHandler(async (req: Request, res: Response) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const user = (req as any).user;
+
+    const finding = await FindingModel.findById(parseInt(id));
+
+    if (!finding) {
+      throw new ApiError(404, 'Finding not found');
+    }
+
+    // Only creator can submit for review
+    if (finding.created_by !== user.id) {
+      throw new ApiError(403, 'Only the creator can submit this finding for review');
+    }
+
+    // Can only submit draft findings
+    if (finding.status !== 'draft') {
+      throw new ApiError(400, `Cannot submit finding with status: ${finding.status}`);
+    }
+
+    const updatedFinding = await FindingModel.update(parseInt(id), {
+      status: 'pending_review',
+      reviewed_by: null, // Clear previous reviewer
+    });
+
+    // Log activity
+    await ActivityLogService.log({
+      user_id: user.id,
+      action: 'SUBMIT_FOR_REVIEW',
+      entity_type: 'finding',
+      entity_id: parseInt(id),
+      details: { title: finding.title },
+      ip_address: req.ip || req.socket.remoteAddress,
+      user_agent: req.get('user-agent'),
+    });
+
+    res.json({
+      success: true,
+      data: updatedFinding,
+      message: 'Finding submitted for review successfully',
     });
   });
 
