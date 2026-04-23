@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Shield, Users, Lock, Key, AlertTriangle, CheckCircle, Plus, Edit2, Trash2, Save, X } from 'lucide-react';
+import { Shield, Users, Lock, Key, AlertTriangle, CheckCircle, Plus, Edit2, Trash2, Save, X, UserCog } from 'lucide-react';
+import { RoleRequestsDashboard } from '@/components/manager/RoleRequestsDashboard';
 
 interface Permission {
   id: string;
@@ -18,7 +19,7 @@ interface Role {
 }
 
 const RBACSettingsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'roles' | 'permissions' | 'audit'>('roles');
+  const [activeTab, setActiveTab] = useState<'roles' | 'permissions' | 'audit' | 'requests'>('roles');
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [showAddRole, setShowAddRole] = useState(false);
 
@@ -112,36 +113,43 @@ const RBACSettingsPage: React.FC = () => {
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('roles')}
-              className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
-                activeTab === 'roles'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${activeTab === 'roles'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
               <Users className="w-4 h-4" />
               Roles
             </button>
             <button
               onClick={() => setActiveTab('permissions')}
-              className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
-                activeTab === 'permissions'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${activeTab === 'permissions'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
               <Key className="w-4 h-4" />
               Permissions
             </button>
             <button
               onClick={() => setActiveTab('audit')}
-              className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
-                activeTab === 'audit'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${activeTab === 'audit'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
               <Lock className="w-4 h-4" />
               Audit Log
+            </button>
+            <button
+              onClick={() => setActiveTab('requests')}
+              className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${activeTab === 'requests'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
+            >
+              <UserCog className="w-4 h-4" />
+              Role Requests
             </button>
           </div>
 
@@ -234,7 +242,7 @@ const RBACSettingsPage: React.FC = () => {
           {activeTab === 'permissions' && (
             <div className="p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-6">Permission Registry</h2>
-              
+
               <div className="space-y-6">
                 {Object.entries(groupedPermissions).map(([category, perms]) => (
                   <div key={category}>
@@ -270,7 +278,7 @@ const RBACSettingsPage: React.FC = () => {
           {activeTab === 'audit' && (
             <div className="p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-6">Security Audit Log</h2>
-              
+
               <div className="space-y-3">
                 {auditLogs.map((log) => (
                   <div
@@ -297,6 +305,13 @@ const RBACSettingsPage: React.FC = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Role Requests Tab */}
+          {activeTab === 'requests' && (
+            <div className="p-6">
+              <RoleRequestsDashboard />
             </div>
           )}
         </div>

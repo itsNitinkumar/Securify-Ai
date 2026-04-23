@@ -8,11 +8,18 @@ export interface Finding {
   severity: 'Critical' | 'High' | 'Medium' | 'Low' | 'Informational';
   description: string;
   affected_target?: string;
-  likelihood?: string;
-  impact?: string;
+  likelihood?: {
+    severity: string;
+    detail: string;
+  };
+  impact?: {
+    severity: string;
+    detail: string;
+  };
   steps_to_reproduce?: string[];
-  proof_of_concept?: string;
+  recommendation?: string[];
   remediation?: string;
+  proof_of_concept?: string;
   references?: string[];
   tags?: string[];
   status: 'draft' | 'pending_review' | 'changes_requested' | 'approved' | 'rejected';
@@ -28,11 +35,10 @@ export interface CreateFindingData {
   severity: string;
   description?: string;
   affected_target?: string;
-  likelihood?: string;
-  impact?: string;
+  likelihood?: any;
+  impact?: any;
   steps_to_reproduce?: string[];
-  proof_of_concept?: string;
-  remediation?: string;
+  recommendation?: string[];
   references?: string[];
   project_id?: number;
   cvss_score?: number;
@@ -65,10 +71,14 @@ export const findingApi = {
 
   // AI operations
   generateContent: (data: GenerateFindingData) =>
-    axiosInstance.post<ApiResponse<Partial<Finding>>>('/findings/generate-content', data),
+    axiosInstance.post<ApiResponse<Partial<Finding>>>('/findings/generate-content', data, {
+      timeout: 60000, // 60 seconds for AI generation
+    }),
 
   generate: (data: GenerateFindingData) =>
-    axiosInstance.post<ApiResponse<Finding>>('/findings/generate', data),
+    axiosInstance.post<ApiResponse<Finding>>('/findings/generate', data, {
+      timeout: 60000, // 60 seconds for AI generation
+    }),
 
   regenerateSection: (id: number, section: string) =>
     axiosInstance.post<ApiResponse<Finding>>(`/findings/${id}/regenerate`, { section }),

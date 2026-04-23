@@ -25,10 +25,10 @@ class UserModel {
     return result.rows[0] || null;
   }
 
-  static async create(email: string, name: string): Promise<User> {
+  static async create(email: string, name: string, role: string = 'client'): Promise<User> {
     const result = await pool.query(
-      'INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id, email, name, created_at, updated_at',
-      [email, name]
+      'INSERT INTO users (email, name, role, status) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role, status, created_at, updated_at',
+      [email, name, role, 'active']
     );
     return result.rows[0];
   }
@@ -74,6 +74,17 @@ class UserModel {
       values
     );
     return result.rows[0] || null;
+  }
+
+  // Admin only: Create manager with credentials
+  static async createManager(name: string, email: string, hashedPassword: string): Promise<User> {
+    const result = await pool.query(
+      `INSERT INTO users (name, email, password, role, status) 
+       VALUES ($1, $2, $3, 'manager', 'active') 
+       RETURNING id, email, name, role, status, created_at, updated_at`,
+      [name, email, hashedPassword]
+    );
+    return result.rows[0];
   }
 }
 

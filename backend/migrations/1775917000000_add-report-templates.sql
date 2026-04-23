@@ -7,15 +7,9 @@ CREATE TABLE report_templates (
   id SERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   description TEXT,
+  template_data JSONB NOT NULL DEFAULT '{}',
+  logo_path TEXT,
   is_default BOOLEAN DEFAULT false,
-  sections JSONB NOT NULL DEFAULT '[]',
-  company_name VARCHAR(255),
-  company_logo_url TEXT,
-  header_text TEXT,
-  footer_text TEXT,
-  primary_color VARCHAR(7) DEFAULT '#1a73e8',
-  secondary_color VARCHAR(7) DEFAULT '#34a853',
-  font_family VARCHAR(100) DEFAULT 'Arial',
   created_by INTEGER REFERENCES users(id),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
@@ -30,18 +24,31 @@ INSERT INTO report_templates (
   name,
   description,
   is_default,
-  sections,
-  company_name,
-  header_text,
-  footer_text
+  template_data
 ) VALUES (
   'Default Penetration Testing Report',
   'Standard penetration testing report template with all essential sections',
   true,
-  '[{"type":"cover_page","title":"Penetration Testing Report","enabled":true},{"type":"executive_summary","title":"Executive Summary","enabled":true},{"type":"methodology","title":"Testing Methodology","enabled":true},{"type":"scope","title":"Scope of Testing","enabled":true},{"type":"findings_summary","title":"Findings Summary","enabled":true},{"type":"detailed_findings","title":"Detailed Findings","enabled":true},{"type":"risk_matrix","title":"Risk Assessment Matrix","enabled":true},{"type":"recommendations","title":"Recommendations","enabled":true},{"type":"conclusion","title":"Conclusion","enabled":true},{"type":"appendix","title":"Appendix","enabled":false}]'::jsonb,
-  'SecurifyAI',
-  'CONFIDENTIAL - Penetration Testing Report',
-  'This document contains confidential information'
+  '{
+    "sections": [
+      {"type":"cover_page","title":"Penetration Testing Report","enabled":true},
+      {"type":"executive_summary","title":"Executive Summary","enabled":true},
+      {"type":"methodology","title":"Testing Methodology","enabled":true},
+      {"type":"scope","title":"Scope of Testing","enabled":true},
+      {"type":"findings_summary","title":"Findings Summary","enabled":true},
+      {"type":"detailed_findings","title":"Detailed Findings","enabled":true},
+      {"type":"risk_matrix","title":"Risk Assessment Matrix","enabled":true},
+      {"type":"recommendations","title":"Recommendations","enabled":true},
+      {"type":"conclusion","title":"Conclusion","enabled":true},
+      {"type":"appendix","title":"Appendix","enabled":false}
+    ],
+    "company_name": "SecurifyAI",
+    "header_text": "CONFIDENTIAL - Penetration Testing Report",
+    "footer_text": "This document contains confidential information",
+    "primary_color": "#1a73e8",
+    "secondary_color": "#34a853",
+    "font_family": "Arial"
+  }'::jsonb
 );
 
 -- Down Migration

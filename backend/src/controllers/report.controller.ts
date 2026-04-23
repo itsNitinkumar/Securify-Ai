@@ -1,166 +1,128 @@
 import { Request, Response } from 'express';
-import ProjectModel from '../models/project.model';
-import FindingModel from '../models/finding.model';
 import ReportService from '../services/report.service';
-import GoogleDriveService from '../services/google-drive.service';
-import ActivityLogService from '../services/activity-log.service';
+import ApiResponse from '../utils/ApiResponse';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
-import pool from '../config/database';
+import * as fs from 'fs';
+import * as path from 'path';
 
 class ReportController {
-  // Generate report (DOCX or PDF)
+  // Generate Report
   static generateReport = asyncHandler(async (req: Request, res: Response) => {
-    const { project_id, format = 'docx', upload_to_drive = false, share_with_client = false, client_email } = req.body;
+    const { project_id, template_id, format } = req.body;
     const user = (req as any).user;
 
     if (!project_id) {
       throw new ApiError(400, 'Project ID is required');
     }
 
-    if (!['docx', 'pdf'].includes(format)) {
-      throw new ApiError(400, 'Format must be either docx or pdf');
+    const reportFormat = format || 'docx';
+    if (!['docx', 'pdf'].includes(reportFormat)) {
+      throw new ApiError(400, 'Format must be docx or pdf');
     }
 
-    // Only managers can generate reports
-    if (user.role !== 'manager') {
-      throw new ApiError(403, 'Only managers can generate reports');
-    }
+    const result = await ReportService.generateReport(
+      project_id,
+      template_id || null,
+      user.id,
+      reportFormat
+    );
 
-    // Get project
-    const project = await ProjectModel.findById(parseInt(project_id));
-    if (!project) {
-      throw new ApiError(404, 'Project not found');
-    }
-
-    // Get approved findings for the project
-    const findings = await FindingModel.findAll({
-      project_id: parseInt(project_id),
-      status: 'approved',
-    });
-
-    if (findings.length === 0) {
-      throw new ApiError(400, 'No approved findings found for this project');
-    }
-
-    // Generate filename
-    const timestamp = Date.now();
-    const filename = `${project.name.replace(/[^a-z0-9]/gi, '_')}_${timestamp}.${format}`;
-
-    // Generate report
-    let filePath: string;
-    if (format === 'docx') {
-      filePath = await ReportService.generateDOCX({ project, findings }, filename);
-    } else {
-      filePath = await ReportService.generatePDF({ project, findings }, filename);
-    }
-
-    // Upload to Google Drive if requested
-    let driveFileId: string | null = null;
-    let driveLink: string | null = null;
-    
-    if (upload_to_drive && GoogleDriveService.isConfigured()) {
-      const mimeType = format === 'docx' 
-        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        : 'application/pdf';
-      
-      driveFileId = await GoogleDriveService.uploadFile(filePath, filename, mimeType);
-
-      if (driveFileId) {
-        driveLink = await GoogleDriveService.getFileLink(driveFileId);
-        
-        // Share with client if requested
-        if (share_with_client && client_email) {
-          await GoogleDriveService.shareFile(driveFileId, client_email, 'reader');
-        }
-      }
-    }
-
-    // Save report metadata
-    const report = await ReportService.saveReportMetadata({
-      project_id: parseInt(project_id),
-      report_name: filename,
-      file_path: filePath,
-      file_type: format,
-      generated_by: user.id,
-    });
-
-    // Update with Google Drive ID if uploaded
-    if (driveFileId) {
-      await pool.query(
-        'UPDATE generated_reports SET google_drive_id = $1 WHERE id = $2',
-        [driveFileId, report.id]
-      );
-    }
-
-    // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'GENERATE_REPORT',
-      entity_type: 'report',
-      entity_id: report.id,
-      details: { 
-        project_id, 
-        format, 
-        filename,
-        uploaded_to_drive: !!driveFileId,
-        shared_with_client: share_with_client && !!driveFileId,
-      },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
-    const responseData: any = {
-      report_id: report.id,
-      filename,
-      format,
-      download_url: `/api/v1/reports/${report.id}/download`,
-    };
-
-    if (driveFileId) {
-      responseData.google_drive_id = driveFileId;
-      responseData.google_drive_link = driveLink;
-    }
-
-    res.status(201).json({
-      success: true,
-      data: responseData,
+    ApiResponse.success(res, 201, 'Report generated successfully', {
+      reportId: result.reportId,
+      downloadUrl: `/api/reports/${result.reportId}/download`,
     });
   });
 
-  // Download report
+  // Download Report
   static downloadReport = asyncHandler(async (req: Request, res: Response) => {
-    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const reportId = parseInt(req.params.id);
+
+    const filePath = await ReportService.getReportFile(reportId);
+    const fileName = path.basename(filePath);
+
+    res.download(filePath, fileName, (err) => {
+      if (err) {
+        console.error('Error downloading report:', err);
+        throw new ApiError(500, 'Failed to download report');
+      }
+    });
+  });
+
+  // Get Reports by Project
+  static getReportsByProject = asyncHandler(async (req: Request, res: Response) => {
+    const projectId = parseInt(req.params.projectId);
+    const ReportModel = (await import('../models/report.model')).default;
+    
+    const reports = await ReportModel.getReportsByProject(projectId);
+    ApiResponse.success(res, 200, 'Reports retrieved successfully', reports);
+  });
+
+  // Delete Report
+  static deleteReport = asyncHandler(async (req: Request, res: Response) => {
+    const reportId = parseInt(req.params.id);
     const user = (req as any).user;
 
-    const result = await ReportService.getProjectReports(0); // Get all reports
-    const report = result.find(r => r.id === parseInt(id));
-
-    if (!report) {
-      throw new ApiError(404, 'Report not found');
+    // Only managers and admins can delete reports
+    if (user.role !== 'manager' && user.role !== 'admin') {
+      throw new ApiError(403, 'Only managers and admins can delete reports');
     }
 
-    // Access control - only manager or project team can download
-    if (user.role === 'client') {
-      // Clients can only download reports from their projects
-      // TODO: Add project-client relationship check
-    }
-
-    res.download(report.file_path, report.report_name);
+    await ReportService.deleteReport(reportId);
+    ApiResponse.success(res, 200, 'Report deleted successfully');
   });
 
-  // Get reports for a project
-  static getProjectReports = asyncHandler(async (req: Request, res: Response) => {
-    const project_id = Array.isArray(req.params.project_id) 
-      ? req.params.project_id[0] 
-      : req.params.project_id;
+  // Template Management
+  static createTemplate = asyncHandler(async (req: Request, res: Response) => {
+    const { name, description, template_data, logo_path, is_default } = req.body;
+    const user = (req as any).user;
 
-    const reports = await ReportService.getProjectReports(parseInt(project_id));
+    if (!name || !template_data) {
+      throw new ApiError(400, 'Name and template data are required');
+    }
 
-    res.json({
-      success: true,
-      data: reports,
+    const template = await ReportService.createTemplate({
+      name,
+      description,
+      template_data,
+      logo_path,
+      is_default,
+      created_by: user.id,
     });
+
+    ApiResponse.success(res, 201, 'Template created successfully', template);
+  });
+
+  static getAllTemplates = asyncHandler(async (req: Request, res: Response) => {
+    const templates = await ReportService.getAllTemplates();
+    ApiResponse.success(res, 200, 'Templates retrieved successfully', templates);
+  });
+
+  static getTemplate = asyncHandler(async (req: Request, res: Response) => {
+    const templateId = parseInt(req.params.id);
+    const template = await ReportService.getTemplateById(templateId);
+    ApiResponse.success(res, 200, 'Template retrieved successfully', template);
+  });
+
+  static updateTemplate = asyncHandler(async (req: Request, res: Response) => {
+    const templateId = parseInt(req.params.id);
+    const { name, description, template_data, logo_path, is_default } = req.body;
+
+    const template = await ReportService.updateTemplate(templateId, {
+      name,
+      description,
+      template_data,
+      logo_path,
+      is_default,
+    });
+
+    ApiResponse.success(res, 200, 'Template updated successfully', template);
+  });
+
+  static deleteTemplate = asyncHandler(async (req: Request, res: Response) => {
+    const templateId = parseInt(req.params.id);
+    await ReportService.deleteTemplate(templateId);
+    ApiResponse.success(res, 200, 'Template deleted successfully');
   });
 }
 

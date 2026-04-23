@@ -17,6 +17,8 @@ app.use(helmet());
 app.use(cors({
   origin: config.frontendUrl,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Global rate limiter (apply to all requests)
@@ -46,7 +48,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Session timeout check (after authentication)
-app.use('/api/v1', checkSessionTimeout);
+app.use('/api/v1', (req, res, next) => checkSessionTimeout(req as any, res, next));
 
 // Routes
 app.use('/api/v1', routes);

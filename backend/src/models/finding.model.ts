@@ -7,13 +7,14 @@ interface Finding {
   severity: string;
   description: string;
   affected_target?: string;
-  likelihood?: string;
-  impact?: string;
-  steps_to_reproduce?: any;
-  proof_of_concept?: string;
-  remediation?: string;
-  references?: any;
-  tags?: any;
+  likelihood?: { severity: string; detail: string }; // JSONB: {severity: string, detail: string}
+  impact?: { severity: string; detail: string }; // JSONB: {severity: string, detail: string}
+  steps_to_reproduce?: string[]; // JSONB array
+  recommendation?: string[]; // JSONB array - AI-generated recommendations
+  remediation?: string; // TEXT - deprecated, kept for backward compatibility
+  references?: string[]; // JSONB array - AI-generated references
+  finding_references?: string[]; // JSONB array - deprecated
+  tags?: string[];
   status: string;
   created_by?: number;
   approved_by?: number;
@@ -27,8 +28,8 @@ class FindingModel {
     const result = await pool.query(
       `INSERT INTO findings (
         project_id, title, severity, description, affected_target,
-        likelihood, impact, steps_to_reproduce, proof_of_concept,
-        remediation, finding_references, tags, created_by
+        likelihood, impact, steps_to_reproduce,
+        recommendation, "references", finding_references, tags, created_by
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *`,
       [
@@ -37,13 +38,13 @@ class FindingModel {
         data.severity,
         data.description,
         data.affected_target,
-        data.likelihood,
-        data.impact,
-        JSON.stringify(data.steps_to_reproduce),
-        data.proof_of_concept,
-        data.remediation,
-        JSON.stringify(data.references),
-        JSON.stringify(data.tags),
+        data.likelihood ? JSON.stringify(data.likelihood) : null,
+        data.impact ? JSON.stringify(data.impact) : null,
+        data.steps_to_reproduce ? JSON.stringify(data.steps_to_reproduce) : null,
+        data.recommendation ? JSON.stringify(data.recommendation) : null,
+        data.references ? JSON.stringify(data.references) : null,
+        data.references ? JSON.stringify(data.references) : null, // Also save to finding_references for backward compatibility
+        data.tags ? JSON.stringify(data.tags) : null,
         data.created_by,
       ]
     );
@@ -51,12 +52,27 @@ class FindingModel {
   }
 
   static async findById(id: number): Promise<Finding | null> {
-    const result = await pool.query('SELECT * FROM findings WHERE id = $1', [id]);
-    return result.rows[0] || null;
+    const result = await pool.query(
+      'SELECT id, project_id, title, severity, description, affected_target, likelihood, impact, steps_to_reproduce, recommendation, "references", finding_references, tags, status, created_by, approved_by, reviewed_by, created_at, updated_at FROM findings WHERE id = $1',
+      [id]
+    );
+    
+    const finding = result.rows[0];
+    if (finding) {
+      console.log('🔍 Raw finding from DB:', {
+        id: finding.id,
+        likelihood: finding.likelihood,
+        impact: finding.impact,
+        recommendation: finding.recommendation,
+        references: finding.references,
+      });
+    }
+    
+    return finding || null;
   }
 
   static async findAll(filters: any = {}): Promise<Finding[]> {
-    let query = 'SELECT * FROM findings WHERE 1=1';
+    let query = 'SELECT id, project_id, title, severity, description, affected_target, likelihood, impact, steps_to_reproduce, recommendation, "references", finding_references, tags, status, created_by, approved_by, reviewed_by, created_at, updated_at FROM findings WHERE 1=1';
     const params: any[] = [];
     let paramIndex = 1;
 
@@ -100,8 +116,8 @@ class FindingModel {
         likelihood = COALESCE($5, likelihood),
         impact = COALESCE($6, impact),
         steps_to_reproduce = COALESCE($7, steps_to_reproduce),
-        proof_of_concept = COALESCE($8, proof_of_concept),
-        remediation = COALESCE($9, remediation),
+        recommendation = COALESCE($8, recommendation),
+        "references" = COALESCE($9, "references"),
         finding_references = COALESCE($10, finding_references),
         tags = COALESCE($11, tags),
         status = COALESCE($12, status),
@@ -115,12 +131,12 @@ class FindingModel {
         data.severity,
         data.description,
         data.affected_target,
-        data.likelihood,
-        data.impact,
+        data.likelihood ? JSON.stringify(data.likelihood) : null,
+        data.impact ? JSON.stringify(data.impact) : null,
         data.steps_to_reproduce ? JSON.stringify(data.steps_to_reproduce) : null,
-        data.proof_of_concept,
-        data.remediation,
+        data.recommendation ? JSON.stringify(data.recommendation) : null,
         data.references ? JSON.stringify(data.references) : null,
+        data.references ? JSON.stringify(data.references) : null, // Also update finding_references
         data.tags ? JSON.stringify(data.tags) : null,
         data.status,
         data.approved_by,

@@ -221,9 +221,11 @@ const ProjectsPage = () => {
           <p className="text-on-surface-variant mb-4">
             {searchQuery
               ? 'Try adjusting your search criteria'
-              : 'Get started by creating your first project'}
+              : currentUserRole === 'manager'
+              ? 'Get started by creating your first project'
+              : 'No projects available yet'}
           </p>
-          {!searchQuery && (
+          {!searchQuery && currentUserRole === 'manager' && (
             <Button
               onClick={() => setIsCreateOpen(true)}
               className="bg-primary text-surface hover:bg-primary/90"

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import axios from '../api/axios';
 
 interface User {
   id: string;
@@ -24,16 +25,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored token on mount
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
-    }
-    
-    setIsLoading(false);
+    // Fetch current user from API (cookies are sent automatically via axios)
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await axios.get('/auth/profile');
+        
+        if (response.data) {
+          setUser(response.data.data || response.data.user);
+          setToken('cookie-based'); // Placeholder since we use cookies
+        }
+      } catch (error) {
+        console.error('Failed to fetch user:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCurrentUser();
   }, []);
 
   const login = async (email: string, password: string) => {

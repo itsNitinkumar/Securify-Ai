@@ -1,8 +1,17 @@
 -- Up Migration
-ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'analyst' CHECK (role IN ('analyst', 'reviewer', 'manager', 'client'));
+-- Add admin role and change default to client
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check 
+  CHECK (role IN ('admin', 'manager', 'analyst', 'reviewer', 'client'));
 
--- Update existing users to have analyst role
-UPDATE users SET role = 'analyst' WHERE role IS NULL;
+-- Change default role to client
+ALTER TABLE users ALTER COLUMN role SET DEFAULT 'client';
+
+-- Update existing users (optional - comment out if you want to keep existing roles)
+-- UPDATE users SET role = 'client' WHERE role = 'analyst' AND id != 1;
 
 -- Down Migration
-ALTER TABLE users DROP COLUMN IF EXISTS role;
+-- ALTER TABLE users ALTER COLUMN role SET DEFAULT 'analyst';
+-- ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+-- ALTER TABLE users ADD CONSTRAINT users_role_check 
+--   CHECK (role IN ('analyst', 'reviewer', 'manager', 'client'));

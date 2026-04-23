@@ -68,6 +68,7 @@ const AIGenerateDialog = ({ projectId, open, onOpenChange, onSuccess }: AIGenera
 
     try {
       setLoading(true);
+      console.log('Sending generate request...');
       // Call the new generateContent endpoint (doesn't create a finding)
       const response = await findingApi.generateContent({
         evidence: `Vulnerability Type: ${formData.vulnerabilityType}\nAffected: ${formData.affectedEndpoint}\n\nEvidence:\n${formData.evidence}`,
@@ -75,11 +76,19 @@ const AIGenerateDialog = ({ projectId, open, onOpenChange, onSuccess }: AIGenera
         project_id: projectId,
       });
       
+      console.log('Response received:', response);
+      console.log('Response data:', response.data);
+      
       setGeneratedFinding(response.data.data);
       setStep('review');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to generate finding:', error);
-      alert('Failed to generate finding with AI');
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response,
+        stack: error.stack
+      });
+      alert('Failed to generate finding with AI: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -98,8 +107,7 @@ const AIGenerateDialog = ({ projectId, open, onOpenChange, onSuccess }: AIGenera
         likelihood: generatedFinding.likelihood,
         impact: generatedFinding.impact,
         steps_to_reproduce: generatedFinding.steps_to_reproduce,
-        proof_of_concept: generatedFinding.proof_of_concept,
-        remediation: generatedFinding.remediation,
+        recommendation: generatedFinding.recommendation,
         references: generatedFinding.references,
       });
       
@@ -310,23 +318,66 @@ const AIGenerateDialog = ({ projectId, open, onOpenChange, onSuccess }: AIGenera
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-sm font-semibold text-on-surface mb-2">Likelihood</h4>
-                    <p className="text-sm text-on-surface-variant">{generatedFinding.likelihood}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-on-surface mb-2">Impact</h4>
-                    <p className="text-sm text-on-surface-variant">{generatedFinding.impact}</p>
+                <div>
+                  <h4 className="text-sm font-semibold text-on-surface mb-2">Affected Target</h4>
+                  <p className="text-sm text-on-surface-variant">{generatedFinding.affected_target || 'N/A'}</p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-on-surface mb-2">Impact & Likelihood</h4>
+                  <div className="space-y-3">
+                    <p className="text-sm text-on-surface-variant">
+                      <span className="font-semibold text-on-surface">
+                        Impact: {generatedFinding.impact?.severity || 'N/A'}
+                      </span>
+                      {' – '}
+                      {generatedFinding.impact?.detail || 'N/A'}
+                    </p>
+                    <p className="text-sm text-on-surface-variant">
+                      <span className="font-semibold text-on-surface">
+                        Likelihood: {generatedFinding.likelihood?.severity || 'N/A'}
+                      </span>
+                      {' – '}
+                      {generatedFinding.likelihood?.detail || 'N/A'}
+                    </p>
                   </div>
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-semibold text-on-surface mb-2">Remediation</h4>
-                  <p className="text-sm text-on-surface-variant whitespace-pre-wrap">
-                    {generatedFinding.remediation}
-                  </p>
+                  <h4 className="text-sm font-semibold text-on-surface mb-2">Steps to Reproduce</h4>
+                  <ol className="list-decimal list-inside text-sm text-on-surface-variant space-y-1">
+                    {generatedFinding.steps_to_reproduce?.map((step: string, index: number) => (
+                      <li key={index}>{step}</li>
+                    )) || <li>No steps provided</li>}
+                  </ol>
                 </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-on-surface mb-2">Recommendation</h4>
+                  <ul className="text-sm text-on-surface-variant space-y-2">
+                    {generatedFinding.recommendation?.map((rec: string, idx: number) => (
+                      <li key={idx} className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span dangerouslySetInnerHTML={{ __html: rec.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
+                      </li>
+                    )) || <li>No recommendations provided</li>}
+                  </ul>
+                </div>
+
+                {generatedFinding.references && generatedFinding.references.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-on-surface mb-2">References</h4>
+                    <ul className="list-disc list-inside text-sm text-on-surface-variant space-y-1">
+                      {generatedFinding.references.map((ref: string, index: number) => (
+                        <li key={index}>
+                          <a href={ref} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                            {ref}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </Card>
 

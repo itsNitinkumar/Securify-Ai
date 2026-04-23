@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Penetration Testing Report</title>
+    <style>
+        @page {
+            margin: 0;
+            size: A4;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            color: #333;
+        }
+
+        .page {
+            page-break-after: always;
+            width: 210mm;
+            height: 297mm;
+            position: relative;
+            background: white;
+        }
+
+        /* COVER PAGE - Exact match to template */
+        .cover-page {
+            background: white;
+            padding: 10mm;
+        }
+
+        .cover-frame {
+            width: 100%;
+            height: 100%;
+            border: 8px solid #00d639;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .cover-dark-section {
+            flex: 1.2;
+            background: #3d3d3d;
+            padding: 25mm;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .circuit-lines {
+            position: absolute;
+            top: 25mm;
+            left: 25mm;
+        }
+
+        .circuit-line {
+            height: 2px;
+            background: #00d639;
+            margin-bottom: 10px;
+            position: relative;
+            width: 80px;
+        }
+
+        .circuit-line::after {
+            content: '';
+            position: absolute;
+            right: -8px;
+            top: -4px;
+            width: 10px;
+            height: 10px;
+            background: #00d639;
+            border-radius: 50%;
+        }
+
+        .cover-logo-container {
+            text-align: center;
+        }
+
+        .cover-logo-img {
+            max-width: 450px;
+            width: 70%;
+        }
+
+        .cover-white-section {
+            flex: 1;
+            background: white;
+            padding: 35mm 25mm;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .cover-title {
+            font-size: 38px;
+            font-weight: 700;
+            color: #00d639;
+            margin-bottom: 12px;
+        }
+
+        .cover-subtitle {
+            font-size: 19px;
+            font-weight: 600;
+            color: #000;
+            margin-bottom: 8px;
+        }
+
+        .cover-date {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 35px;
+        }
+
+        .cover-key {
+            width: 55px;
+            height: 55px;
+            fill: #00d639;
+        }
+
+        /* HEADER */
+        .header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 10mm;
+            background: #00d639;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12mm;
+        }
+
+        .header img {
+            height: 18px;
+        }
+
+        .header-circle {
+            width: 12px;
+            height: 12px;
+            background: #00ff41;
+            border-radius: 50%;
+        }
+
+        /* FOOTER */
+        .footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 8mm;
+            background: #00d639;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 12mm;
+        }
+
+        .footer-dot {
+            width: 14px;
+            height: 14px;
+            background: #00ff41;
+            border-radius: 50%;
+        }
+
+        .footer-page {
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+        }
+
+        /* CONTENT */
+        .content {
+            position: absolute;
+            top: 10mm;
+            bottom: 8mm;
+            left: 0;
+            right: 0;
+            padding: 12mm 15mm;
+        }
+
+        h1 {
+            color: #00d639;
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid #00d639;
+        }
+
+        h2 {
+            color: #333;
+            font-size: 16px;
+            font-weight: 700;
+            margin-top: 18px;
+            margin-bottom: 10px;
+        }
+
+        h3 {
+            color: #00d639;
+            font-size: 14px;
+            font-weight: 700;
+            margin-top: 15px;
+            margin-bottom: 8px;
+        }
+
+        p {
+            font-size: 10px;
+            line-height: 1.6;
+            margin-bottom: 8px;
+            text-align: justify;
+        }
+
+        ul,
+        ol {
+            margin-left: 18px;
+            margin-bottom: 10px;
+        }
+
+        li {
+            margin-bottom: 5px;
+            font-size: 10px;
+            line-height: 1.5;
+        }
+
+        pre {
+            background: #1a1a1a;
+            color: #00d639;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 9px;
+            line-height: 1.4;
+            margin: 10px 0;
+            border-left: 3px solid #00d639;
+        }
+
+        code {
+            font-family: 'Courier New', monospace;
+            background: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 2px;
+            font-size: 9px;
+            color: #00d639;
+            font-weight: 600;
+        }
+
+        .severity-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin: 6px 0;
+        }
+
+        .severity-critical {
+            background: #dc143c;
+            color: white;
+        }
+
+        .severity-high {
+            background: #ff6347;
+            color: white;
+        }
+
+        .severity-medium {
+            background: #ffa500;
+            color: white;
+        }
+
+        .severity-low {
+            background: #4169e1;
+            color: white;
+        }
+
+        .section {
+            margin: 12px 0;
+        }
+
+        .section-number {
+            color: #00d639;
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    {{CONTENT}}
+</body>
+
+</html>

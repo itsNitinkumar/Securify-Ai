@@ -1,0 +1,15 @@
+# Add these dependencies to backend/package.json
+
+# For DOCX generation
+docx: ^8.5.0
+
+# For PDF generation (optional)
+puppeteer: ^21.6.1
+
+# For Google Drive integration
+googleapis: ^128.0.0
+
+# Already have these (verify):
+# - express
+# - multer (for file uploads)
+# - pg (PostgreSQL)

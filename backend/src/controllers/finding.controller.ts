@@ -1,21 +1,27 @@
 import { Request, Response } from 'express';
 import OpenAIService from '../services/openai.service';
+
 import FindingModel from '../models/finding.model';
 import VersionService from '../services/version.service';
 import ActivityLogService from '../services/activity-log.service';
 import ApiError from '../utils/ApiError';
-import  asyncHandler from '../utils/asyncHandler';
+import asyncHandler from '../utils/asyncHandler';
 
 class FindingController {
   // Generate finding content using AI (without creating a finding)
   static generateContent = asyncHandler(async (req: Request, res: Response) => {
+    console.log('📥 Generate content request received');
     const { evidence, severity } = req.body;
     const user = (req as any).user;
 
+    console.log('Request data:', { evidence: evidence?.substring(0, 50), severity, userRole: user?.role });
+
     if (!evidence || !severity) {
+      console.log('❌ Missing evidence or severity');
       throw new ApiError(400, 'Evidence and severity are required');
     }
 
+    console.log('🤖 Calling Gemini service...');
     // Generate finding content using OpenAI (don't save to database)
     const aiResult = await OpenAIService.generateFinding({
       evidence,
@@ -23,6 +29,7 @@ class FindingController {
       role: user.role || 'analyst',
     });
 
+    console.log('✅ AI result received:', JSON.stringify(aiResult, null, 2));
     // Return AI-generated content only
     res.json({
       success: true,
@@ -86,9 +93,6 @@ class FindingController {
       steps_to_reproduce,
       references,
       project_id,
-      cvss_score,
-      cwe_id,
-      owasp_category,
     } = req.body;
     const user = (req as any).user;
 
@@ -102,14 +106,11 @@ class FindingController {
       description: description || '',
       severity,
       impact: impact || '',
-      remediation: remediation || '',
+      recommendation: remediation || '',
       steps_to_reproduce: steps_to_reproduce || [],
       references: references || [],
-      project_id: project_id || null,
+      project_id: project_id,
       created_by: user.id,
-      cvss_score: cvss_score || null,
-      cwe_id: cwe_id || null,
-      owasp_category: owasp_category || null,
       status: 'draft',
     });
 
@@ -180,6 +181,20 @@ class FindingController {
     if (user.role === 'client' && finding.status !== 'approved') {
       throw new ApiError(403, 'Access denied');
     }
+
+    console.log('📤 Returning finding:', {
+      id: finding.id,
+      title: finding.title,
+      hasLikelihood: !!finding.likelihood,
+      hasImpact: !!finding.impact,
+      hasRecommendation: !!finding.recommendation,
+      hasReferences: !!finding.references,
+      hasSteps: !!finding.steps_to_reproduce,
+      likelihood: finding.likelihood,
+      impact: finding.impact,
+      recommendation: finding.recommendation,
+      references: finding.references,
+    });
 
     res.json({
       success: true,
@@ -372,20 +387,20 @@ class FindingController {
       throw new ApiError(403, 'Only the creator can submit this finding for review');
     }
 
-    // Can only submit draft findings
-    if (finding.status !== 'draft') {
+    // Can only submit draft or changes_requested findings
+    if (finding.status !== 'draft' && finding.status !== 'changes_requested') {
       throw new ApiError(400, `Cannot submit finding with status: ${finding.status}`);
     }
 
     const updatedFinding = await FindingModel.update(parseInt(id), {
       status: 'pending_review',
-      reviewed_by: null, // Clear previous reviewer
+      reviewed_by: undefined, // Clear previous reviewer
     });
 
     // Log activity
     await ActivityLogService.log({
       user_id: user.id,
-      action: 'SUBMIT_FOR_REVIEW',
+      action: finding.status === 'changes_requested' ? 'RESUBMIT_FOR_REVIEW' : 'SUBMIT_FOR_REVIEW',
       entity_type: 'finding',
       entity_id: parseInt(id),
       details: { title: finding.title },

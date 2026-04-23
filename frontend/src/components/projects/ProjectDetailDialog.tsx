@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Edit, Trash2, ExternalLink, AlertTriangle, CheckCircle, Plus, Sparkles } from 'lucide-react';
 import { Project, projectApi } from '@/api/projectApi';
 import { authApi } from '@/api/authApi';
@@ -29,6 +30,7 @@ const ProjectDetailDialog = ({
   onOpenChange,
   onUpdate,
 }: ProjectDetailDialogProps) => {
+  const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
   const [projectDetails, setProjectDetails] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -358,7 +360,13 @@ const ProjectDetailDialog = ({
             </div>
             {/* Only Managers and Clients can view/download reports */}
             {(currentUserRole === 'manager' || currentUserRole === 'client') && (
-              <Button className="bg-primary text-surface hover:bg-primary/90">
+              <Button 
+                onClick={() => {
+                  onOpenChange(false);
+                  navigate(`/projects/${project.id}/report`);
+                }}
+                className="bg-primary text-surface hover:bg-primary/90"
+              >
                 <ExternalLink className="w-4 h-4 mr-2" />
                 {currentUserRole === 'client' ? 'Download Report' : 'View Full Report'}
               </Button>

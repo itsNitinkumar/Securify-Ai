@@ -47,12 +47,13 @@ const ReportBuilderPage = () => {
       setLoading(true);
       const [projectRes, findingsRes] = await Promise.all([
         projectApi.getProject(parseInt(projectId!)),
-        findingApi.getAllFindings({ project_id: parseInt(projectId!) }),
+        findingApi.getAll({ project_id: parseInt(projectId!) }),
       ]);
       setProject(projectRes.data);
-      setFindings(findingsRes.data);
+      setFindings(findingsRes.data.data || findingsRes.data);
       // Auto-select approved findings
-      const approvedIds = findingsRes.data
+      const findingsData = findingsRes.data.data || findingsRes.data;
+      const approvedIds = findingsData
         .filter((f: Finding) => f.status === 'approved')
         .map((f: Finding) => f.id);
       setSelectedFindings(approvedIds);
@@ -66,12 +67,33 @@ const ReportBuilderPage = () => {
   const handleGenerateReport = async (format: 'docx' | 'pdf', options: any) => {
     try {
       setGenerating(true);
-      await reportApi.generateReport({
+      const response = await reportApi.generateReport({
         project_id: parseInt(projectId!),
         format,
         ...options,
       });
-      alert(`Report generated successfully as ${format.toUpperCase()}`);
+      
+      // Use the reportId to download the file via axios
+      if (response.data?.reportId) {
+        const reportId = response.data.reportId;
+        
+        // Download the file using axios with blob response
+        const blob = await reportApi.downloadReport(reportId);
+        
+        // Create a blob URL and trigger download
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${project?.name || 'report'}_${new Date().getTime()}.${format}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        alert(`Report downloaded successfully as ${format.toUpperCase()}`);
+      } else {
+        alert(`Report generated successfully as ${format.toUpperCase()}`);
+      }
     } catch (error) {
       console.error('Failed to generate report:', error);
       alert('Failed to generate report');
@@ -139,18 +161,12 @@ const ReportBuilderPage = () => {
 
           <div className="flex flex-wrap gap-2">
             <Button
-              variant="outline"
-              className="border-outline text-on-surface-variant hover:text-primary"
+              onClick={() => navigate('/projects')}
+              variant="secondary"
+              className="border-outline text-on-surface-variant"
             >
-              <Clock className="w-4 h-4 mr-2" />
-              Save Draft
-            </Button>
-            <Button
-              onClick={() => handleStageChange('peer_review')}
-              className="bg-primary text-surface hover:bg-primary/90"
-            >
-              <Send className="w-4 h-4 mr-2" />
-              Submit for Review
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Cancel
             </Button>
           </div>
         </div>
@@ -159,9 +175,6 @@ const ReportBuilderPage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Workflow Stages */}
-          <WorkflowStages currentStage={currentStage} onStageChange={handleStageChange} />
-
           {/* Report Metadata */}
           <ReportMetadata project={project} findingsCount={selectedFindings.length} />
 
@@ -169,7 +182,7 @@ const ReportBuilderPage = () => {
           <ExecutiveSummary
             value={executiveSummary}
             onChange={setExecutiveSummary}
-            isEditable={currentStage === 'drafting'}
+            isEditable={true}
           />
 
           {/* Findings Section */}
@@ -177,7 +190,7 @@ const ReportBuilderPage = () => {
             findings={findings}
             selectedFindings={selectedFindings}
             onSelectionChange={setSelectedFindings}
-            isEditable={currentStage === 'drafting'}
+            isEditable={true}
           />
         </div>
 
@@ -213,24 +226,16 @@ const ReportBuilderPage = () => {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-on-surface-variant">Status</span>
-                <Badge className="bg-yellow-500/10 text-yellow-400 border-yellow-500/20 text-xs">
-                  {currentStage.replace('_', ' ').toUpperCase()}
-                </Badge>
+                <span className="text-xs text-on-surface-variant">Medium</span>
+                <span className="text-sm font-semibold text-yellow-400">
+                  {findings.filter((f) => f.severity === 'Medium' && selectedFindings.includes(f.id)).length}
+                </span>
               </div>
-            </div>
-          </Card>
-
-          {/* Recent Activity */}
-          <Card className="p-4 md:p-6 bg-surface-high border-outline">
-            <h3 className="text-sm font-semibold text-on-surface mb-4">Recent Activity</h3>
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-2 h-2 rounded-full bg-primary mt-1.5 flex-shrink-0"></div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-on-surface">Report created</p>
-                  <p className="text-xs text-on-surface-variant">Just now</p>
-                </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-on-surface-variant">Low</span>
+                <span className="text-sm font-semibold text-blue-400">
+                  {findings.filter((f) => f.severity === 'Low' && selectedFindings.includes(f.id)).length}
+                </span>
               </div>
             </div>
           </Card>

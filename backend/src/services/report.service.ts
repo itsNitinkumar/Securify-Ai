@@ -1,351 +1,599 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx';
-import PDFDocument from 'pdfkit';
-import fs from 'fs';
-import path from 'path';
-import pool from '../config/database';
-import { reportsDir } from '../config/multer';
-import TemplateModel, { ReportTemplate } from '../models/template.model';
+import { Document, Packer, Paragraph, HeadingLevel, AlignmentType } from 'docx';
+import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+import { format as formatDate } from 'date-fns';
+import ReportModel, { ReportTemplate } from '../models/report.model';
+import ProjectModel from '../models/project.model';
+import FindingModel from '../models/finding.model';
+import ApiError from '../utils/ApiError';
 
 interface ReportData {
   project: any;
   findings: any[];
-  template?: ReportTemplate;
+  template: ReportTemplate;
+  metadata: {
+    generatedBy: string;
+    generatedDate: string;
+    reportVersion: string;
+  };
 }
 
 class ReportService {
-  // Replace template variables
-  static replaceVariables(text: string, data: any): string {
-    if (!text) return '';
-    
-    return text
-      .replace(/\{\{project_name\}\}/g, data.project?.name || 'N/A')
-      .replace(/\{\{client_name\}\}/g, data.project?.client_name || 'N/A')
-      .replace(/\{\{date\}\}/g, new Date().toLocaleDateString())
-      .replace(/\{\{total_findings\}\}/g, data.findings?.length || 0)
-      .replace(/\{\{critical_count\}\}/g, data.findings?.filter((f: any) => f.severity === 'Critical').length || 0)
-      .replace(/\{\{high_count\}\}/g, data.findings?.filter((f: any) => f.severity === 'High').length || 0)
-      .replace(/\{\{medium_count\}\}/g, data.findings?.filter((f: any) => f.severity === 'Medium').length || 0)
-      .replace(/\{\{low_count\}\}/g, data.findings?.filter((f: any) => f.severity === 'Low').length || 0)
-      .replace(/\{\{company_name\}\}/g, data.template?.company_name || 'SecurifyAI');
+  private static reportsDir = path.join(__dirname, '../../reports');
+  private static templatePath = path.join(__dirname, '../templates/report-template.html');
+
+  // Ensure reports directory exists
+  static async ensureReportsDir() {
+    if (!fs.existsSync(this.reportsDir)) {
+      fs.mkdirSync(this.reportsDir, { recursive: true });
+    }
   }
 
-  // Generate DOCX report
-  static async generateDOCX(reportData: ReportData, filename: string): Promise<string> {
-    const { project, findings, template } = reportData;
+  // Load HTML template
+  private static loadTemplate(): string {
+    return fs.readFileSync(this.templatePath, 'utf-8');
+  }
 
-    // Use template if provided, otherwise use default
-    const reportTemplate = template || await TemplateModel.getDefault();
-    const enabledSections = reportTemplate?.sections.filter(s => s.enabled) || [];
+  // Generate HTML content from data
+  private static generateHTMLContent(data: ReportData): string {
+    const { findings, metadata } = data;
 
-    const doc = new Document({
-      sections: [{
-        properties: {},
-        children: [
-          // Title
-          new Paragraph({
-            text: 'Penetration Testing Report',
-            heading: HeadingLevel.TITLE,
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 400 },
-          }),
+    // COVER PAGE - Exact match to template
+    const coverPage = `
+    <div class="page cover-page">
+        <div class="cover-frame">
+            <div class="cover-dark-section">
+                <div class="circuit-lines">
+                    <div class="circuit-line"></div>
+                    <div class="circuit-line"></div>
+                    <div class="circuit-line"></div>
+                </div>
+                <div class="cover-logo-container">
+                    <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="SECURIFY" class="cover-logo-img" />
+                </div>
+            </div>
+            <div class="cover-white-section">
+                <div class="cover-title">SecurifyAI</div>
+                <div class="cover-subtitle">Developer Plan for Report Template</div>
+                <div class="cover-date">${metadata.generatedDate}</div>
+                <svg class="cover-key" viewBox="0 0 100 100">
+                    <circle cx="25" cy="25" r="18"/>
+                    <circle cx="25" cy="25" r="8" fill="white"/>
+                    <rect x="35" y="20" width="50" height="10" rx="2"/>
+                    <rect x="50" y="35" width="8" height="10"/>
+                    <rect x="65" y="35" width="8" height="10"/>
+                </svg>
+            </div>
+        </div>
+    </div>`;
 
-          // Project Info
-          new Paragraph({
-            text: `Project: ${project.name}`,
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 400, after: 200 },
-          }),
-          new Paragraph({
-            text: `Client: ${project.client_name || 'N/A'}`,
-            spacing: { after: 200 },
-          }),
-          new Paragraph({
-            text: `Date: ${new Date().toLocaleDateString()}`,
-            spacing: { after: 400 },
-          }),
+    const pages: string[] = [];
 
-          // Executive Summary
-          new Paragraph({
-            text: 'Executive Summary',
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 400, after: 200 },
-          }),
-          new Paragraph({
-            text: `This report contains ${findings.length} security findings identified during the penetration testing engagement.`,
-            spacing: { after: 400 },
-          }),
+    // FINDINGS PAGES
+    findings.forEach((finding, index) => {
+      const pageNum = index + 2;
 
-          // Findings Summary
-          new Paragraph({
-            text: 'Findings Summary',
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 400, after: 200 },
-          }),
-          ...this.generateFindingsSummary(findings),
-
-          // Detailed Findings
-          new Paragraph({
-            text: 'Detailed Findings',
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 400, after: 200 },
-            pageBreakBefore: true,
-          }),
-          ...this.generateDetailedFindings(findings),
-        ],
-      }],
+      pages.push(`
+    <div class="page">
+        <div class="header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify" />
+            <div class="header-circle"></div>
+        </div>
+        <div class="content">
+            <h2>${index + 1}. ${this.escapeHtml(finding.title)}</h2>
+            <span class="severity severity-${finding.severity.toLowerCase()}">${finding.severity}</span>
+            
+            ${finding.description ? `
+            <div class="section">
+                <h3>Description</h3>
+                <p>${this.escapeHtml(finding.description)}</p>
+            </div>
+            ` : ''}
+            
+            ${finding.affected_target ? `
+            <div class="section">
+                <h3>Affected Asset</h3>
+                <p><code>${this.escapeHtml(finding.affected_target)}</code></p>
+            </div>
+            ` : ''}
+            
+            ${finding.impact ? `
+            <div class="section">
+                <h3>Impact</h3>
+                <p>${this.escapeHtml(finding.impact)}</p>
+            </div>
+            ` : ''}
+            
+            ${finding.likelihood ? `
+            <div class="section">
+                <h3>Likelihood</h3>
+                <p>${this.escapeHtml(finding.likelihood)}</p>
+            </div>
+            ` : ''}
+            
+            ${finding.steps_to_reproduce && finding.steps_to_reproduce.length > 0 ? `
+            <div class="section">
+                <h3>Steps to Reproduce</h3>
+                <ol>
+                    ${finding.steps_to_reproduce.map((step: string) =>
+        `<li>${this.escapeHtml(step)}</li>`
+      ).join('')}
+                </ol>
+            </div>
+            ` : ''}
+            
+            ${finding.proof_of_concept ? `
+            <div class="section">
+                <h3>Proof of Concept</h3>
+                <pre>${this.escapeHtml(finding.proof_of_concept)}</pre>
+            </div>
+            ` : ''}
+            
+            ${finding.remediation ? `
+            <div class="section">
+                <h3>Remediation</h3>
+                <p>${this.escapeHtml(finding.remediation)}</p>
+            </div>
+            ` : ''}
+        </div>
+        <div class="footer">
+            <div class="footer-dot"></div>
+            <div class="footer-page">${pageNum}</div>
+        </div>
+    </div>`);
     });
 
-    const buffer = await Packer.toBuffer(doc);
-    const filePath = path.join(reportsDir, filename);
-    fs.writeFileSync(filePath, buffer);
+    // FINAL PAGE
+    const finalPageNum = findings.length + 2;
+    pages.push(`
+    <div class="page">
+        <div class="header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify" />
+            <div class="header-circle"></div>
+        </div>
+        <div class="content">
+            <h3>References</h3>
+            <ul>
+                <li>OWASP Testing Guide</li>
+                <li>NIST SP 800-115</li>
+                <li>CWE/SANS Top 25</li>
+            </ul>
+            
+            <div style="margin-top: 100px; text-align: center; color: #666;">
+                <p style="font-size: 11pt; font-weight: 600;">© ${new Date().getFullYear()} SecurifyAI</p>
+                <p style="font-size: 9pt; margin-top: 5px;">Report Version ${metadata.reportVersion}</p>
+                <p style="margin-top: 10px; font-size: 9pt; color: #999;">
+                    Generated by SecurifyAI's AI-Assisted Penetration Testing Platform
+                </p>
+            </div>
+        </div>
+        <div class="footer">
+            <div class="footer-dot"></div>
+            <div class="footer-page">${finalPageNum}</div>
+        </div>
+    </div>`);
 
-    return filePath;
+    return coverPage + pages.join('');
   }
 
-  // Generate PDF report
-  static async generatePDF(reportData: ReportData, filename: string): Promise<string> {
-    const { project, findings } = reportData;
-    const filePath = path.join(reportsDir, filename);
+  // Escape HTML special characters
+  private static escapeHtml(text: string): string {
+    const map: { [key: string]: string } = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+  }
 
-    return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 50 });
-      const stream = fs.createWriteStream(filePath);
+  // Generate Report
+  static async generateReport(
+    projectId: number,
+    templateId: number | null,
+    userId: number,
+    format: 'docx' | 'pdf' = 'docx'
+  ): Promise<{ reportId: number; filePath: string }> {
+    await this.ensureReportsDir();
 
-      doc.pipe(stream);
+    // Get project data
+    const project = await ProjectModel.findById(projectId);
+    if (!project) {
+      throw new ApiError(404, 'Project not found');
+    }
 
-      // Title
-      doc.fontSize(24).text('Penetration Testing Report', { align: 'center' });
-      doc.moveDown(2);
+    // Get findings
+    const findings = await FindingModel.findAll({ project_id: projectId, status: 'approved' });
 
-      // Project Info
-      doc.fontSize(16).text(`Project: ${project.name}`);
-      doc.fontSize(12).text(`Client: ${project.client_name || 'N/A'}`);
-      doc.text(`Date: ${new Date().toLocaleDateString()}`);
-      doc.moveDown(2);
+    // Get template
+    let template: ReportTemplate | null;
+    if (templateId) {
+      template = await ReportModel.getTemplateById(templateId);
+    } else {
+      template = await ReportModel.getDefaultTemplate();
+    }
 
-      // Executive Summary
-      doc.fontSize(16).text('Executive Summary');
-      doc.fontSize(12).text(
-        `This report contains ${findings.length} security findings identified during the penetration testing engagement.`
-      );
-      doc.moveDown(2);
+    if (!template) {
+      throw new ApiError(404, 'Report template not found');
+    }
 
-      // Findings Summary
-      doc.fontSize(16).text('Findings Summary');
-      doc.moveDown();
+    // Prepare report data
+    const reportData: ReportData = {
+      project,
+      findings,
+      template,
+      metadata: {
+        generatedBy: 'SecurifyAI',
+        generatedDate: formatDate(new Date(), 'MMMM dd, yyyy'),
+        reportVersion: '1.0',
+      },
+    };
 
-      const severityCounts = this.countBySeverity(findings);
-      doc.fontSize(12);
-      doc.text(`Critical: ${severityCounts.Critical || 0}`);
-      doc.text(`High: ${severityCounts.High || 0}`);
-      doc.text(`Medium: ${severityCounts.Medium || 0}`);
-      doc.text(`Low: ${severityCounts.Low || 0}`);
-      doc.text(`Informational: ${severityCounts.Informational || 0}`);
-      doc.moveDown(2);
+    // Generate report based on format
+    let filePath: string;
+    if (format === 'docx') {
+      filePath = await this.generateDOCX(reportData);
+    } else {
+      filePath = await this.generatePDF(reportData);
+    }
 
-      // Detailed Findings
-      doc.addPage();
-      doc.fontSize(16).text('Detailed Findings');
-      doc.moveDown();
+    // Save report record
+    const reportName = `${project.name}_Report_${formatDate(new Date(), 'yyyyMMdd_HHmmss')}`;
+    console.log('💾 Saving report with file_path:', filePath);
+    console.log('📝 Format:', format);
 
-      findings.forEach((finding, index) => {
-        if (index > 0) doc.addPage();
-
-        doc.fontSize(14).text(`${index + 1}. ${finding.title}`);
-        doc.moveDown();
-
-        doc.fontSize(12).text(`Severity: ${finding.severity}`, { continued: false });
-        doc.text(`Status: ${finding.status}`);
-        doc.moveDown();
-
-        if (finding.description) {
-          doc.fontSize(12).text('Description:', { underline: true });
-          doc.fontSize(10).text(finding.description);
-          doc.moveDown();
-        }
-
-        if (finding.affected_target) {
-          doc.fontSize(12).text('Affected Target:', { underline: true });
-          doc.fontSize(10).text(finding.affected_target);
-          doc.moveDown();
-        }
-
-        if (finding.impact) {
-          doc.fontSize(12).text('Impact:', { underline: true });
-          doc.fontSize(10).text(finding.impact);
-          doc.moveDown();
-        }
-
-        if (finding.remediation) {
-          doc.fontSize(12).text('Remediation:', { underline: true });
-          doc.fontSize(10).text(finding.remediation);
-          doc.moveDown();
-        }
-      });
-
-      doc.end();
-
-      stream.on('finish', () => resolve(filePath));
-      stream.on('error', reject);
+    const report = await ReportModel.createReport({
+      project_id: projectId,
+      template_id: template.id,
+      report_name: reportName,
+      file_path: filePath,
+      file_type: format,
+      generated_by: userId,
     });
+
+    console.log('✅ Report saved with ID:', report.id);
+    console.log('📄 Saved file_path:', report.file_path);
+
+    return {
+      reportId: report.id,
+      filePath,
+    };
   }
 
-  // Helper: Generate findings summary for DOCX
-  private static generateFindingsSummary(findings: any[]): Paragraph[] {
-    const severityCounts = this.countBySeverity(findings);
+  // Generate DOCX Report
+  private static async generateDOCX(data: ReportData): Promise<string> {
+    const { project, findings, metadata } = data;
 
-    return [
+    // Create document sections
+    const sections: Paragraph[] = [];
+
+    // Title Page
+    sections.push(
       new Paragraph({
-        text: `Critical: ${severityCounts.Critical || 0}`,
-        spacing: { after: 100 },
-      }),
-      new Paragraph({
-        text: `High: ${severityCounts.High || 0}`,
-        spacing: { after: 100 },
-      }),
-      new Paragraph({
-        text: `Medium: ${severityCounts.Medium || 0}`,
-        spacing: { after: 100 },
-      }),
-      new Paragraph({
-        text: `Low: ${severityCounts.Low || 0}`,
-        spacing: { after: 100 },
-      }),
-      new Paragraph({
-        text: `Informational: ${severityCounts.Informational || 0}`,
+        text: 'PENETRATION TESTING REPORT',
+        heading: HeadingLevel.TITLE,
+        alignment: AlignmentType.CENTER,
         spacing: { after: 400 },
       }),
-    ];
-  }
+      new Paragraph({
+        text: project.name,
+        heading: HeadingLevel.HEADING_1,
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 200 },
+      }),
+      new Paragraph({
+        text: `Client: ${project.client_name || 'N/A'}`,
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        text: `Report Date: ${metadata.generatedDate}`,
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        text: `Generated by: ${metadata.generatedBy}`,
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 400 },
+      })
+    );
 
-  // Helper: Generate detailed findings for DOCX
-  private static generateDetailedFindings(findings: any[]): Paragraph[] {
-    const paragraphs: Paragraph[] = [];
+    // Executive Summary
+    sections.push(
+      new Paragraph({
+        text: 'Executive Summary',
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 400, after: 200 },
+      }),
+      new Paragraph({
+        text: `This report presents the findings from the penetration testing assessment conducted on ${project.name}. `,
+        spacing: { after: 200 },
+      }),
+      new Paragraph({
+        text: `Total Findings: ${findings.length}`,
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        text: `Critical: ${findings.filter(f => f.severity === 'Critical').length}`,
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        text: `High: ${findings.filter(f => f.severity === 'High').length}`,
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        text: `Medium: ${findings.filter(f => f.severity === 'Medium').length}`,
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        text: `Low: ${findings.filter(f => f.severity === 'Low').length}`,
+        spacing: { after: 200 },
+      })
+    );
 
+    // Methodology
+    sections.push(
+      new Paragraph({
+        text: 'Methodology',
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 400, after: 200 },
+      }),
+      new Paragraph({
+        text: 'The penetration testing was conducted using industry-standard methodologies including:',
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        text: '• OWASP Testing Guide',
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        text: '• NIST SP 800-115',
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        text: '• Manual testing and automated scanning',
+        spacing: { after: 200 },
+      })
+    );
+
+    // Findings
+    sections.push(
+      new Paragraph({
+        text: 'Detailed Findings',
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 400, after: 200 },
+      })
+    );
+
+    // Add each finding
     findings.forEach((finding, index) => {
-      // Finding title
-      paragraphs.push(
+      sections.push(
         new Paragraph({
           text: `${index + 1}. ${finding.title}`,
           heading: HeadingLevel.HEADING_2,
-          spacing: { before: 400, after: 200 },
-          pageBreakBefore: index > 0,
-        })
-      );
-
-      // Severity and Status
-      paragraphs.push(
+          spacing: { before: 300, after: 100 },
+        }),
         new Paragraph({
-          children: [
-            new TextRun({ text: 'Severity: ', bold: true }),
-            new TextRun(finding.severity),
-            new TextRun({ text: ' | Status: ', bold: true }),
-            new TextRun(finding.status),
-          ],
+          text: `Severity: ${finding.severity}`,
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: `Affected Target: ${finding.affected_target || 'N/A'}`,
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: 'Description:',
+          spacing: { before: 100, after: 50 },
+        }),
+        new Paragraph({
+          text: finding.description || 'No description provided',
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: 'Likelihood:',
+          spacing: { before: 100, after: 50 },
+        }),
+        new Paragraph({
+          text: finding.likelihood || 'Not assessed',
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: 'Impact:',
+          spacing: { before: 100, after: 50 },
+        }),
+        new Paragraph({
+          text: finding.impact || 'Not assessed',
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: 'Remediation:',
+          spacing: { before: 100, after: 50 },
+        }),
+        new Paragraph({
+          text: finding.remediation || 'No remediation provided',
           spacing: { after: 200 },
         })
       );
 
-      // Description
-      if (finding.description) {
-        paragraphs.push(
+      // Add steps to reproduce if available
+      if (finding.steps_to_reproduce && finding.steps_to_reproduce.length > 0) {
+        sections.push(
           new Paragraph({
-            text: 'Description',
-            heading: HeadingLevel.HEADING_3,
-            spacing: { before: 200, after: 100 },
-          }),
-          new Paragraph({
-            text: finding.description,
-            spacing: { after: 200 },
+            text: 'Steps to Reproduce:',
+            spacing: { before: 100, after: 50 },
           })
         );
-      }
-
-      // Affected Target
-      if (finding.affected_target) {
-        paragraphs.push(
-          new Paragraph({
-            text: 'Affected Target',
-            heading: HeadingLevel.HEADING_3,
-            spacing: { before: 200, after: 100 },
-          }),
-          new Paragraph({
-            text: finding.affected_target,
-            spacing: { after: 200 },
-          })
-        );
-      }
-
-      // Impact
-      if (finding.impact) {
-        paragraphs.push(
-          new Paragraph({
-            text: 'Impact',
-            heading: HeadingLevel.HEADING_3,
-            spacing: { before: 200, after: 100 },
-          }),
-          new Paragraph({
-            text: finding.impact,
-            spacing: { after: 200 },
-          })
-        );
-      }
-
-      // Remediation
-      if (finding.remediation) {
-        paragraphs.push(
-          new Paragraph({
-            text: 'Remediation',
-            heading: HeadingLevel.HEADING_3,
-            spacing: { before: 200, after: 100 },
-          }),
-          new Paragraph({
-            text: finding.remediation,
-            spacing: { after: 200 },
-          })
-        );
+        finding.steps_to_reproduce.forEach((step: string, stepIndex: number) => {
+          sections.push(
+            new Paragraph({
+              text: `${stepIndex + 1}. ${step}`,
+              spacing: { after: 50 },
+            })
+          );
+        });
       }
     });
 
-    return paragraphs;
-  }
-
-  // Helper: Count findings by severity
-  private static countBySeverity(findings: any[]): Record<string, number> {
-    return findings.reduce((acc, finding) => {
-      acc[finding.severity] = (acc[finding.severity] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-  }
-
-  // Save report metadata to database
-  static async saveReportMetadata(data: {
-    project_id: number;
-    report_name: string;
-    file_path: string;
-    file_type: string;
-    generated_by: number;
-  }): Promise<any> {
-    const result = await pool.query(
-      `INSERT INTO generated_reports (project_id, report_name, file_path, file_type, generated_by)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [data.project_id, data.report_name, data.file_path, data.file_type, data.generated_by]
+    // Conclusion
+    sections.push(
+      new Paragraph({
+        text: 'Conclusion',
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 400, after: 200 },
+      }),
+      new Paragraph({
+        text: `The penetration testing assessment identified ${findings.length} security findings. `,
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        text: 'It is recommended to address all critical and high severity findings immediately.',
+        spacing: { after: 200 },
+      })
     );
-    return result.rows[0];
+
+    // Create document
+    const doc = new Document({
+      sections: [
+        {
+          properties: {},
+          children: sections,
+        },
+      ],
+    });
+
+    // Generate file
+    const fileName = `${project.name.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.docx`;
+    const filePath = path.join(this.reportsDir, fileName);
+
+    console.log('📄 Generating DOCX report at:', filePath);
+    console.log('📁 Reports directory:', this.reportsDir);
+
+    const buffer = await Packer.toBuffer(doc);
+    fs.writeFileSync(filePath, buffer);
+
+    // Verify file was created
+    if (fs.existsSync(filePath)) {
+      console.log('✅ Report file created successfully:', filePath);
+    } else {
+      console.error('❌ Report file was not created!');
+    }
+
+    return filePath;
   }
 
-  // Get reports for a project
-  static async getProjectReports(projectId: number): Promise<any[]> {
-    const result = await pool.query(
-      `SELECT gr.*, u.name as generated_by_name
-       FROM generated_reports gr
-       LEFT JOIN users u ON gr.generated_by = u.id
-       WHERE gr.project_id = $1
-       ORDER BY gr.created_at DESC`,
-      [projectId]
-    );
-    return result.rows;
+  // Generate PDF Report using Puppeteer
+  private static async generatePDF(data: ReportData): Promise<string> {
+    const { project } = data;
+
+    // Generate file
+    const fileName = `${project.name.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pdf`;
+    const filePath = path.join(this.reportsDir, fileName);
+
+    console.log('📄 Generating professional PDF report at:', filePath);
+
+    try {
+      // Load template and generate HTML
+      const template = this.loadTemplate();
+      const content = this.generateHTMLContent(data);
+      const html = template.replace('{{CONTENT}}', content);
+
+      // Launch Puppeteer
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+
+      // Generate PDF
+      await page.pdf({
+        path: filePath,
+        format: 'A4',
+        printBackground: true,
+        margin: {
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0
+        }
+      });
+
+      await browser.close();
+
+      console.log('✅ Professional PDF report created successfully:', filePath);
+      return filePath;
+    } catch (error) {
+      console.error('❌ Error generating PDF with Puppeteer:', error);
+      throw new ApiError(500, 'Failed to generate PDF report');
+    }
+  }
+
+  // Get Report File
+  static async getReportFile(reportId: number): Promise<string> {
+    const report = await ReportModel.getReportById(reportId);
+    if (!report) {
+      throw new ApiError(404, 'Report not found');
+    }
+
+    console.log('🔍 Looking for report file:', report.file_path);
+    console.log('📂 File exists?', fs.existsSync(report.file_path));
+
+    if (!report.file_path || !fs.existsSync(report.file_path)) {
+      throw new ApiError(404, 'Report file not found');
+    }
+
+    return report.file_path;
+  }
+
+  // Delete Report
+  static async deleteReport(reportId: number): Promise<void> {
+    const report = await ReportModel.getReportById(reportId);
+    if (!report) {
+      throw new ApiError(404, 'Report not found');
+    }
+
+    // Delete file if exists
+    if (report.file_path && fs.existsSync(report.file_path)) {
+      fs.unlinkSync(report.file_path);
+    }
+
+    // Delete database record
+    await ReportModel.deleteReport(reportId);
+  }
+
+  // Template Management
+  static async createTemplate(data: {
+    name: string;
+    description?: string;
+    template_data: any;
+    logo_path?: string;
+    is_default?: boolean;
+    created_by: number;
+  }) {
+    return await ReportModel.createTemplate(data);
+  }
+
+  static async getAllTemplates() {
+    return await ReportModel.getAllTemplates();
+  }
+
+  static async getTemplateById(id: number) {
+    const template = await ReportModel.getTemplateById(id);
+    if (!template) {
+      throw new ApiError(404, 'Template not found');
+    }
+    return template;
+  }
+
+  static async updateTemplate(id: number, data: any) {
+    return await ReportModel.updateTemplate(id, data);
+  }
+
+  static async deleteTemplate(id: number) {
+    return await ReportModel.deleteTemplate(id);
   }
 }
 

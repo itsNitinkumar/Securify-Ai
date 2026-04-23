@@ -22,6 +22,16 @@ const FindingWorkflowButtons = ({
 
   const isCreator = finding.created_by === currentUserId;
   
+  // Debug logging
+  console.log('FindingWorkflowButtons Debug:', {
+    findingId: finding.id,
+    status: finding.status,
+    created_by: finding.created_by,
+    currentUserId,
+    currentUserRole,
+    isCreator,
+  });
+  
   // Analysts can edit their own findings if status is draft or changes_requested
   const canEdit = (currentUserRole === 'analyst' && isCreator && 
                    (finding.status === 'draft' || finding.status === 'changes_requested')) ||
@@ -37,6 +47,8 @@ const FindingWorkflowButtons = ({
   // Can approve/request changes if reviewer/manager and status is pending_review
   const canReview = (currentUserRole === 'reviewer' || currentUserRole === 'manager') &&
                     finding.status === 'pending_review';
+
+  console.log('Button Visibility:', { canEdit, canDelete, canSubmit, canReview });
 
   const handleSubmitForReview = async () => {
     if (!confirm('Submit this finding for review? You will not be able to edit it after submission.')) {
@@ -173,7 +185,7 @@ const FindingWorkflowButtons = ({
         <Button
           onClick={handleDelete}
           disabled={loading}
-          variant="outline"
+          variant="ghost"
           className="border-error text-error hover:bg-error/10"
         >
           {loading ? (
@@ -186,6 +198,12 @@ const FindingWorkflowButtons = ({
       )}
 
       {/* Status indicator for read-only states */}
+      {finding.status === 'draft' && !canSubmit && (
+        <div className="px-3 py-2 bg-gray-500/10 border border-gray-500/20 rounded-md text-sm text-gray-400">
+          Draft - Waiting for analyst to submit for review
+        </div>
+      )}
+
       {finding.status === 'pending_review' && !canReview && (
         <div className="px-3 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md text-sm text-yellow-400">
           Pending Review
@@ -195,7 +213,7 @@ const FindingWorkflowButtons = ({
       {finding.status === 'changes_requested' && !isCreator && (
         <div className="px-3 py-2 bg-orange-500/10 border border-orange-500/20 rounded-md text-sm text-orange-400 flex items-center gap-2">
           <MessageSquare className="w-4 h-4" />
-          Changes Requested
+          Changes Requested - Waiting for analyst to resubmit
         </div>
       )}
 

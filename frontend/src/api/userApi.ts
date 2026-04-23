@@ -16,4 +16,12 @@ export const userApi = {
     axiosInstance.patch<ApiResponse<User>>(`/users/${id}/approve`, { role }),
   
   delete: (id: number) => axiosInstance.delete<ApiResponse>(`/users/${id}`),
+  
+  // Admin only: Create manager
+  createManager: (data: { name: string; email: string; password: string }) =>
+    axiosInstance.post<ApiResponse<User>>('/users/managers/create', data),
+  
+  // Admin only: Delete manager
+  deleteManager: (id: number) =>
+    axiosInstance.delete<ApiResponse>(`/users/managers/${id}`),
 };

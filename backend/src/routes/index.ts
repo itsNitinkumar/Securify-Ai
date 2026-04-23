@@ -9,6 +9,7 @@ import dashboardRoutes from './dashboard.routes';
 import templateRoutes from './template.routes';
 import findingLibraryRoutes from './finding-library.routes';
 import commentRoutes from './comment.routes';
+import roleRequestRoutes from './role-request.routes';
 
 const router = Router();
 
@@ -17,6 +18,9 @@ router.use('/auth', authRoutes);
 
 // User routes
 router.use('/users', userRoutes);
+
+// Role request routes
+router.use('/role-requests', roleRequestRoutes);
 
 // Dashboard routes
 router.use('/dashboard', dashboardRoutes);

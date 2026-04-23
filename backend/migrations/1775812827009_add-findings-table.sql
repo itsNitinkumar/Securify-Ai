@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS findings (
   remediation TEXT,
   finding_references JSONB,
   tags JSONB,
-  status VARCHAR(50) DEFAULT 'draft' CHECK (status IN ('draft', 'pending_review', 'approved', 'rejected')),
+  status VARCHAR(50) DEFAULT 'draft' CHECK (status IN ('draft', 'pending_review', 'approved', 'rejected', 'changes_requested')),
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   approved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,

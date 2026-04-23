@@ -6,7 +6,7 @@ export interface ApiResponse<T = unknown> {
   data?: T;
 }
 
-export type UserRole = 'analyst' | 'reviewer' | 'manager' | 'client';
+export type UserRole = 'admin' | 'manager' | 'analyst' | 'reviewer' | 'client';
 
 export interface User {
   id: number;

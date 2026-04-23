@@ -7,11 +7,10 @@ interface FindingVersion {
   severity: string;
   description: string;
   affected_target?: string;
-  likelihood?: string;
-  impact?: string;
+  likelihood?: any; // JSONB
+  impact?: any; // JSONB
   steps_to_reproduce?: any;
-  proof_of_concept?: string;
-  remediation?: string;
+  recommendation?: any; // JSONB array
   references?: any;
   tags?: any;
   status: string;
@@ -32,8 +31,8 @@ class VersionService {
       `INSERT INTO finding_versions (
         finding_id, version_number, title, severity, description,
         affected_target, likelihood, impact, steps_to_reproduce,
-        proof_of_concept, remediation, finding_references, tags, status, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        recommendation, finding_references, tags, status, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         findingId,
         nextVersion,
@@ -41,11 +40,10 @@ class VersionService {
         findingData.severity,
         findingData.description,
         findingData.affected_target,
-        findingData.likelihood,
-        findingData.impact,
+        findingData.likelihood ? JSON.stringify(findingData.likelihood) : null,
+        findingData.impact ? JSON.stringify(findingData.impact) : null,
         JSON.stringify(findingData.steps_to_reproduce),
-        findingData.proof_of_concept,
-        findingData.remediation,
+        findingData.recommendation ? JSON.stringify(findingData.recommendation) : null,
         JSON.stringify(findingData.references || findingData.finding_references),
         JSON.stringify(findingData.tags),
         findingData.status,

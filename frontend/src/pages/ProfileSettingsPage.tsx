@@ -1,16 +1,23 @@
-import { useState } from 'react';
-import { User, Lock, Bell, Globe, Key, Shield, Save } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { User, Lock, Key, Shield, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { RoleRequestButton } from '@/components/profile/RoleRequestButton';
+import { useAuth } from '@/contexts/AuthContext';
+import axios from '@/api/axios';
 
 const ProfileSettingsPage = () => {
+  const { user, isLoading } = useAuth();
+  const [hasPendingRequest, setHasPendingRequest] = useState(false);
+
+  // Initialize with user data or show loading
   const [profile, setProfile] = useState({
-    name: 'John Doe',
-    email: 'john.doe@company.com',
-    role: 'analyst',
+    name: '',
+    email: '',
+    role: 'client',
   });
 
   const [password, setPassword] = useState({
@@ -28,6 +35,48 @@ const ProfileSettingsPage = () => {
   });
 
   const [saving, setSaving] = useState(false);
+
+  // Define checkPendingRequest before using it
+  const checkPendingRequest = async () => {
+    try {
+      const response = await axios.get('/role-requests/my-requests');
+      const pending = response.data.data.some((req: any) => req.status === 'pending');
+      setHasPendingRequest(pending);
+    } catch (error) {
+      console.error('Failed to check pending requests');
+    }
+  };
+
+  // Update profile when user data becomes available
+  useEffect(() => {
+    console.log('User from auth:', user); // Debug log
+    if (user) {
+      setProfile({
+        name: user.name || 'Unknown User',
+        email: user.email || 'No email',
+        role: user.role || 'client',
+      });
+      checkPendingRequest();
+    }
+  }, [user]);
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-surface p-4 flex items-center justify-center">
+        <div className="text-on-surface">Loading profile...</div>
+      </div>
+    );
+  }
+
+  // Show error if no user
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-surface p-4 flex items-center justify-center">
+        <div className="text-on-surface">Please log in to view your profile</div>
+      </div>
+    );
+  }
 
   const handleSaveProfile = async () => {
     setSaving(true);
@@ -81,7 +130,7 @@ const ProfileSettingsPage = () => {
           <TabsContent value="profile" className="space-y-6">
             <Card className="p-6 bg-surface-high border-outline">
               <h3 className="text-lg font-semibold text-on-surface mb-6">Profile Information</h3>
-              
+
               {/* Avatar */}
               <div className="flex items-center gap-6 mb-6 pb-6 border-b border-outline-variant">
                 <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center">
@@ -131,9 +180,19 @@ const ProfileSettingsPage = () => {
                     disabled
                     className="bg-surface-variant border-outline text-on-surface-variant cursor-not-allowed"
                   />
-                  <p className="text-xs text-on-surface-variant mt-1">
-                    Contact your administrator to change your role
+                  <p className="text-xs text-on-surface-variant mt-1 mb-3">
+                    {profile.role === 'client'
+                      ? 'Request a role change below'
+                      : profile.role === 'manager' || profile.role === 'admin'
+                        ? 'Contact system administrator to change your role'
+                        : 'Contact your manager to change your role'}
                   </p>
+
+                  {/* Role Request Button */}
+                  <RoleRequestButton
+                    currentRole={profile.role}
+                    hasPendingRequest={hasPendingRequest}
+                  />
                 </div>
 
                 <Button
@@ -152,7 +211,7 @@ const ProfileSettingsPage = () => {
           <TabsContent value="security" className="space-y-6">
             <Card className="p-6 bg-surface-high border-outline">
               <h3 className="text-lg font-semibold text-on-surface mb-6">Change Password</h3>
-              
+
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-on-surface mb-2 block">
@@ -206,7 +265,7 @@ const ProfileSettingsPage = () => {
               <p className="text-sm text-on-surface-variant mb-4">
                 Add an extra layer of security to your account
               </p>
-              <Button variant="outline" className="border-outline text-on-surface-variant">
+              <Button variant="secondary" className="border-outline text-on-surface-variant">
                 <Shield className="w-4 h-4 mr-2" />
                 Enable 2FA
               </Button>
@@ -217,7 +276,7 @@ const ProfileSettingsPage = () => {
               <p className="text-sm text-on-surface-variant mb-4">
                 Manage API keys for programmatic access
               </p>
-              <Button variant="outline" className="border-outline text-on-surface-variant">
+              <Button variant="secondary" className="border-outline text-on-surface-variant">
                 <Key className="w-4 h-4 mr-2" />
                 Manage API Keys
               </Button>
@@ -228,7 +287,7 @@ const ProfileSettingsPage = () => {
           <TabsContent value="notifications" className="space-y-6">
             <Card className="p-6 bg-surface-high border-outline">
               <h3 className="text-lg font-semibold text-on-surface mb-6">Email Notifications</h3>
-              
+
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -285,7 +344,7 @@ const ProfileSettingsPage = () => {
 
             <Card className="p-6 bg-surface-high border-outline">
               <h3 className="text-lg font-semibold text-on-surface mb-6">Push Notifications</h3>
-              
+
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -328,7 +387,7 @@ const ProfileSettingsPage = () => {
           <TabsContent value="preferences" className="space-y-6">
             <Card className="p-6 bg-surface-high border-outline">
               <h3 className="text-lg font-semibold text-on-surface mb-6">Display Preferences</h3>
-              
+
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-on-surface mb-2 block">
@@ -370,7 +429,7 @@ const ProfileSettingsPage = () => {
               <p className="text-sm text-on-surface-variant mb-4">
                 Active sessions: 2 devices
               </p>
-              <Button variant="outline" className="border-error/30 text-error hover:bg-error/10">
+              <Button variant="secondary" className="border-error/30 text-error hover:bg-error/10">
                 Sign Out All Devices
               </Button>
             </Card>

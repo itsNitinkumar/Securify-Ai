@@ -33,7 +33,7 @@ export const reportApi = {
   },
 
   getProjectReports: async (projectId: number) => {
-    const response = await axios.get(`/reports/projects/${projectId}`);
+    const response = await axios.get(`/reports/project/${projectId}`);
     return response.data;
   },
 };

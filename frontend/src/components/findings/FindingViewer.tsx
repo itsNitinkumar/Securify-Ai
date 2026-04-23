@@ -48,6 +48,12 @@ const FindingViewer = ({
     try {
       setLoading(true);
       const response = await findingApi.getById(findingId);
+      console.log('📥 Finding data received:', response.data.data);
+      console.log('  - likelihood:', response.data.data?.likelihood);
+      console.log('  - impact:', response.data.data?.impact);
+      console.log('  - recommendation:', response.data.data?.recommendation);
+      console.log('  - references:', response.data.data?.references);
+      console.log('  - steps_to_reproduce:', response.data.data?.steps_to_reproduce);
       setFinding(response.data.data || null);
     } catch (error) {
       console.error('Failed to load finding:', error);
@@ -156,25 +162,40 @@ const FindingViewer = ({
               </Card>
             )}
 
-            {/* Likelihood & Impact */}
+            {/* Likelihood & Impact - Combined Section */}
             {(finding.likelihood || finding.impact) && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {finding.likelihood && (
-                  <Card className="p-4 bg-surface border-outline-variant">
-                    <h3 className="text-sm font-semibold text-on-surface mb-2">Likelihood</h3>
-                    <p className="text-sm text-on-surface-variant">{finding.likelihood}</p>
-                  </Card>
-                )}
-                {finding.impact && (
-                  <Card className="p-4 bg-surface border-outline-variant">
-                    <h3 className="text-sm font-semibold text-on-surface mb-2 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4" />
-                      Impact
-                    </h3>
-                    <p className="text-sm text-on-surface-variant">{finding.impact}</p>
-                  </Card>
-                )}
-              </div>
+              <Card className="p-4 bg-surface border-outline-variant">
+                <h3 className="text-sm font-semibold text-on-surface mb-3">Impact & Likelihood</h3>
+                <div className="space-y-4">
+                  {finding.impact && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle className="w-4 h-4 text-on-surface" />
+                        <span className="text-sm font-semibold text-on-surface">Impact:</span>
+                        {typeof finding.impact === 'object' && (
+                          <Badge className="ml-1">{finding.impact.severity}</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-on-surface-variant">
+                        {typeof finding.impact === 'object' ? finding.impact.detail : finding.impact}
+                      </p>
+                    </div>
+                  )}
+                  {finding.likelihood && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-semibold text-on-surface">Likelihood:</span>
+                        {typeof finding.likelihood === 'object' && (
+                          <Badge className="ml-1">{finding.likelihood.severity}</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-on-surface-variant">
+                        {typeof finding.likelihood === 'object' ? finding.likelihood.detail : finding.likelihood}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </Card>
             )}
 
             {/* Steps to Reproduce */}
@@ -201,7 +222,35 @@ const FindingViewer = ({
               </Card>
             )}
 
-            {/* Remediation */}
+            {/* Recommendation (array from AI) */}
+            {finding.recommendation && finding.recommendation.length > 0 && (
+              <Card className="p-4 bg-surface border-outline-variant">
+                <h3 className="text-sm font-semibold text-on-surface mb-3 flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  Recommendations
+                </h3>
+                <ul className="list-disc list-outside ml-5 space-y-3">
+                  {finding.recommendation.map((rec, index) => {
+                    // Parse bold category headers (e.g., "**Category:** description")
+                    const match = rec.match(/^\*\*(.+?)\*\*:?\s*(.+)$/s);
+                    if (match) {
+                      return (
+                        <li key={index} className="text-sm text-on-surface-variant">
+                          <span className="font-semibold text-on-surface">{match[1]}:</span> {match[2]}
+                        </li>
+                      );
+                    }
+                    return (
+                      <li key={index} className="text-sm text-on-surface-variant">
+                        {rec}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+            )}
+
+            {/* Remediation (string - legacy) */}
             {finding.remediation && (
               <Card className="p-4 bg-surface border-outline-variant">
                 <h3 className="text-sm font-semibold text-on-surface mb-2 flex items-center gap-2">
@@ -220,20 +269,46 @@ const FindingViewer = ({
                 <h3 className="text-sm font-semibold text-on-surface mb-3">Evidence ({evidence.length})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {evidence.map((item) => (
-                    <div
+                    <a
                       key={item.id}
-                      className="p-3 bg-surface-low border border-outline-variant rounded-md"
+                      href={`http://localhost:3000${item.file_path}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-3 bg-surface-low border border-outline-variant rounded-md hover:border-primary/50 transition-colors cursor-pointer group"
                     >
-                      <p className="text-sm text-on-surface font-medium truncate">{item.file_name}</p>
+                      <p className="text-sm text-on-surface font-medium truncate group-hover:text-primary">
+                        {item.file_name}
+                      </p>
                       {item.caption && (
                         <p className="text-xs text-on-surface-variant mt-1 italic">"{item.caption}"</p>
                       )}
-                      <p className="text-xs text-on-surface-variant mt-1">
-                        {(item.file_size / 1024).toFixed(1)} KB
-                      </p>
-                    </div>
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-xs text-on-surface-variant">
+                          {(item.file_size / 1024).toFixed(1)} KB
+                        </p>
+                        <span className="text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                          Click to view →
+                        </span>
+                      </div>
+                    </a>
                   ))}
                 </div>
+              </Card>
+            )}
+
+            {/* References */}
+            {finding.references && finding.references.length > 0 && (
+              <Card className="p-4 bg-surface border-outline-variant">
+                <h3 className="text-sm font-semibold text-on-surface mb-2">References</h3>
+                <ul className="list-disc list-inside space-y-1">
+                  {finding.references.map((ref, index) => (
+                    <li key={index} className="text-sm text-on-surface-variant break-all">
+                      <a href={ref} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                        {ref}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               </Card>
             )}
 
@@ -243,20 +318,6 @@ const FindingViewer = ({
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
             />
-
-            {/* References */}
-            {finding.references && finding.references.length > 0 && (
-              <Card className="p-4 bg-surface border-outline-variant">
-                <h3 className="text-sm font-semibold text-on-surface mb-2">References</h3>
-                <ul className="list-disc list-inside space-y-1">
-                  {finding.references.map((ref, index) => (
-                    <li key={index} className="text-sm text-on-surface-variant">
-                      {ref}
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            )}
           </div>
         </DialogContent>
       </Dialog>
