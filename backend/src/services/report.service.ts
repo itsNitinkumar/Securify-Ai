@@ -1221,6 +1221,30 @@ class ReportService {
       for (let i = 1; i < runs.length; i++) $(runs[i]).text('');
     };
     const cloneNode = (el: any) => cheerio.load($.xml(el), { xmlMode: true, decodeEntities: false }).root().children().first();
+    const clearRunFormatting = (scope: any, root: any, opts?: { bold?: boolean; color?: string; underline?: string }) => {
+      scope(root).find('w\\:r').each((_: number, r: any) => {
+        let rPr = scope(r).children('w\\:rPr').first();
+        if (!rPr.length) {
+          scope(r).prepend('<w:rPr/>');
+          rPr = scope(r).children('w\\:rPr').first();
+        }
+
+        rPr.children('w\\:b').remove();
+        rPr.children('w\\:bCs').remove();
+        rPr.children('w\\:u').remove();
+        rPr.children('w\\:color').remove();
+
+        if (opts?.bold) {
+          rPr.append('<w:b w:val="1"/><w:bCs w:val="1"/>');
+        }
+        if (opts?.underline) {
+          rPr.append(`<w:u w:val="${opts.underline}"/>`);
+        }
+        if (opts?.color) {
+          rPr.append(`<w:color w:val="${opts.color}"/>`);
+        }
+      });
+    };
     const ensureShading = (cell: any, fill: string) => {
       let tcPr = $(cell).children('w\\:tcPr').first();
       if (!tcPr.length) {
@@ -1368,6 +1392,10 @@ class ReportService {
       if (pbb.length) pbb.remove();
     };
 
+    const paragraphStyle = (pEl: any): string => {
+      return String($(pEl).find('w\\:pPr > w\\:pStyle').first().attr('w:val') || '').trim();
+    };
+
     const removeGreenBottomBorderIfNotHeading = (pEl: any, txt: string) => {
       if (!txt) return;
       if (headingTexts.has(txt)) return;
@@ -1426,6 +1454,17 @@ class ReportService {
         if (pbb.length && String(pbb.attr('w:val') || '').trim() === '1') {
           removePageBreakBefore(p);
         }
+      }
+    }
+
+    // The template also contains empty heading paragraphs before real headings
+    // (notably before Scope). LibreOffice still gives them visible heading spacing,
+    // which shows up as an extra green rule and can push the next table down.
+    for (const p of paragraphs) {
+      const txt = paraText(p);
+      const style = paragraphStyle(p);
+      if (!txt && /^Heading[1-6]$/i.test(style)) {
+        $(p).remove();
       }
     }
 
@@ -1710,20 +1749,24 @@ class ReportService {
             .children()
             .first();
 
-          const appendSectionParagraph = (beforeNode: any, sourceNode: any, text: string, color?: string) => {
+          const stripMarkdownEmphasis = (text: string): string => String(text)
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/__(.*?)__/g, '$1');
+
+          const appendSectionParagraph = (
+            beforeNode: any,
+            sourceNode: any,
+            text: string,
+            opts?: { color?: string; bold?: boolean; underline?: string; cleanMarkdown?: boolean }
+          ) => {
             const p = cloneSectionNode(sourceNode);
-            sectionSetParaText(p.get(0), text);
-            if (color) {
-              const firstRPr = p.find('w\\:rPr').first();
-              if (firstRPr.length) {
-                let colorNode = firstRPr.find('w\\:color').first();
-                if (!colorNode.length) {
-                  firstRPr.append(`<w:color w:val="${color}"/>`);
-                } else {
-                  colorNode.attr('w:val', color);
-                }
-              }
-            }
+            const finalText = opts?.cleanMarkdown ? stripMarkdownEmphasis(text) : text;
+            sectionSetParaText(p.get(0), finalText);
+            clearRunFormatting(sectionDoc, p.get(0), {
+              bold: opts?.bold,
+              color: opts?.color,
+              underline: opts?.underline,
+            });
             sectionDoc(beforeNode).before(sectionDoc.xml(p));
           };
 
@@ -1806,15 +1849,17 @@ class ReportService {
             return txt.length > 20 && !txt.endsWith(':') && !txt.startsWith('Step') && !txt.startsWith('Risk:');
           }) || titlePara;
 
+          const neutralParagraphTemplate = riskPara || descLabel || bodyTextTemplate;
+
           if (descLabel) {
             const descText = String(finding.description || '');
             console.log(`   - Inserting description: "${descText.substring(0, 100)}..."`);
-            appendSectionParagraph(urlLabel || backPara || titlePara, bodyTextTemplate, descText);
+            appendSectionParagraph(urlLabel || backPara || titlePara, neutralParagraphTemplate, descText, { color: '000000' });
           }
 
           const affected = String(finding.affected_target || '').trim();
           console.log(`   - Affected target: "${affected}"`);
-          if (urlLabel && affected) appendSectionParagraph(impactLabel || backPara || titlePara, bodyTextTemplate, affected);
+          if (urlLabel && affected) appendSectionParagraph(impactLabel || backPara || titlePara, neutralParagraphTemplate, affected, { color: '000000' });
 
           // Extract impact - handle both object and string formats
           let impactText = '';
@@ -1827,7 +1872,7 @@ class ReportService {
           }
           console.log(`   - Impact text extracted: "${impactText}"`);
           if (impactLabel && impactText) {
-            appendSectionParagraph(likelihoodLabel || backPara || titlePara, bodyTextTemplate, impactText);
+            appendSectionParagraph(likelihoodLabel || backPara || titlePara, neutralParagraphTemplate, impactText, { color: '000000' });
           }
           
           // Extract likelihood - handle both object and string formats
@@ -1841,14 +1886,14 @@ class ReportService {
           }
           console.log(`   - Likelihood text extracted: "${likelihoodText}"`);
           if (likelihoodLabel && likelihoodText) {
-            appendSectionParagraph(stepsLabel || backPara || titlePara, bodyTextTemplate, likelihoodText);
+            appendSectionParagraph(stepsLabel || backPara || titlePara, neutralParagraphTemplate, likelihoodText, { color: '000000' });
           }
 
-          const stepTemplate = paras.find((p: any) => sectionParaText(p).startsWith('Step 1:')) || bodyTextTemplate;
+          const stepTemplate = neutralParagraphTemplate;
           const recTemplate = paras.find((p: any) => {
             const txt = sectionParaText(p);
             return txt.length > 15 && !txt.endsWith(':') && !txt.startsWith('Step') && !txt.startsWith('Risk:') && txt !== sectionParaText(titlePara);
-          }) || bodyTextTemplate;
+          }) || neutralParagraphTemplate;
           const refTemplate = paras.find((p: any) => {
             const txt = sectionParaText(p);
             return txt.includes('http') || txt.includes('www');
@@ -1858,13 +1903,13 @@ class ReportService {
           console.log(`   - Inserting ${steps.length} steps`);
           for (let si = 0; si < steps.length; si++) {
             console.log(`     Step ${si + 1}: "${steps[si].substring(0, 50)}..."`);
-            appendSectionParagraph(recLabel || backPara || titlePara, stepTemplate, `Step ${si + 1}: ${steps[si]}`);
+            appendSectionParagraph(recLabel || backPara || titlePara, stepTemplate, `Step ${si + 1}: ${steps[si]}`, { color: '000000' });
           }
 
           const recs = toLines(finding.recommendation);
           console.log(`   - Inserting ${recs.length} recommendations`);
           for (let ri = 0; ri < recs.length; ri++) {
-            appendSectionParagraph(refLabel || backPara || titlePara, recTemplate, recs[ri]);
+            appendSectionParagraph(refLabel || backPara || titlePara, recTemplate, recs[ri], { color: '000000', cleanMarkdown: true });
           }
 
           // Handle references - support both 'references' and 'finding_references' fields
@@ -1872,7 +1917,7 @@ class ReportService {
           const refs = toLines(refsArray);
           console.log(`   - Inserting ${refs.length} references`);
           for (let ri = 0; ri < refs.length; ri++) {
-            appendSectionParagraph(backPara || titlePara, refTemplate, refs[ri]);
+            appendSectionParagraph(backPara || titlePara, refTemplate, refs[ri], { color: '1155CC', underline: 'single' });
           }
 
           if (backPara) sectionDoc(backPara).remove();
