@@ -1,129 +1,238 @@
 import { Request, Response } from 'express';
 import ReportService from '../services/report.service';
-import ApiResponse from '../utils/ApiResponse';
 import ApiError from '../utils/ApiError';
-import asyncHandler from '../utils/asyncHandler';
 import * as fs from 'fs';
 import * as path from 'path';
 
 class ReportController {
-  // Generate Report
-  static generateReport = asyncHandler(async (req: Request, res: Response) => {
-    const { project_id, template_id, format } = req.body;
-    const user = (req as any).user;
+  // Generate Report (PDF or DOCX)
+  static async generateReport(req: Request, res: Response) {
+    try {
+      const { project_id, template_id, format, finding_ids } = req.body;
+      const userId = (req as any).user.id;
 
-    if (!project_id) {
-      throw new ApiError(400, 'Project ID is required');
+      if (!project_id) {
+        throw new ApiError(400, 'Project ID is required');
+      }
+
+      if (!format || !['pdf', 'docx'].includes(format)) {
+        throw new ApiError(400, 'Format must be either "pdf" or "docx"');
+      }
+
+      console.log(`📄 Generating ${format.toUpperCase()} report for project ${project_id}`);
+
+      const result = await ReportService.generateReport(
+        project_id,
+        template_id || null,
+        userId,
+        format as 'pdf' | 'docx',
+        Array.isArray(finding_ids) ? finding_ids : undefined
+      );
+
+      res.status(201).json({
+        message: `${format.toUpperCase()} report generated successfully`,
+        reportId: result.reportId,
+        filePath: result.filePath,
+      });
+    } catch (error: any) {
+      console.error('❌ Generate report error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to generate report',
+      });
     }
+  }
 
-    const reportFormat = format || 'docx';
-    if (!['docx', 'pdf'].includes(reportFormat)) {
-      throw new ApiError(400, 'Format must be docx or pdf');
+  static async previewReport(req: Request, res: Response) {
+    try {
+      const { project_id, template_id, format, finding_ids } = req.body;
+
+      if (!project_id) {
+        throw new ApiError(400, 'Project ID is required');
+      }
+
+      if (!format || !['pdf', 'docx'].includes(format)) {
+        throw new ApiError(400, 'Format must be either "pdf" or "docx"');
+      }
+
+      const preview = await ReportService.previewReport(
+        project_id,
+        template_id || null,
+        format as 'pdf' | 'docx',
+        Array.isArray(finding_ids) ? finding_ids : undefined
+      );
+
+      res.setHeader('Content-Type', preview.contentType);
+      res.setHeader('Content-Disposition', `inline; filename="${preview.fileName}"`);
+      res.send(preview.buffer);
+    } catch (error: any) {
+      console.error('❌ Preview report error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to preview report',
+      });
     }
-
-    const result = await ReportService.generateReport(
-      project_id,
-      template_id || null,
-      user.id,
-      reportFormat
-    );
-
-    ApiResponse.success(res, 201, 'Report generated successfully', {
-      reportId: result.reportId,
-      downloadUrl: `/api/reports/${result.reportId}/download`,
-    });
-  });
+  }
 
   // Download Report
-  static downloadReport = asyncHandler(async (req: Request, res: Response) => {
-    const reportId = parseInt(req.params.id);
+  static async downloadReport(req: Request, res: Response) {
+    try {
+      const reportId = parseInt(req.params.id);
 
-    const filePath = await ReportService.getReportFile(reportId);
-    const fileName = path.basename(filePath);
-
-    res.download(filePath, fileName, (err) => {
-      if (err) {
-        console.error('Error downloading report:', err);
-        throw new ApiError(500, 'Failed to download report');
+      if (isNaN(reportId)) {
+        throw new ApiError(400, 'Invalid report ID');
       }
-    });
-  });
+
+      const filePath = await ReportService.getReportFile(reportId);
+
+      if (!fs.existsSync(filePath)) {
+        throw new ApiError(404, 'Report file not found');
+      }
+
+      const fileName = path.basename(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      
+      let contentType = 'application/octet-stream';
+      if (ext === '.pdf') {
+        contentType = 'application/pdf';
+      } else if (ext === '.docx') {
+        contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      }
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+    } catch (error: any) {
+      console.error('❌ Download report error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to download report',
+      });
+    }
+  }
 
   // Get Reports by Project
-  static getReportsByProject = asyncHandler(async (req: Request, res: Response) => {
-    const projectId = parseInt(req.params.projectId);
-    const ReportModel = (await import('../models/report.model')).default;
-    
-    const reports = await ReportModel.getReportsByProject(projectId);
-    ApiResponse.success(res, 200, 'Reports retrieved successfully', reports);
-  });
+  static async getReportsByProject(req: Request, res: Response) {
+    try {
+      const projectId = parseInt(req.params.projectId);
+
+      if (isNaN(projectId)) {
+        throw new ApiError(400, 'Invalid project ID');
+      }
+
+      const reports = await ReportService.getReportsByProject(projectId);
+
+      res.json(reports);
+    } catch (error: any) {
+      console.error('❌ Get reports error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to fetch reports',
+      });
+    }
+  }
 
   // Delete Report
-  static deleteReport = asyncHandler(async (req: Request, res: Response) => {
-    const reportId = parseInt(req.params.id);
-    const user = (req as any).user;
+  static async deleteReport(req: Request, res: Response) {
+    try {
+      const reportId = parseInt(req.params.id);
 
-    // Only managers and admins can delete reports
-    if (user.role !== 'manager' && user.role !== 'admin') {
-      throw new ApiError(403, 'Only managers and admins can delete reports');
+      if (isNaN(reportId)) {
+        throw new ApiError(400, 'Invalid report ID');
+      }
+
+      await ReportService.deleteReport(reportId);
+
+      res.json({ message: 'Report deleted successfully' });
+    } catch (error: any) {
+      console.error('❌ Delete report error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to delete report',
+      });
     }
-
-    await ReportService.deleteReport(reportId);
-    ApiResponse.success(res, 200, 'Report deleted successfully');
-  });
+  }
 
   // Template Management
-  static createTemplate = asyncHandler(async (req: Request, res: Response) => {
-    const { name, description, template_data, logo_path, is_default } = req.body;
-    const user = (req as any).user;
+  static async createTemplate(req: Request, res: Response) {
+    try {
+      const userId = (req as any).user.id;
+      const template = await ReportService.createTemplate({
+        ...req.body,
+        created_by: userId,
+      });
 
-    if (!name || !template_data) {
-      throw new ApiError(400, 'Name and template data are required');
+      res.status(201).json(template);
+    } catch (error: any) {
+      console.error('❌ Create template error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to create template',
+      });
     }
+  }
 
-    const template = await ReportService.createTemplate({
-      name,
-      description,
-      template_data,
-      logo_path,
-      is_default,
-      created_by: user.id,
-    });
+  static async getAllTemplates(req: Request, res: Response) {
+    try {
+      const templates = await ReportService.getAllTemplates();
+      res.json(templates);
+    } catch (error: any) {
+      console.error('❌ Get templates error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to fetch templates',
+      });
+    }
+  }
 
-    ApiResponse.success(res, 201, 'Template created successfully', template);
-  });
+  static async getTemplate(req: Request, res: Response) {
+    try {
+      const templateId = parseInt(req.params.id);
 
-  static getAllTemplates = asyncHandler(async (req: Request, res: Response) => {
-    const templates = await ReportService.getAllTemplates();
-    ApiResponse.success(res, 200, 'Templates retrieved successfully', templates);
-  });
+      if (isNaN(templateId)) {
+        throw new ApiError(400, 'Invalid template ID');
+      }
 
-  static getTemplate = asyncHandler(async (req: Request, res: Response) => {
-    const templateId = parseInt(req.params.id);
-    const template = await ReportService.getTemplateById(templateId);
-    ApiResponse.success(res, 200, 'Template retrieved successfully', template);
-  });
+      const template = await ReportService.getTemplateById(templateId);
+      res.json(template);
+    } catch (error: any) {
+      console.error('❌ Get template error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to fetch template',
+      });
+    }
+  }
 
-  static updateTemplate = asyncHandler(async (req: Request, res: Response) => {
-    const templateId = parseInt(req.params.id);
-    const { name, description, template_data, logo_path, is_default } = req.body;
+  static async updateTemplate(req: Request, res: Response) {
+    try {
+      const templateId = parseInt(req.params.id);
 
-    const template = await ReportService.updateTemplate(templateId, {
-      name,
-      description,
-      template_data,
-      logo_path,
-      is_default,
-    });
+      if (isNaN(templateId)) {
+        throw new ApiError(400, 'Invalid template ID');
+      }
 
-    ApiResponse.success(res, 200, 'Template updated successfully', template);
-  });
+      const template = await ReportService.updateTemplate(templateId, req.body);
+      res.json(template);
+    } catch (error: any) {
+      console.error('❌ Update template error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to update template',
+      });
+    }
+  }
 
-  static deleteTemplate = asyncHandler(async (req: Request, res: Response) => {
-    const templateId = parseInt(req.params.id);
-    await ReportService.deleteTemplate(templateId);
-    ApiResponse.success(res, 200, 'Template deleted successfully');
-  });
+  static async deleteTemplate(req: Request, res: Response) {
+    try {
+      const templateId = parseInt(req.params.id);
+
+      if (isNaN(templateId)) {
+        throw new ApiError(400, 'Invalid template ID');
+      }
+
+      await ReportService.deleteTemplate(templateId);
+      res.json({ message: 'Template deleted successfully' });
+    } catch (error: any) {
+      console.error('❌ Delete template error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to delete template',
+      });
+    }
+  }
 }
 
 export default ReportController;

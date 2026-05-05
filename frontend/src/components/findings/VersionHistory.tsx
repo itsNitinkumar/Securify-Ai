@@ -21,7 +21,7 @@ const VersionHistory = ({ findingId }: VersionHistoryProps) => {
     try {
       setLoading(true);
       const response = await findingApi.getVersionHistory(findingId);
-      setVersions(response.data);
+      setVersions(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error('Failed to load versions:', error);
     } finally {

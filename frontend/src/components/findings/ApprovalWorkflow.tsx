@@ -17,7 +17,7 @@ const ApprovalWorkflow = ({ finding, onApprove, onUpdate }: ApprovalWorkflowProp
         return <CheckCircle className="w-5 h-5 text-green-400" />;
       case 'rejected':
         return <XCircle className="w-5 h-5 text-error" />;
-      case 'in_review':
+      case 'pending_review':
         return <Clock className="w-5 h-5 text-yellow-400" />;
       default:
         return <Send className="w-5 h-5 text-on-surface-variant" />;
@@ -30,7 +30,7 @@ const ApprovalWorkflow = ({ finding, onApprove, onUpdate }: ApprovalWorkflowProp
         return 'bg-green-500/10 text-green-400 border-green-500/20';
       case 'rejected':
         return 'bg-red-500/10 text-red-400 border-red-500/20';
-      case 'in_review':
+      case 'pending_review':
         return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
       default:
         return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
@@ -76,7 +76,7 @@ const ApprovalWorkflow = ({ finding, onApprove, onUpdate }: ApprovalWorkflowProp
         <div className="flex items-center gap-3">
           <div
             className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              finding.status === 'in_review' || finding.status === 'approved'
+              finding.status === 'pending_review' || finding.status === 'approved'
                 ? 'bg-primary/20 text-primary'
                 : 'bg-surface-variant text-on-surface-variant'
             }`}
@@ -87,7 +87,7 @@ const ApprovalWorkflow = ({ finding, onApprove, onUpdate }: ApprovalWorkflowProp
             <p className="text-sm font-medium text-on-surface">In Review</p>
             <p className="text-xs text-on-surface-variant">Pending approval</p>
           </div>
-          {(finding.status === 'in_review' || finding.status === 'approved') && (
+          {(finding.status === 'pending_review' || finding.status === 'approved') && (
             <CheckCircle className="w-4 h-4 text-primary" />
           )}
         </div>
@@ -124,7 +124,7 @@ const ApprovalWorkflow = ({ finding, onApprove, onUpdate }: ApprovalWorkflowProp
           </Button>
         )}
 
-        {finding.status === 'in_review' && (
+        {finding.status === 'pending_review' && (
           <>
             <Button
               onClick={onApprove}

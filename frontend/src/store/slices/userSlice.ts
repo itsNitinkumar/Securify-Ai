@@ -43,16 +43,18 @@ const userSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchUsers.fulfilled, (state, action: PayloadAction<User[]>) => {
+      .addCase(fetchUsers.fulfilled, (state, action) => {
         state.loading = false;
-        state.users = action.payload;
+        state.users = action.payload.data || [];
       })
       .addCase(fetchUsers.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || 'Failed to fetch users';
       })
-      .addCase(createUser.fulfilled, (state, action: PayloadAction<User>) => {
-        state.users.push(action.payload);
+      .addCase(createUser.fulfilled, (state, action) => {
+        if (action.payload.data) {
+          state.users.push(action.payload.data);
+        }
       });
   },
 });

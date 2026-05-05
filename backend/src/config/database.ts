@@ -6,11 +6,11 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false,
   },
-  max: 10, // Reduced for Neon free tier
+  max: 20, // Increased pool size
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 60000, // Increased to 60 seconds for Neon
-  query_timeout: 30000, // 30 second query timeout
-  statement_timeout: 30000, // 30 second statement timeout
+  connectionTimeoutMillis: 10000, // 10 seconds to acquire connection
+  query_timeout: 45000, // 45 second query timeout
+  statement_timeout: 45000, // 45 second statement timeout
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
 });

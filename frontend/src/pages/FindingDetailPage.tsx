@@ -40,7 +40,8 @@ const FindingDetailPage = () => {
     try {
       setLoading(true);
       const response = await findingApi.getFinding(parseInt(id!));
-      setFinding(response.data);
+      const findingData = (response.data as any)?.data || response.data;
+      setFinding(findingData);
     } catch (error) {
       console.error('Failed to load finding:', error);
     } finally {
@@ -105,17 +106,18 @@ const FindingDetailPage = () => {
     );
   }
 
-  const severityColors = {
-    critical: 'bg-red-500/10 text-red-400 border-red-500/20',
-    high: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    medium: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-    low: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    info: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+  const severityColors: Record<string, string> = {
+    Critical: 'bg-red-500/10 text-red-400 border-red-500/20',
+    High: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+    Medium: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+    Low: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    Informational: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
   };
 
-  const statusColors = {
+  const statusColors: Record<string, string> = {
     draft: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
-    in_review: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+    pending_review: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+    changes_requested: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
     approved: 'bg-green-500/10 text-green-400 border-green-500/20',
     rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
   };

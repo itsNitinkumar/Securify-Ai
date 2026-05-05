@@ -7,6 +7,13 @@ interface FindingMetadataProps {
 }
 
 const FindingMetadata = ({ finding }: FindingMetadataProps) => {
+  const renderValue = (value: string | { severity: string; detail: string } | undefined) => {
+    if (!value) return null;
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object' && value.detail) return value.detail;
+    return String(value);
+  };
+
   return (
     <Card className="p-4 md:p-6 bg-surface-high border-outline">
       <h3 className="text-sm font-semibold text-on-surface mb-4">Metadata</h3>
@@ -29,7 +36,7 @@ const FindingMetadata = ({ finding }: FindingMetadataProps) => {
               <span className="text-xs text-on-surface-variant">Likelihood</span>
             </div>
             <div className="text-sm font-medium text-on-surface">
-              {finding.likelihood}
+              {renderValue(finding.likelihood)}
             </div>
           </div>
         )}
@@ -40,7 +47,7 @@ const FindingMetadata = ({ finding }: FindingMetadataProps) => {
               <span className="text-xs text-on-surface-variant">Impact</span>
             </div>
             <div className="text-sm font-medium text-on-surface">
-              {finding.impact}
+              {renderValue(finding.impact)}
             </div>
           </div>
         )}

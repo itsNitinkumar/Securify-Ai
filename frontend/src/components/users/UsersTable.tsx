@@ -16,7 +16,7 @@ interface User {
 interface UsersTableProps {
   users: User[];
   onEdit: (user: User) => void;
-  onDelete: (userId: number) => void;
+  onDelete?: (userId: number) => void;
   onApprove?: (userId: number) => void;
 }
 

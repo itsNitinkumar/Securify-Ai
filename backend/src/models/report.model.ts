@@ -7,6 +7,15 @@ export interface ReportTemplate {
     template_data: any;
     logo_path?: string;
     is_default: boolean;
+    confidentiality_text?: string;
+    introduction_text?: string;
+    approach_text?: string;
+    scope_text?: string;
+    scope_applications?: any[];
+    scope_user_roles?: any[];
+    scope_tools?: any[];
+    appendix_text?: string;
+    highlight_color?: string;
     created_by?: number;
     created_at: Date;
     updated_at: Date;
@@ -29,22 +38,43 @@ class ReportModel {
     static async createTemplate(data: {
         name: string;
         description?: string;
-        template_data: any;
+        template_data?: any;
         logo_path?: string;
         is_default?: boolean;
+        confidentiality_text?: string;
+        introduction_text?: string;
+        approach_text?: string;
+        scope_text?: string;
+        scope_applications?: any[];
+        scope_user_roles?: any[];
+        scope_tools?: any[];
+        appendix_text?: string;
+        highlight_color?: string;
         created_by: number;
     }): Promise<ReportTemplate> {
         const result = await pool.query(
-            `INSERT INTO report_templates (name, description, template_data, logo_path, is_default, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
+            `INSERT INTO report_templates (
+                name, description, template_data, logo_path, is_default, created_by,
+                confidentiality_text, introduction_text, approach_text, scope_text,
+                scope_applications, scope_user_roles, scope_tools, appendix_text, highlight_color
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            RETURNING *`,
             [
                 data.name,
                 data.description,
-                JSON.stringify(data.template_data),
+                data.template_data ? JSON.stringify(data.template_data) : null,
                 data.logo_path,
                 data.is_default || false,
                 data.created_by,
+                data.confidentiality_text,
+                data.introduction_text,
+                data.approach_text,
+                data.scope_text,
+                data.scope_applications ? JSON.stringify(data.scope_applications) : null,
+                data.scope_user_roles ? JSON.stringify(data.scope_user_roles) : null,
+                data.scope_tools ? JSON.stringify(data.scope_tools) : null,
+                data.appendix_text,
+                data.highlight_color || '#ffff00',
             ]
         );
         return result.rows[0];
@@ -80,25 +110,26 @@ class ReportModel {
         const values: any[] = [];
         let paramCount = 1;
 
-        if (data.name !== undefined) {
-            updates.push(`name = $${paramCount++}`);
-            values.push(data.name);
-        }
-        if (data.description !== undefined) {
-            updates.push(`description = $${paramCount++}`);
-            values.push(data.description);
-        }
-        if (data.template_data !== undefined) {
-            updates.push(`template_data = $${paramCount++}`);
-            values.push(JSON.stringify(data.template_data));
-        }
-        if (data.logo_path !== undefined) {
-            updates.push(`logo_path = $${paramCount++}`);
-            values.push(data.logo_path);
-        }
-        if (data.is_default !== undefined) {
-            updates.push(`is_default = $${paramCount++}`);
-            values.push(data.is_default);
+        const fields = [
+            'name', 'description', 'template_data', 'logo_path', 'is_default',
+            'confidentiality_text', 'introduction_text', 'approach_text', 'scope_text',
+            'scope_applications', 'scope_user_roles', 'scope_tools', 'appendix_text', 'highlight_color'
+        ];
+
+        fields.forEach(field => {
+            if (data[field as keyof ReportTemplate] !== undefined) {
+                updates.push(`${field} = $${paramCount++}`);
+                const value = data[field as keyof ReportTemplate];
+                if (typeof value === 'object' && value !== null) {
+                    values.push(JSON.stringify(value));
+                } else {
+                    values.push(value);
+                }
+            }
+        });
+
+        if (updates.length === 0) {
+            return await this.getTemplateById(id);
         }
 
         updates.push(`updated_at = CURRENT_TIMESTAMP`);

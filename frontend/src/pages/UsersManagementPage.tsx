@@ -34,7 +34,8 @@ const UsersManagementPage = () => {
   const loadCurrentUser = async () => {
     try {
       const response = await authApi.getProfile();
-      setCurrentUserRole(response.data.data?.role || '');
+      const userData = response.data.data || response.data;
+      setCurrentUserRole((userData as any)?.role || '');
     } catch (error) {
       console.error('Failed to load current user:', error);
     }

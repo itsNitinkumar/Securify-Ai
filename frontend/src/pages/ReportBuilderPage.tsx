@@ -1,29 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   FileText,
-  Download,
-  Share2,
-  Send,
-  CheckCircle,
-  Clock,
   AlertCircle,
-  Plus,
   ArrowLeft,
 } from 'lucide-react';
 import { projectApi, Project } from '@/api/projectApi';
 import { findingApi, Finding } from '@/api/findingApi';
-import { reportApi } from '@/api/reportApi';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import ReportMetadata from '@/components/reports/ReportMetadata';
-import ExecutiveSummary from '@/components/reports/ExecutiveSummary';
-import FindingsSection from '@/components/reports/FindingsSection';
-import ExportControls from '@/components/reports/ExportControls';
-import WorkflowStages from '@/components/reports/WorkflowStages';
-
-type ReportStage = 'drafting' | 'peer_review' | 'manager_approval' | 'published';
+import { ReportPreview } from '@/components/reports/ReportPreview';
+import { ReportGenerator } from '@/components/reports/ReportGenerator';
 
 const ReportBuilderPage = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -31,10 +18,13 @@ const ReportBuilderPage = () => {
   const [project, setProject] = useState<Project | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [selectedFindings, setSelectedFindings] = useState<number[]>([]);
-  const [currentStage, setCurrentStage] = useState<ReportStage>('drafting');
-  const [executiveSummary, setExecutiveSummary] = useState('');
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
+  const [showPreview] = useState(true);
+
+  const approvedFindings = useMemo(
+    () => findings.filter((finding) => finding.status === 'approved'),
+    [findings]
+  );
 
   useEffect(() => {
     if (projectId) {
@@ -50,9 +40,9 @@ const ReportBuilderPage = () => {
         findingApi.getAll({ project_id: parseInt(projectId!) }),
       ]);
       setProject(projectRes.data);
-      setFindings(findingsRes.data.data || findingsRes.data);
+      const findingsData = (findingsRes.data.data || findingsRes.data) as Finding[];
+      setFindings(findingsData);
       // Auto-select approved findings
-      const findingsData = findingsRes.data.data || findingsRes.data;
       const approvedIds = findingsData
         .filter((f: Finding) => f.status === 'approved')
         .map((f: Finding) => f.id);
@@ -64,46 +54,20 @@ const ReportBuilderPage = () => {
     }
   };
 
-  const handleGenerateReport = async (format: 'docx' | 'pdf', options: any) => {
-    try {
-      setGenerating(true);
-      const response = await reportApi.generateReport({
-        project_id: parseInt(projectId!),
-        format,
-        ...options,
-      });
-      
-      // Use the reportId to download the file via axios
-      if (response.data?.reportId) {
-        const reportId = response.data.reportId;
-        
-        // Download the file using axios with blob response
-        const blob = await reportApi.downloadReport(reportId);
-        
-        // Create a blob URL and trigger download
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${project?.name || 'report'}_${new Date().getTime()}.${format}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        
-        alert(`Report downloaded successfully as ${format.toUpperCase()}`);
-      } else {
-        alert(`Report generated successfully as ${format.toUpperCase()}`);
-      }
-    } catch (error) {
-      console.error('Failed to generate report:', error);
-      alert('Failed to generate report');
-    } finally {
-      setGenerating(false);
-    }
+  const handleToggleFinding = (findingId: number) => {
+    setSelectedFindings((current) =>
+      current.includes(findingId)
+        ? current.filter((id) => id !== findingId)
+        : [...current, findingId]
+    );
   };
 
-  const handleStageChange = (stage: ReportStage) => {
-    setCurrentStage(stage);
+  const handleSelectAllApproved = () => {
+    setSelectedFindings(approvedFindings.map((finding) => finding.id));
+  };
+
+  const handleClearSelected = () => {
+    setSelectedFindings([]);
   };
 
   if (loading) {
@@ -132,7 +96,7 @@ const ReportBuilderPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-surface p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6 lg:p-8">
       {/* Header */}
       <div className="mb-6 md:mb-8">
         <Button
@@ -147,15 +111,15 @@ const ReportBuilderPage = () => {
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <FileText className="w-6 h-6 md:w-8 md:h-8 text-primary" />
+              <div className="p-2 rounded-lg bg-green-100">
+                <FileText className="w-6 h-6 md:w-8 md:h-8 text-green-600" />
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-on-surface">
-                Report Builder
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+                {project.name}
               </h1>
             </div>
-            <p className="text-sm md:text-base text-on-surface-variant">
-              {project.name} • {selectedFindings.length} findings selected
+            <p className="text-sm md:text-base text-gray-600">
+              Client: {project.client_name || 'N/A'} • {selectedFindings.length} findings selected
             </p>
           </div>
 
@@ -163,7 +127,7 @@ const ReportBuilderPage = () => {
             <Button
               onClick={() => navigate('/projects')}
               variant="secondary"
-              className="border-outline text-on-surface-variant"
+              className="border-gray-300 text-gray-700"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Cancel
@@ -175,65 +139,109 @@ const ReportBuilderPage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Report Metadata */}
-          <ReportMetadata project={project} findingsCount={selectedFindings.length} />
+          <Card className="p-5 md:p-6 bg-white border border-gray-200 rounded-lg shadow">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg md:text-xl font-bold text-gray-900">Select Findings</h2>
+                <p className="text-sm text-gray-600 mt-1">Choose which approved findings should be included in preview, PDF, and DOCX exports.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" onClick={handleSelectAllApproved} variant="secondary" className="border-gray-300 text-gray-700">
+                  Select All Approved
+                </Button>
+                <Button type="button" onClick={handleClearSelected} variant="secondary" className="border-gray-300 text-gray-700">
+                  Clear Selection
+                </Button>
+              </div>
+            </div>
 
-          {/* Executive Summary */}
-          <ExecutiveSummary
-            value={executiveSummary}
-            onChange={setExecutiveSummary}
-            isEditable={true}
-          />
+            <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+              {approvedFindings.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-gray-300 p-6 text-sm text-gray-600">
+                  No approved findings available for this project.
+                </div>
+              ) : (
+                approvedFindings.map((finding) => {
+                  const isSelected = selectedFindings.includes(finding.id);
+                  return (
+                    <label
+                      key={finding.id}
+                      className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${isSelected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleFinding(finding.id)}
+                        className="mt-1 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                          <p className="font-semibold text-gray-900 break-words">{finding.title}</p>
+                          <span className="inline-flex w-fit rounded px-2.5 py-1 text-xs font-bold text-white bg-gray-700">
+                            {finding.severity}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600 break-all">{finding.affected_target || 'No affected asset provided'}</p>
+                      </div>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </Card>
 
-          {/* Findings Section */}
-          <FindingsSection
-            findings={findings}
-            selectedFindings={selectedFindings}
-            onSelectionChange={setSelectedFindings}
-            isEditable={true}
-          />
+          {/* Report Preview */}
+          {showPreview && (
+            <ReportPreview
+              projectName={project.name}
+              clientName={project.client_name}
+              findings={approvedFindings}
+              selectedFindingIds={selectedFindings}
+              isLoading={loading}
+            />
+          )}
         </div>
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Export Controls */}
-          <ExportControls
-            onGenerate={handleGenerateReport}
-            generating={generating}
-            disabled={selectedFindings.length === 0}
+          {/* Report Generator */}
+          <ReportGenerator
+            projectId={parseInt(projectId!)}
+            projectName={project.name}
+            selectedFindingIds={selectedFindings}
           />
 
           {/* Quick Stats */}
-          <Card className="p-4 md:p-6 bg-surface-high border-outline">
-            <h3 className="text-sm font-semibold text-on-surface mb-4">Report Statistics</h3>
+          <Card className="p-4 md:p-6 bg-white border border-gray-200 rounded-lg shadow">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">Report Statistics</h3>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-on-surface-variant">Total Findings</span>
-                <span className="text-sm font-semibold text-on-surface">
+                <span className="text-xs text-gray-600">Total Findings</span>
+                <span className="text-sm font-semibold text-gray-900">
                   {selectedFindings.length}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-on-surface-variant">Critical</span>
-                <span className="text-sm font-semibold text-error">
-                  {findings.filter((f) => f.severity === 'critical' && selectedFindings.includes(f.id)).length}
+                <span className="text-xs text-gray-600">Critical</span>
+                <span className="text-sm font-semibold text-red-600">
+                  {findings.filter((f) => f.severity === 'Critical' && selectedFindings.includes(f.id)).length}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-on-surface-variant">High</span>
-                <span className="text-sm font-semibold text-orange-400">
-                  {findings.filter((f) => f.severity === 'high' && selectedFindings.includes(f.id)).length}
+                <span className="text-xs text-gray-600">High</span>
+                <span className="text-sm font-semibold text-orange-600">
+                  {findings.filter((f) => f.severity === 'High' && selectedFindings.includes(f.id)).length}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-on-surface-variant">Medium</span>
-                <span className="text-sm font-semibold text-yellow-400">
+                <span className="text-xs text-gray-600">Medium</span>
+                <span className="text-sm font-semibold text-yellow-600">
                   {findings.filter((f) => f.severity === 'Medium' && selectedFindings.includes(f.id)).length}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-on-surface-variant">Low</span>
-                <span className="text-sm font-semibold text-blue-400">
+                <span className="text-xs text-gray-600">Low</span>
+                <span className="text-sm font-semibold text-blue-600">
                   {findings.filter((f) => f.severity === 'Low' && selectedFindings.includes(f.id)).length}
                 </span>
               </div>

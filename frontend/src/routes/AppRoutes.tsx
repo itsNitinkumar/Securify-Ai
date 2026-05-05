@@ -6,7 +6,6 @@ import UsersManagementPage from '../pages/UsersManagementPage';
 import SignInPage from '../pages/SignInPage';
 import SignUpPage from '../pages/SignUpPage';
 import NotFoundPage from '../pages/NotFoundPage';
-import FindingLibraryPage from '../pages/FindingLibraryPage';
 import ProjectsPage from '../pages/ProjectsPage';
 import ActivityLogsPage from '../pages/ActivityLogsPage';
 import FindingDetailPage from '../pages/FindingDetailPage';
@@ -16,6 +15,9 @@ import SearchIntelPage from '../pages/SearchIntelPage';
 import ProfileSettingsPage from '../pages/ProfileSettingsPage';
 import RBACSettingsPage from '../pages/RBACSettingsPage';
 import AuthCallbackPage from '../pages/AuthCallbackPage';
+import TemplateManagementPage from '../pages/TemplateManagementPage';
+import TemplateEditorPage from '../pages/TemplateEditorPage';
+import ReportTemplatesPage from '../pages/ReportTemplatesPage';
 
 const AppRoutes = () => {
   return (
@@ -38,8 +40,9 @@ const AppRoutes = () => {
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/:projectId/report" element={<ReportBuilderPage />} />
         <Route path="reports/:projectId/view" element={<ReportViewPage />} />
+        <Route path="templates" element={<ReportTemplatesPage />} />
+        <Route path="templates/:templateId" element={<TemplateEditorPage />} />
         <Route path="search" element={<SearchIntelPage />} />
-        <Route path="finding-library" element={<FindingLibraryPage />} />
         <Route path="findings/:id" element={<FindingDetailPage />} />
         <Route path="activity" element={<ActivityLogsPage />} />
         <Route path="users" element={<UsersManagementPage />} />

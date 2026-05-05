@@ -20,7 +20,9 @@ const FindingContent = ({
 }: FindingContentProps) => {
   const [editData, setEditData] = useState({
     description: finding.description,
-    steps_to_reproduce: finding.steps_to_reproduce || '',
+    steps_to_reproduce: Array.isArray(finding.steps_to_reproduce) 
+      ? finding.steps_to_reproduce 
+      : finding.steps_to_reproduce ? [finding.steps_to_reproduce] : [],
     remediation: finding.remediation || '',
   });
   const [saving, setSaving] = useState(false);
@@ -89,16 +91,20 @@ const FindingContent = ({
           </div>
           {isEditing ? (
             <textarea
-              value={editData.steps_to_reproduce}
+              value={Array.isArray(editData.steps_to_reproduce) 
+                ? editData.steps_to_reproduce.join('\n') 
+                : editData.steps_to_reproduce}
               onChange={(e) =>
-                setEditData({ ...editData, steps_to_reproduce: e.target.value })
+                setEditData({ ...editData, steps_to_reproduce: e.target.value.split('\n') })
               }
               rows={6}
               className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none font-mono text-sm"
             />
           ) : (
             <pre className="text-sm text-on-surface-variant whitespace-pre-wrap font-mono bg-surface p-4 rounded border border-outline-variant overflow-x-auto">
-              {finding.steps_to_reproduce}
+              {Array.isArray(finding.steps_to_reproduce) 
+                ? finding.steps_to_reproduce.join('\n') 
+                : finding.steps_to_reproduce}
             </pre>
           )}
         </Card>
@@ -170,7 +176,9 @@ const FindingContent = ({
             onClick={() => {
               setEditData({
                 description: finding.description,
-                steps_to_reproduce: finding.steps_to_reproduce || '',
+                steps_to_reproduce: Array.isArray(finding.steps_to_reproduce) 
+                  ? finding.steps_to_reproduce 
+                  : finding.steps_to_reproduce ? [finding.steps_to_reproduce] : [],
                 remediation: finding.remediation || '',
               });
             }}

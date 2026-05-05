@@ -51,10 +51,10 @@ const ProjectDetailDialog = ({
   const loadCurrentUser = async () => {
     try {
       const response = await authApi.getProfile();
-      const userData = response.data.data;
-      if (userData) {
-        setCurrentUserRole(userData.role || '');
-        setCurrentUserId(userData.id || 0);
+      const userData = response.data.data || response.data;
+      if (userData && typeof userData === 'object') {
+        setCurrentUserRole((userData as any).role || '');
+        setCurrentUserId((userData as any).id || 0);
       }
     } catch (error) {
       console.error('Failed to load current user:', error);

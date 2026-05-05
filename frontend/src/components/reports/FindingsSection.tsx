@@ -12,11 +12,11 @@ interface FindingsSectionProps {
 }
 
 const severityColors = {
-  critical: 'bg-red-500/10 text-red-400 border-red-500/20',
-  high: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-  medium: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-  low: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  info: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+  Critical: 'bg-red-500/10 text-red-400 border-red-500/20',
+  High: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+  Medium: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+  Low: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  Informational: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
 };
 
 const FindingsSection = ({

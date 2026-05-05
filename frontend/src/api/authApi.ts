@@ -22,6 +22,7 @@ interface AuthResponse {
     created_at: string;
   };
   token: string;
+  requiresApproval?: boolean;
 }
 
 export const authApi = {

@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const axiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1',
-  timeout: 10000,
+  timeout: 60000, // Increased to 60 seconds for report generation
   withCredentials: true, // Important: Send cookies with requests
   headers: {
     'Content-Type': 'application/json',
@@ -29,8 +29,9 @@ axiosInstance.interceptors.response.use(
       localStorage.removeItem('user');
       window.location.href = '/signin';
     }
-    const message = error.response?.data?.message || 'Something went wrong';
-    return Promise.reject(new Error(message));
+    
+    // Return the error as-is so components can handle it properly
+    return Promise.reject(error);
   }
 );
 

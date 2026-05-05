@@ -20,14 +20,12 @@ const EvidenceVault = ({ findingId }: EvidenceVaultProps) => {
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-on-surface">Evidence Vault</h3>
         <label htmlFor="file-upload">
-          <Button
-            as="span"
-            size="sm"
-            className="bg-primary text-surface hover:bg-primary/90 cursor-pointer"
+          <span
+            className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium bg-primary text-surface hover:bg-primary/90 cursor-pointer rounded-md transition-colors"
           >
             <Upload className="w-4 h-4 mr-2" />
             Upload
-          </Button>
+          </span>
           <input
             id="file-upload"
             type="file"

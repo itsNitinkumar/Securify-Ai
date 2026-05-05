@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Users, Activity, Settings, Bell, HelpCircle, FolderOpen, Search } from 'lucide-react';
+import { LayoutDashboard, Users, Activity, Settings, Bell, HelpCircle, FolderOpen, Search, FileText } from 'lucide-react';
 import Logo from '@/components/common/Logo';
 
 const MainLayout = () => {
@@ -8,7 +8,7 @@ const MainLayout = () => {
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/projects', label: 'Projects', icon: FolderOpen },
-    { path: '/finding-library', label: 'Finding Library', icon: BookOpen },
+    { path: '/templates', label: 'Templates', icon: FileText },
     { path: '/search', label: 'Search', icon: Search },
     { path: '/activity', label: 'Activity Logs', icon: Activity },
     { path: '/users', label: 'Users', icon: Users },

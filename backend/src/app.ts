@@ -43,9 +43,9 @@ app.use(passport.session());
 // Cookie parser
 app.use(cookieParser());
 
-// Body parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parser with increased limit for report templates
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Session timeout check (after authentication)
 app.use('/api/v1', (req, res, next) => checkSessionTimeout(req as any, res, next));

@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        body {
+            margin: 0;
+            font-family: Aptos, Calibri, Arial, Helvetica, sans-serif;
+            color: #121212;
+            background: #fff;
+            font-size: 11.5pt;
+            line-height: 1.26;
+        }
+
+        .page {
+            width: 210mm;
+            height: 297mm;
+            position: relative;
+            page-break-after: always;
+            padding: 16mm 16mm 28mm;
+            overflow: hidden;
+        }
+
+        .cover-page {
+            padding: 0;
+            text-align: center;
+        }
+
+        .cover-frame {
+            min-height: 297mm;
+            position: relative;
+            padding: 18px 0 0;
+        }
+
+        .cover-frame::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 16px;
+            background: #40d31d;
+        }
+
+        .cover-side {
+            position: absolute;
+            top: 0;
+            bottom: 88px;
+            width: 20px;
+            background: #40d31d;
+        }
+
+        .cover-side.left {
+            left: 0;
+        }
+
+        .cover-side.right {
+            right: 0;
+        }
+
+        .cover-hero {
+            margin: 12px 30px 0;
+            height: 610px;
+            background: #3b3b3b;
+            border: 14px solid #f2f2f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+        }
+
+        .cover-hero img {
+            width: 520px;
+            max-width: 100%;
+        }
+
+        .cover-client {
+            margin-top: 42px;
+            font-size: 30px;
+            font-weight: 800;
+            color: #39b829;
+        }
+
+        .cover-highlight {
+            display: inline-block;
+            background: transparent;
+            padding: 0;
+            line-height: 1.15;
+        }
+
+        .cover-title {
+            margin: 12px 0 0;
+            font-size: 17px;
+            font-weight: 800;
+            color: #111;
+        }
+
+        .cover-date {
+            margin: 10px 0 0;
+            font-size: 12pt;
+            color: #8e7f2b;
+        }
+
+        .cover-key {
+            margin-top: 18px;
+            font-size: 130px;
+            line-height: 1;
+            color: #40d31d;
+        }
+
+        .brand-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+
+        .brand-header img {
+            width: 138px;
+            height: auto;
+            flex: 0 0 auto;
+            filter: brightness(0) saturate(100%) invert(49%) sepia(89%) saturate(1574%) hue-rotate(66deg) brightness(92%) contrast(105%);
+        }
+
+        .brand-line {
+            flex: 1;
+            height: 16px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #72f423 0%, #38c92f 52%, #62fa22 100%);
+            position: relative;
+            margin-left: 18px;
+        }
+
+        .brand-line::before {
+            content: "";
+            position: absolute;
+            left: -24px;
+            top: 50%;
+            width: 16px;
+            height: 16px;
+            margin-top: -8px;
+            border-radius: 50%;
+            background: #47d71a;
+        }
+
+        .page-title {
+            margin: 0;
+            font-size: 25px;
+            font-weight: 900;
+            color: #4eb92f;
+        }
+
+        .title-rule {
+            height: 2px;
+            margin: 8px 0 16px;
+            background: #8fc46b;
+        }
+
+        .section-heading {
+            margin: 28px 0 12px;
+            font-size: 19px;
+            font-weight: 900;
+            color: #57bf36;
+        }
+
+        p {
+            margin: 0 0 12px;
+        }
+
+        .lead-italic {
+            font-style: italic;
+            color: #5e5e5e;
+            margin-top: 24px;
+        }
+
+        .green-list,
+        .finding-list,
+        .url-list,
+        .references-list {
+            margin: 6px 0 18px 22px;
+            padding: 0 0 0 20px;
+        }
+
+        .green-list li,
+        .finding-list li,
+        .url-list li,
+        .references-list li {
+            margin-bottom: 5px;
+        }
+
+        .green-list li::marker,
+        .finding-list li::marker,
+        .url-list li::marker,
+        .references-list li::marker {
+            color: #7ac943;
+        }
+
+        .toc-table,
+        .report-table,
+        .appendix-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .toc-table td {
+            border: none;
+            padding: 1px 0;
+            vertical-align: top;
+        }
+
+        .toc-bold {
+            font-weight: 800;
+        }
+
+        .toc-indent-1 {
+            padding-left: 22px !important;
+        }
+
+        .toc-indent-2 {
+            padding-left: 42px !important;
+        }
+
+        .toc-page {
+            text-align: right;
+            width: 56px;
+            white-space: nowrap;
+        }
+
+        .report-table th,
+        .report-table td,
+        .appendix-table th,
+        .appendix-table td {
+            border: 1px solid #edf6e5;
+            padding: 5px 7px;
+            vertical-align: top;
+            overflow-wrap: break-word;
+            word-break: normal;
+            hyphens: auto;
+        }
+
+        .report-table th,
+        .appendix-table th,
+        .appendix-table .table-head td {
+            background: #43c91f;
+            color: #fff;
+            font-weight: 800;
+        }
+
+        .report-table tbody tr:nth-child(odd) td,
+        .appendix-table tbody tr:nth-child(odd) td {
+            background: #e7f7de;
+        }
+
+        .report-table tbody tr:nth-child(even) td,
+        .appendix-table tbody tr:nth-child(even) td {
+            background: #f3fcec;
+        }
+
+        .report-table .label-cell {
+            width: 175px;
+            font-weight: 800;
+        }
+
+        .appendix-table .code-cell {
+            width: 140px;
+            font-weight: 800;
+        }
+
+        .highlight-yellow {
+            background: transparent;
+            padding: 0;
+        }
+
+        .summary-table .risk-cell {
+            width: 126px;
+            font-weight: 800;
+            text-align: center;
+            color: #111;
+        }
+
+        .risk-high {
+            background: #ff1b17 !important;
+            color: #fff !important;
+        }
+
+        .risk-medium {
+            background: #f6b435 !important;
+        }
+
+        .risk-low {
+            background: #7ab54a !important;
+            color: #fff !important;
+        }
+
+        .risk-informational {
+            background: #74a5eb !important;
+        }
+
+        .risk-critical {
+            background: #c70000 !important;
+            color: #fff !important;
+        }
+
+        .summary-spacer {
+            height: 118px;
+        }
+
+        .summary-table td {
+            padding-top: 7px;
+            padding-bottom: 7px;
+        }
+
+        .matrix-wrap {
+            margin: 24px auto 48px;
+            width: 470px;
+            position: relative;
+            padding: 28px 0 62px 82px;
+        }
+
+        .matrix-y-label {
+            position: absolute;
+            left: 0;
+            top: 160px;
+            transform: rotate(-90deg);
+            transform-origin: left top;
+            font-size: 24px;
+            font-weight: 800;
+            color: #111;
+        }
+
+        .matrix-y-scale {
+            position: absolute;
+            left: 50px;
+            top: 42px;
+            display: flex;
+            flex-direction: column;
+            gap: 62px;
+            font-size: 18px;
+            color: #222;
+        }
+
+        .matrix-grid {
+            width: 324px;
+            display: grid;
+            grid-template-columns: repeat(3, 108px);
+            grid-template-rows: repeat(3, 92px);
+            border: 2px solid #222;
+        }
+
+        .matrix-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 800;
+            color: #fff;
+            border: 1px solid #222;
+        }
+
+        .matrix-x-scale {
+            width: 324px;
+            display: grid;
+            grid-template-columns: repeat(3, 108px);
+            margin-top: 10px;
+            font-size: 18px;
+            text-align: center;
+            color: #222;
+        }
+
+        .matrix-x-label {
+            width: 324px;
+            text-align: center;
+            margin-top: 24px;
+            font-size: 24px;
+            font-weight: 800;
+            color: #111;
+        }
+
+        .finding-title {
+            margin: 6px 0 16px;
+            font-size: 17.5pt;
+            font-weight: 900;
+            color: #57bf36;
+        }
+
+        .risk-line {
+            margin: 0 0 18px;
+            font-size: 13pt;
+            font-weight: 800;
+        }
+
+        .risk-line span {
+            font-weight: 800;
+        }
+
+        .risk-text-high {
+            color: #d61818;
+        }
+
+        .risk-text-medium {
+            color: #d89a17;
+        }
+
+        .risk-text-low {
+            color: #4e9f3a;
+        }
+
+        .risk-text-informational {
+            color: #4b79d4;
+        }
+
+        .label-title {
+            margin: 0 0 8px;
+            font-size: 13pt;
+            font-weight: 900;
+            color: #111;
+        }
+
+        .finding-step {
+            margin-bottom: 6px;
+        }
+
+        .finding-step strong {
+            font-weight: 800;
+        }
+
+        .recommendation-block p,
+        .references-block p {
+            margin-bottom: 8px;
+        }
+
+        .back-link {
+            margin-top: 18px;
+            font-weight: 700;
+        }
+
+        a {
+            color: #315fa9;
+            text-decoration: underline;
+            word-break: break-word;
+        }
+
+        .page-footer {
+            position: absolute;
+            left: 10px;
+            right: 10px;
+            bottom: 20px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+        }
+
+        .footer-bar-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 155mm;
+        }
+
+        .footer-bar {
+            flex: 1;
+            height: 18px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #6ff422 0%, #38c92f 54%, #72f423 100%);
+        }
+
+        .footer-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4cd61f;
+        }
+
+        .page-number {
+            min-width: 104px;
+            text-align: right;
+            font-size: 11pt;
+            color: #111;
+        }
+
+        .small-text {
+            font-size: 11pt;
+        }
+
+        .finding-page {
+            padding-top: 14mm;
+            padding-bottom: 42mm;
+            line-height: 1.22;
+        }
+
+        .finding-page .brand-header {
+            margin-bottom: 20px;
+        }
+
+        .finding-page p {
+            margin-bottom: 10px;
+        }
+
+        .finding-page .green-list,
+        .finding-page .url-list,
+        .finding-page .references-list {
+            margin-top: 4px;
+            margin-bottom: 14px;
+        }
+
+        .finding-page .mt-24 {
+            margin-top: 18px;
+        }
+
+        .appendix-page {
+            padding-top: 14mm;
+            padding-bottom: 34mm;
+            line-height: 1.18;
+        }
+
+        .appendix-page .brand-header {
+            margin-bottom: 18px;
+        }
+
+        .appendix-page .appendix-table td,
+        .appendix-page .appendix-table th {
+            padding: 4px 6px;
+            font-size: 10.15pt;
+            line-height: 1.18;
+        }
+
+        .appendix-page .appendix-table .code-cell {
+            width: 108px;
+            white-space: nowrap;
+        }
+
+        .tight p {
+            margin-bottom: 10px;
+        }
+
+        .mt-24 {
+            margin-top: 24px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page cover-page">
+        <div class="cover-frame">
+            <div class="cover-side left"></div>
+            <div class="cover-side right"></div>
+            <div class="cover-hero">
+                <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            </div>
+            <div class="cover-client"><span class="cover-highlight">{{CLIENT_NAME}}</span></div>
+            <div class="cover-title">Web Application &amp; API Penetration Test Report</div>
+            <div class="cover-date"><span class="cover-highlight">{{DATE}}</span></div>
+            <div class="cover-key">&#128477;</div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <h1 class="page-title">Confidentiality and Distribution Restrictions</h1>
+        <div class="title-rule"></div>
+        <div class="tight small-text">
+            <p>The conclusions and recommendations in this report represent the opinions of Securify. Determinations of appropriate corrective action(s) are the responsibility of the entity receiving the report.</p>
+            <p>This report and/or any other materials furnished by Securify in connection with this engagement is confidential and may not be duplicated, modified or otherwise reproduced and distributed without the express prior written consent of Securify or <span class="highlight-yellow">{{CLIENT_NAME}}</span> Because this work may contain copyrighted images or other material, permission from the copyright holder may also be necessary if you wish to reproduce.</p>
+        </div>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (2 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <h1 class="page-title">Table of Contents</h1>
+        <div class="title-rule"></div>
+        <table class="toc-table small-text">
+            <tr><td class="toc-bold">Table of Contents</td><td class="toc-page toc-bold">3</td></tr>
+            <tr><td class="toc-bold">Introduction</td><td class="toc-page toc-bold">4</td></tr>
+            <tr><td class="toc-bold">Approach</td><td class="toc-page toc-bold">5</td></tr>
+            <tr><td class="toc-indent-1">Runtime Application Vulnerability Assessment</td><td class="toc-page">5</td></tr>
+            <tr><td class="toc-bold">Scope</td><td class="toc-page toc-bold">6</td></tr>
+            <tr><td class="toc-indent-1">Application Details</td><td class="toc-page">6</td></tr>
+            <tr><td class="toc-indent-1">User Roles (Web application &amp; API)</td><td class="toc-page">6</td></tr>
+            <tr><td class="toc-indent-1">Tools</td><td class="toc-page">6</td></tr>
+            <tr><td class="toc-indent-1">Assessment Limitation</td><td class="toc-page">7</td></tr>
+            <tr><td class="toc-bold">Findings and Recommendation</td><td class="toc-page toc-bold">8</td></tr>
+            <tr><td class="toc-indent-1">Risk Classification</td><td class="toc-page">8</td></tr>
+            <tr><td class="toc-indent-1">Measurement of Impact</td><td class="toc-page">8</td></tr>
+            <tr><td class="toc-indent-1">Measurement of Likelihood</td><td class="toc-page">9</td></tr>
+            <tr><td class="toc-indent-1">Overall Risk</td><td class="toc-page">10</td></tr>
+            <tr><td class="toc-indent-1">Zero-risk Issues</td><td class="toc-page">10</td></tr>
+            <tr><td class="toc-bold">Vulnerabilities</td><td class="toc-page toc-bold">11</td></tr>
+            <tr><td class="toc-indent-1">Summary</td><td class="toc-page">11</td></tr>
+            <tr><td class="toc-indent-1">Detailed Vulnerabilities</td><td class="toc-page">12</td></tr>
+            <tr><td class="toc-indent-2">Privilege Escalation</td><td class="toc-page">12</td></tr>
+            <tr><td class="toc-indent-2">Account Takeover via Host Header Injection</td><td class="toc-page">15</td></tr>
+            <tr><td class="toc-indent-2">Open Redirection</td><td class="toc-page">18</td></tr>
+            <tr><td class="toc-indent-2">Cross-origin Resource Sharing</td><td class="toc-page">20</td></tr>
+            <tr><td class="toc-indent-2">Week Password Policy in Use</td><td class="toc-page">22</td></tr>
+            <tr><td class="toc-bold">Appendix A</td><td class="toc-page toc-bold">24</td></tr>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (3 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <h1 class="page-title">Introduction</h1>
+        <div class="title-rule"></div>
+        <p>As part of an ongoing security program, <span class="highlight-yellow">{{CLIENT_NAME}}</span> identified the need to conduct an application security assessment of its Web application &amp; APIs.</p>
+        <p class="lead-italic">The following lists the objectives of this assessment:</p>
+        <ul class="green-list">
+            <li>Determine the overall security posture of the application</li>
+            <li>Provide a list of key findings and recommendations for remediation</li>
+        </ul>
+        <p class="lead-italic">This report includes the following parameters and results of the assessment:</p>
+        <ul class="green-list">
+            <li>Securify's approach to the assessment</li>
+            <li>Assessment scope</li>
+            <li>Key findings listed with their qualitative risk assessment</li>
+            <li>Detailed recommendations for each finding</li>
+            <li>A remediation plan</li>
+        </ul>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (4 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <h1 class="page-title">Approach</h1>
+        <div class="title-rule"></div>
+        <p>Securify performed a Runtime Application Vulnerability Assessment of the <span class="highlight-yellow">{{CLIENT_NAME}}</span>'s web application, associated APIs, and all components defined within the assessment scope.</p>
+        <p>The assessment was conducted using industry-accepted methodologies, primarily based on the OWASP Web Security Testing Guide (WSTG) and OWASP ASVS, and involved both manual testing and automated analysis.</p>
+        <h2 class="section-heading">Runtime Application Vulnerability Assessment</h2>
+        <p>The Runtime Application Vulnerability Assessment involved detecting security vulnerabilities through detailed examination and testing of the application in a runtime environment. This assessment emulates an attack by a skilled adversary in a controlled setting and allows <span class="highlight-yellow">{{CLIENT_NAME}}</span> to ascertain the kinds of vulnerabilities that may be realistically exploited. A Runtime Application Vulnerability Assessment includes the following phases:</p>
+        <ul class="green-list">
+            <li><strong>Information Gathering</strong> - The application was reviewed as an anonymous, authenticated, and privileged user to understand differences in access and behavior. Technologies, frameworks, APIs, and third-party integrations were also identified to support targeted testing.</li>
+            <li><strong>Authentication Testing</strong> - Authentication mechanisms were evaluated to determine the strength of login controls, password policies, and account recovery processes. Protections against brute-force attempts and session takeover scenarios were also reviewed to ensure users are securely authenticated.</li>
+            <li><strong>Authorization Testing</strong> - Tests were conducted to identify weaknesses in access control, including attempts to access other users' data or privileged functionality.</li>
+            <li><strong>Session Management</strong> - Session handling was assessed to ensure secure creation, storage, and invalidation of session tokens.</li>
+            <li><strong>Input Validation Attacks</strong> - User-controlled input fields were tested with malformed and malicious data to identify injection flaws and logic bypasses. This included attempts to trigger unexpected behavior, access unintended functionality, or exploit vulnerabilities such as XSS, SQL injection, and command injection.</li>
+            <li><strong>Business Logic Testing</strong> - The application's workflows were reviewed to identify opportunities to misuse or bypass intended processes. This included testing for logic errors, insufficient validation, and scenarios where typical constraints could be circumvented.</li>
+        </ul>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (5 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <h1 class="page-title">Scope</h1>
+        <div class="title-rule"></div>
+        <p>The assessment was conducted between Start Date and End Date. The re-assessment was conducted between Start Date and End Date. Testing was performed remotely.</p>
+        <p>The scope of the assessment was limited to the environments and targets below:</p>
+
+        <h2 class="section-heading">Application Details</h2>
+        <table class="report-table">
+            <thead>
+                <tr><th>Name</th><th>URL</th></tr>
+            </thead>
+            <tbody>
+                <tr><td class="label-cell">Application Name 1</td><td>http://test.com</td></tr>
+                <tr><td class="label-cell">Application Name 2</td><td>http://admin.test.com</td></tr>
+            </tbody>
+        </table>
+
+        <h2 class="section-heading">User Roles (Web application &amp; API)</h2>
+        <table class="report-table">
+            <thead>
+                <tr><th>Role</th><th>Username</th></tr>
+            </thead>
+            <tbody>
+                <tr><td class="label-cell">Customer</td><td>user1</td></tr>
+                <tr><td class="label-cell">Admin</td><td>admin1</td></tr>
+            </tbody>
+        </table>
+
+        <h2 class="section-heading">Tools</h2>
+        <table class="report-table small-text">
+            <thead>
+                <tr><th>Tool Name</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                <tr><td class="label-cell">Burp Professional Pro</td><td>An advanced proxy for testing web security.</td></tr>
+                <tr><td class="label-cell">OpenSSL</td><td>An open-source package to assess security in transit.</td></tr>
+                <tr><td class="label-cell">Nmap</td><td>A tool used to discover hosts and services on a network.</td></tr>
+                <tr><td class="label-cell">SQLMap</td><td>Python-based CLI tool that identifies SQL injection issues.</td></tr>
+                <tr><td class="label-cell">Acunetix Pro</td><td>An automated scanner to perform authenticated scans on the web app / APIs.</td></tr>
+                <tr><td class="label-cell">cURL Utility</td><td>Command line utility to perform HTTP/s requests.</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (6 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <ul class="green-list mt-24">
+            <li>Any applications and infrastructure external to the <span class="highlight-yellow">{{CLIENT_NAME}}</span>'s Web Application &amp; API.</li>
+            <li>In cases where the <span class="highlight-yellow">{{CLIENT_NAME}}</span>'s Web Application &amp; API had inbound and/or outbound interfaces with.</li>
+            <li>Another application, the interfaces, and communications were considered in scope. All other external elements were excluded.</li>
+            <li>Supporting policies, procedures, and processes.</li>
+            <li>Social Engineering.</li>
+            <li>Software Development Life Cycle.</li>
+        </ul>
+
+        <h2 class="section-heading">Assessment Limitation</h2>
+        <p>The ever-changing technology landscape and the increasing sophistication of attacks against networked systems are reasons why no entity can truthfully claim to identify all security issues or guarantee the lifetime security of an organization's network and applications. Note that this point-in-time assessment was based on a best-effort basis. It was also performed only in the environment provided by <span class="highlight-yellow">{{CLIENT_NAME}}</span> Thus, changes to the environment may impact the applicability of the results provided herein.</p>
+        <p class="mt-24">Securify cannot guarantee 100% coverage for any security assessment.</p>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (7 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <h1 class="page-title">Findings and Recommendation</h1>
+        <div class="title-rule"></div>
+
+        <h2 class="section-heading">Risk Classification</h2>
+        <p>The remainder of this report describes the vulnerabilities that Securify identified as part of the assessment, their impact, and recommendations for resolving the vulnerabilities. To assist in determining the risk posed by these vulnerabilities, Securify leverages the OWASP Application Security Risk Rating Methodology. The observations have been categorized based on technical Impact and Likelihood, explained below. These impact and likelihood scores may be further modified by <span class="highlight-yellow">{{CLIENT_NAME}}</span>, based on the business criticality of the target.</p>
+
+        <h2 class="section-heading">Measurement of Impact</h2>
+        <p>Impact is an estimation of the potential damage via a successful exploit of a vulnerability. We'll use the following factors to help qualitatively determine the impact of a vulnerability.</p>
+        <ul class="green-list">
+            <li><strong>Low Impact:</strong> When most/all factors indicate limited consequences (e.g., non-sensitive data, no ability to alter/delete key data, and low victim count).</li>
+            <li><strong>Medium Impact:</strong> When about half of the factors suggest higher damage and half point to limited effects.</li>
+            <li><strong>High Impact:</strong> When most/all factors highlight significant damage (e.g., sensitive data loss, wide data corruption, and a large number of victims).</li>
+        </ul>
+        <table class="report-table small-text">
+            <thead>
+                <tr><th>Factor</th><th>Description</th><th>Effect on Impact</th></tr>
+            </thead>
+            <tbody>
+                <tr><td class="label-cell">Classification of Data Loss</td><td>If an attacker exploited this vulnerability, what type of data would they access or steal? Non-sensitive, non-customer-specific data would lower the impact.</td><td>Less critical data reduces the overall impact.</td></tr>
+                <tr><td class="label-cell">Data Integrity</td><td>Could the attacker modify or delete data they shouldn't? If yes, what kind of data could they corrupt?</td><td>Non-critical or limited modification rights reduce the impact of exploitation.</td></tr>
+                <tr><td class="label-cell">Blast Radius</td><td>How many users or systems would be affected by this vulnerability? For instance, an obscure service affects fewer users, while a public system affects many.</td><td>A small number of victims lowers the severity.</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (8 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <h1 class="page-title">Measurement of Likelihood</h1>
+        <div class="title-rule"></div>
+        <p>Likelihood is a qualitative estimation of the probability of an attacker exploiting the vulnerability in question. In order to determine the likelihood of exploitation, we can consider the following factors:</p>
+        <ul class="green-list">
+            <li><strong>Low Likelihood:</strong> Most/all factors suggest significant barriers to exploitation (e.g., complex skillset, limited attackers, high cost, or complex delivery).</li>
+            <li><strong>Medium Likelihood:</strong> About half the factors indicate ease of exploitation, while the other half show barriers.</li>
+            <li><strong>High Likelihood:</strong> Most/all factors point to easy and accessible exploitation (e.g., basic skills, low cost, and simple attack mechanisms).</li>
+        </ul>
+        <table class="report-table small-text">
+            <thead>
+                <tr><th>Factor</th><th>Description</th><th>Effect on Likelihood</th></tr>
+            </thead>
+            <tbody>
+                <tr><td class="label-cell">Required Skill Level of Attacker</td><td>How technically skilled does the attacker need to be to exploit the vulnerability? The higher the required skills, the lower the likelihood.</td><td>Complex skill requirements lower the chances of exploitation.</td></tr>
+                <tr><td class="label-cell">Number of Potential Attackers</td><td>How many attackers could potentially exploit this vulnerability? If access to the system is limited, fewer attackers can exploit it.</td><td>Fewer attackers reduce the probability of exploitation.</td></tr>
+                <tr><td class="label-cell">Cost of Exploit</td><td>How expensive are the tools or resources required for exploitation? High costs reduce accessibility for attackers.</td><td>Expensive tools lower the likelihood of exploitation.</td></tr>
+                <tr><td class="label-cell">Ease of Exploit</td><td>How simple is it for the attacker to exploit the vulnerability once discovered? Does it rely on external events or tools?</td><td>Complex or multi-step scenarios reduce the chances of successful exploitation.</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (9 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <h1 class="page-title">Overall Risk</h1>
+        <div class="title-rule"></div>
+        <p>The following graph illustrates how Impact x Likelihood scores translate to overall Low, Medium, and High-risk ratings:</p>
+        <ul class="green-list">
+            <li><strong>Low Impact + Low Likelihood</strong> = Low Risk</li>
+            <li><strong>High Impact + High Likelihood</strong> = Critical Risk</li>
+        </ul>
+
+        <div class="matrix-wrap">
+            <div class="matrix-y-label">Impact</div>
+            <div class="matrix-y-scale"><span>High</span><span>Medium</span><span>Low</span></div>
+            <div class="matrix-grid">
+                <div class="matrix-cell risk-medium">Medium</div>
+                <div class="matrix-cell risk-high">High</div>
+                <div class="matrix-cell risk-critical">Critical</div>
+                <div class="matrix-cell risk-low">Low</div>
+                <div class="matrix-cell risk-medium">Medium</div>
+                <div class="matrix-cell risk-high">High</div>
+                <div class="matrix-cell risk-low">Low</div>
+                <div class="matrix-cell risk-low">Low</div>
+                <div class="matrix-cell risk-medium">Medium</div>
+            </div>
+            <div class="matrix-x-scale"><span>Low</span><span>Medium</span><span>High</span></div>
+            <div class="matrix-x-label">Likelihood</div>
+        </div>
+
+        <h2 class="section-heading">Zero-risk Issues</h2>
+        <p>There are cases where a particular issue doesn't have direct security impact or likelihood of exploitation. These could be issues related to documentation or semantics that are suggested based on the security assessors' technical and industry experience. Such issues shall be reported with an Informational risk rating.</p>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (10 of 32 )</div>
+        </div>
+    </div>
+
+    {{FINDINGS_SECTION}}
+
+    <div class="page appendix-page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <h1 class="page-title">Appendix A</h1>
+        <div class="title-rule"></div>
+        <table class="appendix-table small-text">
+            <tbody>
+                <tr class="table-head"><td colspan="2">Penetration Test Scope</td></tr>
+                <tr><td class="code-cell">V1</td><td>Authentication Verification Requirements</td></tr>
+                <tr><td class="code-cell">V1.1</td><td>Password Security Requirements</td></tr>
+                <tr><td class="code-cell">1.1.1</td><td>Verify that user-set passwords are at least 12 characters in length</td></tr>
+                <tr><td class="code-cell">1.1.2</td><td>Verify that passwords 64 characters or longer are permitted</td></tr>
+                <tr><td class="code-cell">1.1.3</td><td>Verify that passwords can contain spaces and that truncation is not performed. Consecutive multiple spaces MAY optionally be coalesced</td></tr>
+                <tr><td class="code-cell">1.1.4</td><td>Verify that Unicode characters are permitted in passwords. A single Unicode code point is considered a character, so 12 emoji or 64 kanji characters should be valid and permitted</td></tr>
+                <tr><td class="code-cell">1.1.5</td><td>Verify users can change their password</td></tr>
+                <tr><td class="code-cell">1.1.7</td><td>Verify that passwords submitted during account registration, login, and password change are checked against a set of breached passwords either locally (such as the top 1,000 or 10,000 most common passwords that match the system's password policy) or using an external API. If using an API a zero-knowledge proof or other mechanism should be used to ensure that the plain text password is not sent or used in verifying the breach status of the password. If the password is breached, the application must require the user to set a new non non-breached password</td></tr>
+                <tr><td class="code-cell">1.1.8</td><td>Verify that a password strength meter is provided to help users set a stronger password</td></tr>
+                <tr><td class="code-cell">1.1.9</td><td>Verify that there are no password composition rules limiting the type of characters permitted. There should be no requirement for upper or lower case or numbers or special characters</td></tr>
+                <tr><td class="code-cell">1.1.10</td><td>Verify that "paste" functionality, browser password helpers, and external password managers are permitted</td></tr>
+                <tr><td class="code-cell">1.1.11</td><td>Verify that the user can choose to either temporarily view the entire masked password, or temporarily view the last typed character of the password on platforms that do not have this as native functionality</td></tr>
+                <tr><td class="code-cell">V1.2</td><td>General Authenticator Requirements</td></tr>
+                <tr><td class="code-cell">1.2.1</td><td>Verify that anti-automation controls are effective at mitigating breached credential testing, brute force, and account lockout attacks. Such controls include blocking the most common breached passwords, soft lockouts, rate limiting, CAPTCHA, ever-increasing delays between attempts, IP address restrictions, or risk-based restrictions such as location, first login on a device, recent attempts to unlock the account, or similar. Verify that no more than 100 failed attempts per hour is possible on a single account</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (24 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page appendix-page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <table class="appendix-table small-text">
+            <tbody>
+                <tr><td class="code-cell">1.2.2</td><td>Verify that the use of weak authenticators (such as SMS and email) is limited to secondary verification and transaction approval and not as a replacement for more secure authentication methods. Verify that stronger methods are offered before weak methods, that users are aware of the risks, or that proper measures are in place to limit the risks of account compromise</td></tr>
+                <tr><td class="code-cell">1.2.3</td><td>Verify that secure notifications are sent to users after updates to authentication details, such as credential resets, email or address changes, and logging in from unknown or risky locations. The use of push notifications - rather than SMS or email - is preferred, but in the absence of push notifications, SMS or email is acceptable as long as no sensitive information is disclosed in the notification</td></tr>
+                <tr><td class="code-cell">1.2.4</td><td>Verify impersonation resistance against phishing, such as the use of multi-factor authentication, cryptographic devices with intent (such as connected keys with a push to authenticate), or at higher ALL levels, client-side certificates</td></tr>
+                <tr><td class="code-cell">1.2.5</td><td>Verify that where a credential service provider (CSP) and the application verifying authentication are separated, mutually authenticated TLS is in place between the two endpoints</td></tr>
+                <tr><td class="code-cell">V1.3</td><td>Credential Recovery Requirements</td></tr>
+                <tr><td class="code-cell">1.3.1</td><td>Verify that a system-generated initial activation or recovery secret is not sent in clear text to the user</td></tr>
+                <tr><td class="code-cell">1.3.2</td><td>Verify password hints or knowledge-based authentication (so-called "secret questions") are not present</td></tr>
+                <tr><td class="code-cell">1.3.3</td><td>Verify password credential recovery does not reveal the current password in any way</td></tr>
+                <tr><td class="code-cell">1.3.4</td><td>Verify shared or default accounts are not present (e.g. "root", "admin", or "sa").</td></tr>
+                <tr><td class="code-cell">1.3.5</td><td>Verify that if an authentication factor is changed or replaced, the user is notified of this event</td></tr>
+                <tr><td class="code-cell">1.3.6</td><td>Verify forgotten passwords, and other recovery paths using a secure recovery mechanism, such as TOTP or another soft token, mobile push, or another offline recovery mechanism</td></tr>
+                <tr><td class="code-cell">1.3.7</td><td>Verify that if OTP or multi-factor authentication factors are lost, that evidence of identity proofing is performed at the same level as during enrolment</td></tr>
+                <tr><td class="code-cell">V1.4</td><td>Single or Multi-Factor One Time Verifier Requirements</td></tr>
+                <tr><td class="code-cell">1.4.1</td><td>Verify that time-based OTPs have a defined lifetime before expiring</td></tr>
+                <tr><td class="code-cell">1.4.2</td><td>Verify that symmetric keys used to verify submitted OTPs are highly protected,</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (25 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page appendix-page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <table class="appendix-table small-text">
+            <tbody>
+                <tr><td class="code-cell"></td><td>such as by using a hardware security module or secure operating system-based key storage</td></tr>
+                <tr><td class="code-cell">1.4.3</td><td>Verify that time-based OTP can be used only once within the validity period</td></tr>
+                <tr><td class="code-cell">1.4.4</td><td>Verify that if a time-based multi-factor OTP token is re-used during the validity period, it is logged and rejected with secure notifications being sent to the holder of the device</td></tr>
+                <tr><td class="code-cell">V2</td><td>Session Management Verification Requirements</td></tr>
+                <tr><td class="code-cell">V2.1</td><td>Fundamental Session Management Requirements</td></tr>
+                <tr><td class="code-cell">2.1.1</td><td>Verify the application never reveals session tokens in URL parameters or error messages</td></tr>
+                <tr><td class="code-cell">2.1.1</td><td>Verify the application generates a new session token on user authentication</td></tr>
+                <tr><td class="code-cell">2.1.2</td><td>Verify that session tokens possess at least 64 bits of entropy</td></tr>
+                <tr><td class="code-cell">2.1.3</td><td>Verify the application only stores session tokens in the browser using secure methods such as appropriately secured cookies or HTML 5 session storage</td></tr>
+                <tr><td class="code-cell">V2.2</td><td>Session Logout and Timeout Requirements</td></tr>
+                <tr><td class="code-cell">2.2.1</td><td>Verify that logout and expiration invalidate the session token, such that the back button or a downstream relying party does not resume an authenticated session, including across relying parties</td></tr>
+                <tr><td class="code-cell">2.2.2</td><td>If authenticators permit users to remain logged in, verify that re-authentication occurs periodically both when actively used or after an idle period. (C6) 30 days 12 hours or 30 minutes of inactivity, 2FA optional 12 hours or 15 minutes of inactivity, with 2FA</td></tr>
+                <tr><td class="code-cell">2.2.3</td><td>Verify that the application terminates all other active sessions after a successful password change and that this is effective across the application, federated login (if present), and any relying parties</td></tr>
+                <tr><td class="code-cell">2.2.4</td><td>Verify that users are able to view and log out of any or all currently active sessions and devices</td></tr>
+                <tr><td class="code-cell">V2.3</td><td>Cookie-based Session Management</td></tr>
+                <tr><td class="code-cell">2.3.1</td><td>Verify that cookie-based session tokens have the 'Secure' attribute set</td></tr>
+                <tr><td class="code-cell">2.3.2</td><td>Verify that cookie-based session tokens have the 'HttpOnly' attribute set</td></tr>
+                <tr><td class="code-cell">2.3.3</td><td>Verify that cookie-based session tokens utilize the 'SameSite' attribute to limit exposure to cross-site request forgery attacks</td></tr>
+                <tr><td class="code-cell">2.3.4</td><td>Verify that cookie-based session tokens use "__Host-" prefix (see references) to provide session cookie confidentiality</td></tr>
+                <tr><td class="code-cell">2.3.5</td><td>Verify that if the application is published under a domain name with other applications that set or use</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (26 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page appendix-page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <table class="appendix-table small-text">
+            <tbody>
+                <tr><td class="code-cell"></td><td>session cookies that might override or disclose the session cookies, set the path attribute in cookie-based session tokens using the most precise path possible</td></tr>
+                <tr><td class="code-cell">V2.4</td><td>Token-based Session Management</td></tr>
+                <tr><td class="code-cell">2.4.2</td><td>Verify the application uses session tokens rather than static API secrets and keys, except with legacy implementations</td></tr>
+                <tr><td class="code-cell">2.4.3</td><td>Verify that stateless session tokens use digital signatures, encryption, and other countermeasures to protect against tampering, enveloping, replay, null cipher, and key substitution attacks</td></tr>
+                <tr><td class="code-cell">V3</td><td>Access Control Verification Requirements</td></tr>
+                <tr><td class="code-cell">V3.1</td><td>Operation Level Access Control</td></tr>
+                <tr><td class="code-cell">3.1.2</td><td>Verify that the application or framework enforces a strong anti-CSRF mechanism to protect authenticated functionality, and effective anti-automation or anti-CSRF protects unauthenticated functionality</td></tr>
+                <tr><td class="code-cell">V4</td><td>Validation, Sanitization, and Encoding Verification Requirements Control Objective</td></tr>
+                <tr><td class="code-cell">V4.1</td><td>Input Validation Requirements</td></tr>
+                <tr><td class="code-cell">4.1.1</td><td>Verify that the application has defenses against HTTP parameter pollution attacks, particularly if the application framework makes no distinction about the source of request parameters (GET, POST, cookies, headers, or environment variables)</td></tr>
+                <tr><td class="code-cell">4.1.2</td><td>Verify that frameworks protect against mass parameter assignment attacks, or that the application has countermeasures to protect against unsafe parameter assignment, such as marking fields private or similar</td></tr>
+                <tr><td class="code-cell">4.1.3</td><td>Verify that all input (HTML form fields, REST requests, URL parameters, HTTP headers, cookies, batch files, RSS feeds, etc) is validated using positive validation (whitelisting)</td></tr>
+                <tr><td class="code-cell">4.1.4</td><td>Verify that structured data is strongly typed and validated against a defined schema including allowed characters, length and pattern (e.g. credit card numbers or telephone, or validating that two related fields are reasonable, such as checking that suburb and zip/postcode match)</td></tr>
+                <tr><td class="code-cell">4.1.5</td><td>Verify that URL redirects and forwards only allow whitelisted destinations, or show a warning when redirecting to potentially untrusted content</td></tr>
+                <tr><td class="code-cell">4.1.6</td><td>Verify that all untrusted HTML input from WYSIWYG editors or similar is properly sanitized with an HTML sanitizer library or framework feature</td></tr>
+                <tr><td class="code-cell">4.1.7</td><td>Verify that unstructured data is sanitized to enforce safety measures such as allowed characters and length</td></tr>
+                <tr><td class="code-cell">4.1.8</td><td>Verify that the application sanitizes user input before passing to mail systems to protect against SMTP or IMAP injection</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (27 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page appendix-page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <table class="appendix-table small-text">
+            <tbody>
+                <tr><td class="code-cell">4.1.9</td><td>Verify that the application avoids the use of eval() or other dynamic code execution features. Where there is no alternative, any user input being included must be sanitized or sandboxed before being executed</td></tr>
+                <tr><td class="code-cell">4.1.10</td><td>Verify that the application protects against template injection attacks by ensuring that any user input being included is sanitized or sandboxed</td></tr>
+                <tr><td class="code-cell">4.1.11</td><td>Verify that the application protects against SSRF attacks, by validating or sanitizing untrusted data or HTTP file metadata, such as filenames and URL input fields, using whitelisting of protocols, domains, paths, and ports</td></tr>
+                <tr><td class="code-cell">4.1.12</td><td>Verify that the application sanitizes, disables, or sandboxes user-supplied SVG scriptable content, especially as they relate to XSS resulting from inline scripts, and foreign Objects</td></tr>
+                <tr><td class="code-cell">4.1.13</td><td>Verify that the application sanitizes, disables, or sandboxes user-supplied scriptable or expression template language content, such as Markdown, CSS or XSL stylesheets, BBCode, or similar</td></tr>
+                <tr><td class="code-cell">V4.2</td><td>Output encoding and Injection Prevention Requirements</td></tr>
+                <tr><td class="code-cell">4.2.1</td><td>Verify that output encoding is relevant for the interpreter and context required. For example, use encoders specifically for HTML values, HTML attributes, JavaScript, URL Parameters, HTTP headers, SMTP, and others as the context requires, especially from untrusted inputs (e.g. names with Unicode or apostrophes, such as ねこ or O'Hara).</td></tr>
+                <tr><td class="code-cell">4.2.2</td><td>Verify that output encoding preserves the user's chosen character set and locale, such that any Unicode character point is valid and safely handled</td></tr>
+                <tr><td class="code-cell">4.2.3</td><td>Verify that context-aware, preferably automated - or at worst, manual - output escaping protects against reflected, stored, and DOM-based XSS</td></tr>
+                <tr><td class="code-cell">4.2.4</td><td>Verify that data selection or database queries (e.g. SQL, HQL, ORM, NoSQL) use parameterized queries, ORMs, entity frameworks, or are otherwise protected from database injection attacks</td></tr>
+                <tr><td class="code-cell">4.2.5</td><td>Verify that where parameterized or safer mechanisms are not present, context-specific output encoding is used to protect against injection attacks, such as the use of SQL escaping to protect against SQL injection</td></tr>
+                <tr><td class="code-cell">4.2.6</td><td>Verify that the application projects against JavaScript or JSON injection attacks, including for eval attacks, remote JavaScript includes, CSP bypasses, DOM XSS, and JavaScript expression evaluation.</td></tr>
+                <tr><td class="code-cell">4.2.7</td><td>Verify that the application protects against LDAP Injection vulnerabilities, or that specific security controls to prevent LDAP Injection have been implemented</td></tr>
+                <tr><td class="code-cell">4.2.8</td><td>Verify that the application protects against OS command injection and that operating system calls use parameterized OS queries or use contextual command line output encoding</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (28 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page appendix-page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <table class="appendix-table small-text">
+            <tbody>
+                <tr><td class="code-cell">4.2.9</td><td>Verify that the application protects against Local File Inclusion (LFI) or Remote File Inclusion (RFI) attacks.</td></tr>
+                <tr><td class="code-cell">4.2.10</td><td>Verify that the application protects against XPath injection or XML injection attacks</td></tr>
+                <tr><td class="code-cell">V4.3</td><td>Deserialization Prevention Requirements</td></tr>
+                <tr><td class="code-cell">4.3.1</td><td>Verify that serialized objects use integrity checks or are encrypted to prevent hostile object creation or data tampering</td></tr>
+                <tr><td class="code-cell">4.3.2</td><td>Verify that the application correctly restricts XML parsers to only use the most restrictive configuration possible and to ensure that unsafe features such as resolving external entities are disabled to prevent testE</td></tr>
+                <tr><td class="code-cell">4.3.3</td><td>Verify that deserialization of untrusted data is avoided or is protected in both custom code and third-party libraries (such as JSON, XML and YAML parsers)</td></tr>
+                <tr><td class="code-cell">4.3.4</td><td>Verify that when parsing JSON in browsers or JavaScript-based backends, JSON.parse is used to parse the JSON document. Do not use eval() to parse JSON</td></tr>
+                <tr><td class="code-cell">V5</td><td>Error Handling and Logging Verification Requirements</td></tr>
+                <tr><td class="code-cell">V5.1</td><td>Error Handling</td></tr>
+                <tr><td class="code-cell">5.1.1</td><td>Verify that a generic message is shown when an unexpected or security sensitive error occurs, potentially with a unique ID which support personnel can use to investigate</td></tr>
+                <tr><td class="code-cell">V6</td><td>Data Protection Verification Requirements</td></tr>
+                <tr><td class="code-cell">V6.1</td><td>Sensitive Private Data</td></tr>
+                <tr><td class="code-cell">6.1.1</td><td>Verify that sensitive data is sent to the server in the HTTP message body or headers, and that query string parameters from any HTTP verb do not contain sensitive data</td></tr>
+                <tr><td class="code-cell">V7</td><td>Communications Verification Requirements</td></tr>
+                <tr><td class="code-cell">V7.1</td><td>Communications Security Requirements</td></tr>
+                <tr><td class="code-cell">7.1.1</td><td>Verify that secured TLS is used for all client connectivity, and does not fall back to insecure or unencrypted protocols.</td></tr>
+                <tr><td class="code-cell">7.1.2</td><td>Verify using online or up-to-date TLS testing tools that only strong algorithms, ciphers, and protocols are enabled, with the strongest algorithms and ciphers set as preferred</td></tr>
+                <tr><td class="code-cell">7.1.3</td><td>Verify that old versions of SSL and TLS protocols, algorithms, ciphers, and configurations are disabled, such as SSLv2, SSLv3, or TLS 1.0 and TLS 1.1. The latest version of TLS should be the preferred cipher suite</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (29 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page appendix-page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <table class="appendix-table small-text">
+            <tbody>
+                <tr><td class="code-cell">V8</td><td>Business Logic Verification Requirements</td></tr>
+                <tr><td class="code-cell">8.1.1</td><td>Verify the application will only process business logic flows for the same user in sequential step order and without skipping steps</td></tr>
+                <tr><td class="code-cell">8.1.2</td><td>Verify the application will only process business logic flows with all steps being processed in realistic human time, i.e. transactions are not submitted too quickly</td></tr>
+                <tr><td class="code-cell">8.1.3</td><td>Verify the application has appropriate limits for specific business actions or transactions which are correctly enforced on a per-user basis</td></tr>
+                <tr><td class="code-cell">8.1.4</td><td>Verify the application has sufficient anti-automation controls to detect and protect against data exfiltration, excessive business logic requests, excessive file uploads, or denial of service attacks</td></tr>
+                <tr><td class="code-cell">8.1.5</td><td>Verify the application has business logic limits or validation to protect against likely business risks or threats, identified using threat modeling or similar methodologies</td></tr>
+                <tr><td class="code-cell">8.1.6</td><td>Tested for IDOR's vulnerabilities which would allow other users to retrieve any kind of sensitive information like api key, tokens etc.</td></tr>
+                <tr><td class="code-cell">8.1.7</td><td>Verified Privilege Escalation vulnerabilities which could allow low privilege users to perform arbitrary operations leading potential account takeovers.</td></tr>
+                <tr><td class="code-cell">8.1.8</td><td>Verified Privilege Escalation vulnerabilities which could allow users to perform CRUD Operations on behalf of victim users.</td></tr>
+                <tr><td class="code-cell">8.1.9</td><td>Checked for Information Disclosure vulnerabilities via IDORs which could result in users PII Disclosure (PII).</td></tr>
+                <tr><td class="code-cell">8.1.10</td><td>Checked for Broken Access Control issues via browsed forcing.</td></tr>
+                <tr><td class="code-cell">8.1.11</td><td>Checked for Mass Assignment vulnerability which could allow attackers to gain extra privileges.</td></tr>
+                <tr><td class="code-cell">V9</td><td>File and Resources Verification Requirements</td></tr>
+                <tr><td class="code-cell">V9.1</td><td>File Upload Requirements</td></tr>
+                <tr><td class="code-cell">9.1.1</td><td>Verify that the application will not accept large files that could fill up storage or cause a denial of service attack</td></tr>
+                <tr><td class="code-cell">V9.2</td><td>File Integrity Requirements</td></tr>
+                <tr><td class="code-cell">9.2.1</td><td>Verify that files obtained from untrusted sources are validated to be of expected type based on the file's content</td></tr>
+                <tr><td class="code-cell">V10</td><td>API and Web Service Verification Requirements</td></tr>
+                <tr><td class="code-cell">V10.1</td><td>Generic Web Service Security Verification Requirements</td></tr>
+                <tr><td class="code-cell">10.1.1</td><td>Verify that all application components use the same encodings and parsers to avoid parsing attacks that exploit different URI or file parsing behavior that could be used in SSRF and RFI attacks</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (30 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page appendix-page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <table class="appendix-table small-text">
+            <tbody>
+                <tr><td class="code-cell">10.1.2</td><td>Verify that access to administration and management functions is limited to authorized administrators</td></tr>
+                <tr><td class="code-cell">10.1.3</td><td>Verify API URLs do not expose sensitive information, such as the API key, session tokens, etc</td></tr>
+                <tr><td class="code-cell">10.1.4</td><td>Verify that authorization decisions are made at both the URI, enforced by programmatic or declarative security at the controller or router, and at the resource level, enforced by model-based permissions</td></tr>
+                <tr><td class="code-cell">10.1.5</td><td>Verify that requests containing unexpected or missing content types are rejected with appropriate headers (HTTP response status 406 Unacceptable or 415 Unsupported Media Type)</td></tr>
+                <tr><td class="code-cell">V10.2</td><td>RESTful Web Service Verification Requirements</td></tr>
+                <tr><td class="code-cell">V11</td><td>Configuration Verification Requirements</td></tr>
+                <tr><td class="code-cell">V11.1</td><td>Dependency</td></tr>
+                <tr><td class="code-cell">11.1.1</td><td>Verify that all components are up to date</td></tr>
+                <tr><td class="code-cell">11.1.2</td><td>Verify that all unneeded features, documentation, samples, configurations are removed, such as sample applications, platform documentation, and default or example users</td></tr>
+                <tr><td class="code-cell">11.1.3</td><td>Verify that if application assets, such as JavaScript libraries, CSS stylesheets or web fonts, are hosted externally on a content delivery network (CDN) or external provider, Subresource Integrity (SRI) is used to validate the integrity of the asset</td></tr>
+                <tr><td class="code-cell">V11.2</td><td>Unintended Security Disclosure Requirements</td></tr>
+                <tr><td class="code-cell">11.2.1</td><td>Verify that web or application server and framework error messages are configured to deliver user-actionable, customized responses to eliminate any unintended security disclosures</td></tr>
+                <tr><td class="code-cell">11.2.2</td><td>Verify that web or application server and application framework debug modes are disabled in production to eliminate debug features, developer consoles, and unintended security disclosures</td></tr>
+                <tr><td class="code-cell">11.2.3</td><td>Verify that the HTTP headers or any part of the HTTP response do not expose detailed version information of system components</td></tr>
+                <tr><td class="code-cell">V11.3</td><td>HTTP Security Headers Requirements</td></tr>
+                <tr><td class="code-cell">11.3.1</td><td>Verify that every HTTP response contains a content type header specifying a safe character set (e.g., UTF-8, ISO 8859-1).</td></tr>
+                <tr><td class="code-cell">11.3.2</td><td>Verify that all API responses contain Content-Disposition: attachment; filename="api.json" (or other appropriate filename for the content type).</td></tr>
+                <tr><td class="code-cell">11.3.3</td><td>Verify that a content security policy (CSPv2) is in place that helps mitigate impact of XSS attacks like HTML, DOM, JSON, and JavaScript injection vulnerabilities</td></tr>
+                <tr><td class="code-cell">11.3.4</td><td>Verify that all responses contain X-Content-Type-Options: nosniff</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (31 of 32 )</div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="brand-header">
+            <img src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" alt="Securify logo">
+            <div class="brand-line"></div>
+        </div>
+        <table class="appendix-table small-text">
+            <tbody>
+                <tr><td class="code-cell">11.3.5</td><td>Verify that HTTP Strict Transport Security headers are included on all responses and for all subdomains, such as Strict-Transport-Security: max-age=15724800; include subdomains</td></tr>
+                <tr><td class="code-cell">11.3.6</td><td>Verify that a suitable "Referrer-Policy" header is included, such as "no-referrer" or "same-origin</td></tr>
+                <tr><td class="code-cell">11.3.7</td><td>Verify that a suitable X-Frame-Options or Content-Security-Policy: frame ancestors header is in use for sites where content should not be embedded in a third-party site</td></tr>
+                <tr><td class="code-cell">V11.4</td><td>Validate HTTP Request Header Requirements</td></tr>
+                <tr><td class="code-cell">11.4.1</td><td>Verify that the application server only accepts the HTTP methods in use by the application or API, including pre-flight OPTIONS</td></tr>
+                <tr><td class="code-cell">11.4.2</td><td>Verify that the supplied Origin header is not used for authentication or access control decisions, as the Origin header can easily be changed by an attacker</td></tr>
+                <tr><td class="code-cell">11.4.3</td><td>Verify that the cross-domain resource sharing (CORS) Access-Control-AllowOrigin header uses a strict white list of trusted domains to match against and does not support the "null" origin</td></tr>
+                <tr><td class="code-cell">11.4.4</td><td>Verify that HTTP headers added by a trusted proxy or SSO devices, such as a bearer token, are authenticated by the application</td></tr>
+            </tbody>
+        </table>
+        <div class="page-footer">
+            <div class="footer-bar-wrap">
+                <div class="footer-bar"></div>
+                <div class="footer-dot"></div>
+            </div>
+            <div class="page-number">Page (32 of 32 )</div>
+        </div>
+    </div>
+</body>
+
+</html>

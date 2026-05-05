@@ -16,6 +16,13 @@ router.post(
   ReportController.generateReport
 );
 
+router.post(
+  '/preview',
+  requireRole('manager', 'admin'),
+  apiLimiter,
+  ReportController.previewReport
+);
+
 // Download Report - All authenticated users
 router.get(
   '/:id/download',

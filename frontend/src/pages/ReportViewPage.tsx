@@ -38,7 +38,7 @@ const ReportViewPage = () => {
         findingApi.getAllFindings({ project_id: parseInt(projectId!), status: 'approved' }),
       ]);
       setProject(projectRes.data);
-      setFindings(findingsRes.data);
+      setFindings(Array.isArray(findingsRes.data) ? findingsRes.data : findingsRes.data.data || []);
     } catch (error) {
       console.error('Failed to load report data:', error);
     } finally {
@@ -48,18 +48,18 @@ const ReportViewPage = () => {
 
   const calculateSecurityScore = () => {
     if (findings.length === 0) return 100;
-    const criticalCount = findings.filter((f) => f.severity === 'critical').length;
-    const highCount = findings.filter((f) => f.severity === 'high').length;
+    const criticalCount = findings.filter((f) => f.severity === 'Critical').length;
+    const highCount = findings.filter((f) => f.severity === 'High').length;
     const score = Math.max(0, 100 - (criticalCount * 15 + highCount * 10));
     return score;
   };
 
-  const severityColors = {
-    critical: 'bg-red-500/10 text-red-400 border-red-500/20',
-    high: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    medium: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-    low: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    info: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+  const severityColors: Record<string, string> = {
+    Critical: 'bg-red-500/10 text-red-400 border-red-500/20',
+    High: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+    Medium: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+    Low: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    Informational: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
   };
 
   if (loading) {
@@ -88,8 +88,8 @@ const ReportViewPage = () => {
   }
 
   const securityScore = calculateSecurityScore();
-  const criticalCount = findings.filter((f) => f.severity === 'critical').length;
-  const highCount = findings.filter((f) => f.severity === 'high').length;
+  const criticalCount = findings.filter((f) => f.severity === 'Critical').length;
+  const highCount = findings.filter((f) => f.severity === 'High').length;
 
   return (
     <div className="min-h-screen bg-surface">

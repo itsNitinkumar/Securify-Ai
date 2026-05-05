@@ -50,13 +50,19 @@ const EditFindingDialog = ({ findingId, open, onOpenChange, onSuccess }: EditFin
       const data = response.data.data;
       if (data) {
         setFinding(data);
+        const extractValue = (val: any): string => {
+          if (!val) return '';
+          if (typeof val === 'string') return val;
+          if (typeof val === 'object' && val.detail) return val.detail;
+          return String(val);
+        };
         setFormData({
           title: data.title || '',
           severity: data.severity || 'Medium',
           description: data.description || '',
           affected_target: data.affected_target || '',
-          likelihood: data.likelihood || '',
-          impact: data.impact || '',
+          likelihood: extractValue(data.likelihood),
+          impact: extractValue(data.impact),
           steps_to_reproduce: data.steps_to_reproduce || [''],
           proof_of_concept: data.proof_of_concept || '',
           remediation: data.remediation || '',

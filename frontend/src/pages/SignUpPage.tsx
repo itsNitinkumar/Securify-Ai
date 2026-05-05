@@ -28,24 +28,24 @@ const SignUpPage = () => {
 
     try {
       const response = await authApi.signup(formData);
-      
+
       console.log('Signup response:', response.data);
-      
+
       // Check if account requires approval
       if (response.data.data?.requiresApproval) {
         console.log('Account requires approval - showing pending screen');
         setPendingApproval(true);
         return;
       }
-      
+
       console.log('Account active - redirecting to dashboard');
-      
+
       // Token is set as httpOnly cookie by backend for active users
       // Store user info if needed
       if (response.data.data?.user) {
         localStorage.setItem('user', JSON.stringify(response.data.data.user));
       }
-      
+
       // Redirect to dashboard or home
       navigate('/');
     } catch (err: any) {
@@ -71,7 +71,7 @@ const SignUpPage = () => {
 
         <div className="space-y-8 relative z-10">
           <StatusPulse status="active" label="PROTOCOL V4.2 ACTIVE" />
-          
+
           <div className="space-y-4">
             <h1 className="text-6xl font-bold leading-tight tracking-tight">
               Initialize your<br />
@@ -80,7 +80,7 @@ const SignUpPage = () => {
               <span className="text-[#00fc40]">Neural Defense</span><br />
               systems.
             </h1>
-            
+
             <p className="text-[#adaaaa] text-lg max-w-md leading-relaxed">
               Join the next generation of cybersecurity professionals. Create your authenticated identity within the sentinel network.
             </p>
@@ -125,7 +125,7 @@ const SignUpPage = () => {
                       <p className="text-xs text-[#adaaaa]">A manager will review your request</p>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2 pt-2">
                     <p className="text-xs text-[#adaaaa]">
                       <span className="font-medium text-[#ffffff]">Email:</span> {formData.email}
@@ -154,131 +154,131 @@ const SignUpPage = () => {
                 <p className="text-[#adaaaa]">Establish your credentials to access the sentinel protocol.</p>
               </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="bg-[#ff735120] border border-[#ff7351] rounded-md p-3">
-                <p className="text-sm text-[#ff7351]">{error}</p>
-              </div>
-            )}
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {error && (
+                  <div className="bg-[#ff735120] border border-[#ff7351] rounded-md p-3">
+                    <p className="text-sm text-[#ff7351]">{error}</p>
+                  </div>
+                )}
 
-            <div className="space-y-2">
-              <label className="block text-xs font-technical uppercase tracking-wider text-[#adaaaa]">
-                FULL NAME
-              </label>
-              <Input
-                type="text"
-                name="name"
-                placeholder="John Sentinel"
-                value={formData.name}
-                onChange={handleChange}
-                required
-              />
-            </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-technical uppercase tracking-wider text-[#adaaaa]">
+                    FULL NAME
+                  </label>
+                  <Input
+                    type="text"
+                    name="name"
+                    placeholder="John Sentinel"
+                    value={formData.name}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <label className="block text-xs font-technical uppercase tracking-wider text-[#adaaaa]">
-                CORPORATE EMAIL
-              </label>
-              <Input
-                type="email"
-                name="email"
-                placeholder="name@securify.ai"
-                value={formData.email}
-                onChange={handleChange}
-                required
-              />
-            </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-technical uppercase tracking-wider text-[#adaaaa]">
+                    CORPORATE EMAIL
+                  </label>
+                  <Input
+                    type="email"
+                    name="email"
+                    placeholder="name@securify.ai"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <label className="block text-xs font-technical uppercase tracking-wider text-[#adaaaa]">
-                PASSWORD
-              </label>
+                <div className="space-y-2">
+                  <label className="block text-xs font-technical uppercase tracking-wider text-[#adaaaa]">
+                    PASSWORD
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      name="password"
+                      placeholder="••••••••••••"
+                      value={formData.password}
+                      onChange={handleChange}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#adaaaa] hover:text-[#9cff93] transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+
+                  {/* Password Strength - Only on Sign Up */}
+                  {formData.password && (
+                    <PasswordStrength password={formData.password} />
+                  )}
+                </div>
+
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 animate-spin" size={16} />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="mr-2" size={16} />
+                      Initialize Credentials
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              <Card className="p-4 border-l-2 border-[#00fc40]">
+                <div className="flex items-start gap-3">
+                  <img
+                    src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png"
+                    alt="Securify"
+                    className="h-4 mt-0.5"
+                  />
+                  <div>
+                    <p className="text-xs font-technical uppercase tracking-wider text-[#9cff93] mb-1">
+                      DATA SANITIZED BEFORE AI PROCESSING
+                    </p>
+                    <p className="text-xs text-[#adaaaa]">All authentication logs are scrubbed for PII.</p>
+                  </div>
+                </div>
+              </Card>
+
               <div className="relative">
-                <Input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  placeholder="••••••••••••"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#adaaaa] hover:text-[#9cff93] transition-colors"
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-[#49484726]" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-surface px-4 text-[#494847] font-technical tracking-wider">OR</span>
+                </div>
               </div>
-              
-              {/* Password Strength - Only on Sign Up */}
-              {formData.password && (
-                <PasswordStrength password={formData.password} />
-              )}
-            </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 animate-spin" size={16} />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <UserPlus className="mr-2" size={16} />
-                  Initialize Credentials
-                </>
-              )}
-            </Button>
-          </form>
+              <Button variant="secondary" className="w-full" asChild>
+                <a href={`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'}/auth/google`}>
+                  <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                    <path fill="#EA4335" d="M5.26620003,9.76452941 C6.19878754,6.93863203 8.85444915,4.90909091 12,4.90909091 C13.6909091,4.90909091 15.2181818,5.50909091 16.4181818,6.49090909 L19.9090909,3 C17.7818182,1.14545455 15.0545455,0 12,0 C7.27006974,0 3.1977497,2.69829785 1.23999023,6.65002441 L5.26620003,9.76452941 Z" />
+                    <path fill="#34A853" d="M16.0407269,18.0125889 C14.9509167,18.7163016 13.5660892,19.0909091 12,19.0909091 C8.86648613,19.0909091 6.21911939,17.076871 5.27698177,14.2678769 L1.23746264,17.3349879 C3.19279051,21.2936293 7.26500293,24 12,24 C14.9328362,24 17.7353462,22.9573905 19.834192,20.9995801 L16.0407269,18.0125889 Z" />
+                    <path fill="#4A90E2" d="M19.834192,20.9995801 C22.0291676,18.9520994 23.4545455,15.903663 23.4545455,12 C23.4545455,11.2909091 23.3454545,10.5818182 23.1818182,9.90909091 L12,9.90909091 L12,14.4545455 L18.4363636,14.4545455 C18.1187732,16.013626 17.2662994,17.2212117 16.0407269,18.0125889 L19.834192,20.9995801 Z" />
+                    <path fill="#FBBC05" d="M5.27698177,14.2678769 C5.03832634,13.556323 4.90909091,12.7937589 4.90909091,12 C4.90909091,11.2182781 5.03443647,10.4668121 5.26620003,9.76452941 L1.23999023,6.65002441 C0.43658717,8.26043162 0,10.0753848 0,12 C0,13.9195484 0.444780743,15.7301709 1.23746264,17.3349879 L5.27698177,14.2678769 Z" />
+                  </svg>
+                  Continue with Google
+                </a>
+              </Button>
 
-          <Card className="p-4 border-l-2 border-[#00fc40]">
-            <div className="flex items-start gap-3">
-              <img 
-                src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png" 
-                alt="Securify" 
-                className="h-4 mt-0.5" 
-              />
-              <div>
-                <p className="text-xs font-technical uppercase tracking-wider text-[#9cff93] mb-1">
-                  DATA SANITIZED BEFORE AI PROCESSING
-                </p>
-                <p className="text-xs text-[#adaaaa]">All authentication logs are scrubbed for PII.</p>
-              </div>
-            </div>
-          </Card>
+              <p className="text-center text-sm text-[#adaaaa]">
+                Already have credentials?{' '}
+                <Link to="/signin" className="text-[#9cff93] hover:text-[#00fc40] transition-colors font-medium">
+                  Authenticate Now
+                </Link>
+              </p>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#49484726]" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-surface px-4 text-[#494847] font-technical tracking-wider">OR</span>
-            </div>
-          </div>
-
-          <Button variant="secondary" className="w-full" asChild>
-            <a href={`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'}/auth/google`}>
-              <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
-                <path fill="#EA4335" d="M5.26620003,9.76452941 C6.19878754,6.93863203 8.85444915,4.90909091 12,4.90909091 C13.6909091,4.90909091 15.2181818,5.50909091 16.4181818,6.49090909 L19.9090909,3 C17.7818182,1.14545455 15.0545455,0 12,0 C7.27006974,0 3.1977497,2.69829785 1.23999023,6.65002441 L5.26620003,9.76452941 Z"/>
-                <path fill="#34A853" d="M16.0407269,18.0125889 C14.9509167,18.7163016 13.5660892,19.0909091 12,19.0909091 C8.86648613,19.0909091 6.21911939,17.076871 5.27698177,14.2678769 L1.23746264,17.3349879 C3.19279051,21.2936293 7.26500293,24 12,24 C14.9328362,24 17.7353462,22.9573905 19.834192,20.9995801 L16.0407269,18.0125889 Z"/>
-                <path fill="#4A90E2" d="M19.834192,20.9995801 C22.0291676,18.9520994 23.4545455,15.903663 23.4545455,12 C23.4545455,11.2909091 23.3454545,10.5818182 23.1818182,9.90909091 L12,9.90909091 L12,14.4545455 L18.4363636,14.4545455 C18.1187732,16.013626 17.2662994,17.2212117 16.0407269,18.0125889 L19.834192,20.9995801 Z"/>
-                <path fill="#FBBC05" d="M5.27698177,14.2678769 C5.03832634,13.556323 4.90909091,12.7937589 4.90909091,12 C4.90909091,11.2182781 5.03443647,10.4668121 5.26620003,9.76452941 L1.23999023,6.65002441 C0.43658717,8.26043162 0,10.0753848 0,12 C0,13.9195484 0.444780743,15.7301709 1.23746264,17.3349879 L5.27698177,14.2678769 Z"/>
-              </svg>
-              Continue with Google
-            </a>
-          </Button>
-
-          <p className="text-center text-sm text-[#adaaaa]">
-            Already have credentials?{' '}
-            <Link to="/signin" className="text-[#9cff93] hover:text-[#00fc40] transition-colors font-medium">
-              Authenticate Now
-            </Link>
-          </p>
-
-          <p className="text-center text-[10px] font-technical uppercase tracking-wider text-[#494847] pt-4">
-            SYSTEM ARCHITECTURE OPTIMIZED FOR HIGH AVAILABILITY
-          </p>
+              <p className="text-center text-[10px] font-technical uppercase tracking-wider text-[#494847] pt-4">
+                SYSTEM ARCHITECTURE OPTIMIZED FOR HIGH AVAILABILITY
+              </p>
             </>
           )}
         </div>

@@ -1,19 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { reportApi } from '@/api/reportApi';
 import { toast } from 'react-hot-toast';
-import { Download, FileText, Loader2 } from 'lucide-react';
+import { Download, FileText, Loader2, FileJson } from 'lucide-react';
+
+interface ReportTemplate {
+  id: number;
+  name: string;
+  description?: string;
+  is_default: boolean;
+}
 
 interface ReportGeneratorProps {
   projectId: number;
   projectName: string;
+  selectedFindingIds: number[];
 }
 
 export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
   projectId,
   projectName,
+  selectedFindingIds,
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [format, setFormat] = useState<'docx' | 'pdf'>('docx');
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [format, setFormat] = useState<'docx' | 'pdf'>('pdf');
+  const [templates, setTemplates] = useState<ReportTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
+
+  // Load templates on mount
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        const response = await reportApi.getAllTemplates();
+        const templatesList = response.data || response;
+        setTemplates(Array.isArray(templatesList) ? templatesList : []);
+        
+        // Set default template as selected
+        const defaultTemplate = templatesList.find((t: ReportTemplate) => t.is_default);
+        if (defaultTemplate) {
+          setSelectedTemplate(defaultTemplate.id);
+        } else if (templatesList.length > 0) {
+          setSelectedTemplate(templatesList[0].id);
+        }
+      } catch (error) {
+        console.error('Error loading templates:', error);
+        toast.error('Failed to load report templates');
+      } finally {
+        setIsLoadingTemplates(false);
+      }
+    };
+
+    loadTemplates();
+  }, []);
 
   const handleGenerateReport = async () => {
     setIsGenerating(true);
@@ -23,12 +62,14 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
       const result = await reportApi.generateReport({
         project_id: projectId,
         format: format,
+        template_id: selectedTemplate || undefined,
+        finding_ids: selectedFindingIds,
       });
 
       toast.success('Report generated successfully!');
 
       // Download the report
-      const reportId = result.data.reportId;
+      const reportId = result.reportId;
       const blob = await reportApi.downloadReport(reportId);
       
       // Create download link
@@ -44,70 +85,207 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
       toast.success('Report downloaded!');
     } catch (error: any) {
       console.error('Error generating report:', error);
-      toast.error(error.response?.data?.message || 'Failed to generate report');
+      const errorMessage = 
+        typeof error === 'string' ? error :
+        error?.message ? error.message :
+        error?.response?.data?.message || 
+        error?.response?.data?.error ||
+        'Failed to generate report';
+      toast.error(errorMessage);
     } finally {
       setIsGenerating(false);
     }
   };
 
+  const handlePreviewReport = async () => {
+    setIsPreviewing(true);
+
+    try {
+      const blob = await reportApi.previewReport({
+        project_id: projectId,
+        format: 'pdf',
+        template_id: selectedTemplate || undefined,
+        finding_ids: selectedFindingIds,
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+      toast.success('Preview opened in a new tab');
+    } catch (error: any) {
+      console.error('Error previewing report:', error);
+      const errorMessage =
+        typeof error === 'string' ? error :
+        error?.message ? error.message :
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        'Failed to preview report';
+      toast.error(errorMessage);
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <FileText className="w-5 h-5 text-blue-600" />
-        <h3 className="text-lg font-semibold">Generate Report</h3>
+    <div className="bg-white rounded-lg shadow overflow-hidden border-t-4" style={{ borderTopColor: '#00d639' }}>
+      {/* Header */}
+      <div className="bg-gray-900 px-8 py-6 border-b-4" style={{ borderBottomColor: '#00d639' }}>
+        <div className="flex items-center gap-3">
+          <img
+            src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png"
+            alt="Securify"
+            className="h-4"
+          />
+          <h3 className="text-white text-lg font-bold">Generate Report</h3>
+        </div>
       </div>
 
-      <div className="space-y-4">
+      {/* Content */}
+      <div className="p-8 space-y-6">
+        {/* Template Selection */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Report Format
+          <label className="block text-sm font-bold text-gray-900 mb-4" style={{ color: '#00d639' }}>
+            SELECT REPORT TEMPLATE
           </label>
-          <div className="flex gap-4">
-            <label className="flex items-center">
-              <input
-                type="radio"
-                value="docx"
-                checked={format === 'docx'}
-                onChange={(e) => setFormat(e.target.value as 'docx')}
-                className="mr-2"
-                disabled={isGenerating}
-              />
-              <span className="text-sm">Word Document (.docx)</span>
-            </label>
-            <label className="flex items-center">
+          {isLoadingTemplates ? (
+            <div className="flex items-center gap-2 p-4 text-gray-600 bg-gray-50 rounded-lg">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="text-sm">Loading templates...</span>
+            </div>
+          ) : templates.length > 0 ? (
+            <select
+              value={selectedTemplate || ''}
+              onChange={(e) => setSelectedTemplate(parseInt(e.target.value))}
+              disabled={isGenerating}
+              className="w-full px-4 py-3 border-2 rounded-lg text-gray-900 bg-white focus:outline-none transition-all"
+              style={{ borderColor: '#e5e7eb' }}
+            >
+              <option value="">Select a template...</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name} {template.is_default ? '(Default)' : ''}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded text-yellow-800 text-sm">
+              No templates available. Please create a template first.
+            </div>
+          )}
+        </div>
+
+        {/* Format Selection */}
+        <div>
+          <label className="block text-sm font-bold text-gray-900 mb-4" style={{ color: '#00d639' }}>
+            SELECT REPORT FORMAT
+          </label>
+          <div className="space-y-3">
+            {/* PDF Option */}
+            <label className="flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50" 
+              style={{ borderColor: format === 'pdf' ? '#00d639' : '#e5e7eb' }}>
               <input
                 type="radio"
                 value="pdf"
                 checked={format === 'pdf'}
                 onChange={(e) => setFormat(e.target.value as 'pdf')}
-                className="mr-2"
                 disabled={isGenerating}
+                className="mr-4 w-4 h-4"
+                style={{ accentColor: '#00d639' }}
               />
-              <span className="text-sm">PDF (.pdf)</span>
+              <div className="flex-1">
+                <div className="font-semibold text-gray-900">PDF Document</div>
+                <div className="text-xs text-gray-600 mt-1">Professional formatted report with exact styling and colors</div>
+              </div>
+              <FileText className="w-6 h-6 text-red-600" />
+            </label>
+
+            {/* DOCX Option */}
+            <label className="flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+              style={{ borderColor: format === 'docx' ? '#00d639' : '#e5e7eb' }}>
+              <input
+                type="radio"
+                value="docx"
+                checked={format === 'docx'}
+                onChange={(e) => setFormat(e.target.value as 'docx')}
+                disabled={isGenerating}
+                className="mr-4 w-4 h-4"
+                style={{ accentColor: '#00d639' }}
+              />
+              <div className="flex-1">
+                <div className="font-semibold text-gray-900">Word Document</div>
+                <div className="text-xs text-gray-600 mt-1">Editable report for further customization and client modifications</div>
+              </div>
+              <FileJson className="w-6 h-6 text-blue-600" />
             </label>
           </div>
         </div>
 
+        {/* Generate Button */}
+        <button
+          onClick={handlePreviewReport}
+          disabled={isGenerating || isPreviewing || selectedFindingIds.length === 0}
+          className="w-full flex items-center justify-center gap-2 px-6 py-4 rounded-lg font-bold transition-all text-sm border-2"
+          style={{
+            backgroundColor: '#ffffff',
+            color: isGenerating || isPreviewing || selectedFindingIds.length === 0 ? '#9ca3af' : '#00b82e',
+            borderColor: isGenerating || isPreviewing || selectedFindingIds.length === 0 ? '#d1d5db' : '#00d639',
+            cursor: isGenerating || isPreviewing || selectedFindingIds.length === 0 ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {isPreviewing ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Opening Styled Preview...
+            </>
+          ) : (
+            <>
+              <FileText className="w-5 h-5" />
+              Preview Styled Report
+            </>
+          )}
+        </button>
+
         <button
           onClick={handleGenerateReport}
-          disabled={isGenerating}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          disabled={isGenerating || selectedFindingIds.length === 0}
+          className="w-full flex items-center justify-center gap-2 px-6 py-4 text-white rounded-lg font-bold transition-all text-sm"
+          style={{
+            backgroundColor: isGenerating || selectedFindingIds.length === 0 ? '#9ca3af' : '#00d639',
+            cursor: isGenerating || selectedFindingIds.length === 0 ? 'not-allowed' : 'pointer',
+          }}
         >
           {isGenerating ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-5 h-5 animate-spin" />
               Generating Report...
             </>
           ) : (
             <>
-              <Download className="w-4 h-4" />
+              <Download className="w-5 h-5" />
               Generate & Download Report
             </>
           )}
         </button>
 
-        <p className="text-xs text-gray-500">
-          The report will include all approved findings for this project.
+        {/* Info Box */}
+        <div className="bg-gray-50 border-l-4 rounded p-4" style={{ borderLeftColor: '#00d639' }}>
+          <p className="text-xs text-gray-700 leading-relaxed">
+            <span className="font-bold">ℹ️ Report Contents:</span> The report will include <strong>{selectedFindingIds.length}</strong> selected approved findings for this project with:
+          </p>
+          <ul className="text-xs text-gray-700 mt-2 ml-4 space-y-1">
+            <li>✓ Cover page with project details</li>
+            <li>✓ Executive summary with severity breakdown</li>
+            <li>✓ Vulnerability summary table</li>
+            <li>✓ Detailed findings with remediation</li>
+            <li>✓ Professional Securify branding</li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="bg-gray-50 px-8 py-4 border-t-4" style={{ borderTopColor: '#00d639' }}>
+        <p className="text-xs text-gray-600 text-center">
+          © {new Date().getFullYear()} SecurifyAI | Confidential - For Authorized Recipients Only
         </p>
       </div>
     </div>

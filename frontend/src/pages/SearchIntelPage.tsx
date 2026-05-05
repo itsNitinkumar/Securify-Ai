@@ -36,7 +36,7 @@ const SearchIntelPage = () => {
         reports: [],
         activities: [],
       });
-      setParsedQuery(response.filters);
+      setParsedQuery((response as any).filters || {});
     } catch (error) {
       console.error('Search failed:', error);
     } finally {
