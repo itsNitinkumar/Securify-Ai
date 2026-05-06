@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Search, FolderOpen, Calendar, User, AlertTriangle } from 'lucide-react';
 import { projectApi, Project } from '@/api/projectApi';
 import { authApi } from '@/api/authApi';
@@ -7,16 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import ProjectCard from '@/components/projects/ProjectCard';
-import CreateProjectDialog from '@/components/projects/CreateProjectDialog';
-import ProjectDetailDialog from '@/components/projects/ProjectDetailDialog';
 
 const ProjectsPage = () => {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [currentUserRole, setCurrentUserRole] = useState<string>('');
@@ -75,8 +72,7 @@ const ProjectsPage = () => {
   };
 
   const handleProjectClick = (project: Project) => {
-    setSelectedProject(project);
-    setIsDetailOpen(true);
+    navigate(`/projects/${project.id}`);
   };
 
   const stats = {
@@ -107,7 +103,7 @@ const ProjectsPage = () => {
           {/* Only Managers can create projects */}
           {currentUserRole === 'manager' && (
             <Button
-              onClick={() => setIsCreateOpen(true)}
+              onClick={() => navigate('/projects/new')}
               className="bg-primary text-surface hover:bg-primary/90 w-full md:w-auto"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -228,7 +224,7 @@ const ProjectsPage = () => {
           </p>
           {!searchQuery && currentUserRole === 'manager' && (
             <Button
-              onClick={() => setIsCreateOpen(true)}
+              onClick={() => navigate('/projects/new')}
               className="bg-primary text-surface hover:bg-primary/90"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -246,22 +242,6 @@ const ProjectsPage = () => {
             />
           ))}
         </div>
-      )}
-
-      {/* Dialogs */}
-      <CreateProjectDialog
-        open={isCreateOpen}
-        onOpenChange={setIsCreateOpen}
-        onSuccess={loadProjects}
-      />
-
-      {selectedProject && (
-        <ProjectDetailDialog
-          project={selectedProject}
-          open={isDetailOpen}
-          onOpenChange={setIsDetailOpen}
-          onUpdate={loadProjects}
-        />
       )}
     </div>
   );

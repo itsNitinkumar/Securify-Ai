@@ -1,56 +1,76 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Save, ArrowLeft, Plus, Trash2, Eye, Edit2 } from 'lucide-react';
-import { reportApi } from '@/api/reportApi';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Eye, Loader2, Pencil, Plus, Save, Trash2 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { toast } from 'react-hot-toast';
+import { reportApi } from '@/api/reportApi';
+import {
+  buildTemplateContent,
+  buildTemplatePayload,
+  defaultTemplateContent,
+  ReportTemplateContent,
+  ReportTemplateRecord,
+  TemplateSectionContent,
+} from '@/components/templates/templateSchema';
 
-interface TemplateSection {
-  name: string;
-  content: string;
-  editable: boolean;
-}
+type SectionKey = keyof ReportTemplateContent['sections'];
 
-interface TemplateData {
-  id?: number;
-  name: string;
-  description?: string;
-  logo_path?: string;
-  is_default?: boolean;
-  confidentiality_text?: string;
-  introduction_text?: string;
-  approach_text?: string;
-  scope_text?: string;
-  scope_applications?: any[];
-  scope_user_roles?: any[];
-  scope_tools?: any[];
-  appendix_text?: string;
-  highlight_color?: string;
-}
+const sectionOrder: Array<{ key: SectionKey; label: string }> = [
+  { key: 'table_of_contents', label: 'Table of Contents' },
+  { key: 'confidentiality', label: 'Confidentiality' },
+  { key: 'introduction', label: 'Introduction' },
+  { key: 'approach', label: 'Approach' },
+  { key: 'runtime_assessment', label: 'Runtime Assessment' },
+  { key: 'scope', label: 'Scope' },
+  { key: 'assessment_limitation', label: 'Assessment Limitation' },
+  { key: 'findings_recommendation', label: 'Findings & Recommendation' },
+  { key: 'risk_classification', label: 'Risk Classification' },
+  { key: 'measurement_impact', label: 'Measurement of Impact' },
+  { key: 'measurement_likelihood', label: 'Measurement of Likelihood' },
+  { key: 'overall_risk', label: 'Overall Risk' },
+  { key: 'zero_risk_issues', label: 'Zero-risk Issues' },
+  { key: 'vulnerabilities', label: 'Vulnerabilities' },
+  { key: 'summary', label: 'Summary' },
+  { key: 'detailed_vulnerabilities', label: 'Detailed Vulnerabilities' },
+  { key: 'appendix_a', label: 'Appendix A' },
+];
 
 const TemplateEditorPage = () => {
   const { templateId } = useParams<{ templateId: string }>();
   const navigate = useNavigate();
-  const [template, setTemplate] = useState<TemplateData>({
-    name: 'New Template',
-    highlight_color: '#ffff00',
-  });
-  const [loading, setLoading] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const modeParam = searchParams.get('mode');
+  const readOnly = modeParam === 'view';
+  const [activeSection, setActiveSection] = useState<SectionKey>('table_of_contents');
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState('basic');
+  const [template, setTemplate] = useState<ReportTemplateRecord>({
+    name: 'New Template',
+    description: '',
+    is_default: false,
+    template_data: {},
+  });
+  const [content, setContent] = useState<ReportTemplateContent>(defaultTemplateContent());
 
   useEffect(() => {
-    if (templateId && templateId !== 'new') {
-      loadTemplate();
-    }
+    void load();
   }, [templateId]);
 
-  const loadTemplate = async () => {
+  const load = async () => {
+    if (!templateId || templateId === 'new') {
+      setTemplate({ name: 'New Template', description: '', is_default: false, template_data: {} });
+      setContent(defaultTemplateContent());
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      const response = await reportApi.getTemplate(parseInt(templateId!));
-      setTemplate(response.data);
+      const data = await reportApi.getTemplate(Number.parseInt(templateId, 10));
+      const loaded = (data.data || data) as ReportTemplateRecord;
+      setTemplate(loaded);
+      setContent(buildTemplateContent(loaded));
     } catch (error) {
       console.error('Failed to load template:', error);
       toast.error('Failed to load template');
@@ -59,20 +79,39 @@ const TemplateEditorPage = () => {
     }
   };
 
+  const currentSection = content.sections[activeSection];
+
+  const updateTemplateField = (field: keyof ReportTemplateRecord, value: any) => {
+    setTemplate((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateContent = (updater: (current: ReportTemplateContent) => ReportTemplateContent) => {
+    setContent((current) => updater(current));
+  };
+
+  const updateSection = (sectionKey: SectionKey, updater: (section: TemplateSectionContent) => TemplateSectionContent) => {
+    updateContent((current) => ({
+      ...current,
+      sections: {
+        ...current.sections,
+        [sectionKey]: updater(current.sections[sectionKey]),
+      },
+    }));
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
-      if (template.id) {
-        await reportApi.updateTemplate(template.id, template as any);
-        toast.success('Template updated successfully');
+      const payload = buildTemplatePayload(template, content);
+      if (templateId && templateId !== 'new' && template.id) {
+        const updated = await reportApi.updateTemplate(template.id, payload as any);
+        setTemplate((updated.data || updated) as ReportTemplateRecord);
+        toast.success('Template updated');
       } else {
-        const createData = {
-          ...template,
-          template_data: JSON.stringify(template)
-        };
-        await reportApi.createTemplate(createData as any);
-        toast.success('Template created successfully');
-        navigate('/templates');
+        const created = await reportApi.createTemplate(payload as any);
+        const createdTemplate = (created.data || created) as ReportTemplateRecord;
+        toast.success('Template created');
+        navigate(`/templates/${createdTemplate.id}?mode=edit`);
       }
     } catch (error) {
       console.error('Failed to save template:', error);
@@ -82,452 +121,409 @@ const TemplateEditorPage = () => {
     }
   };
 
-  const updateField = (field: string, value: any) => {
-    setTemplate(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
+  const renderFieldTable = (rows: Array<{ label: string; value: string; onChange: (value: string) => void; multiline?: boolean }>) => (
+    <div className="overflow-hidden rounded-xl border border-green-100 bg-white shadow-sm">
+      <div className="grid grid-cols-[280px_1fr] border-b border-green-100 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+        <div>Field</div>
+        <div>Value</div>
+      </div>
+      {rows.map((row) => (
+        <div key={row.label} className="grid grid-cols-[280px_1fr] border-b border-gray-100 last:border-b-0">
+          <div className="px-4 py-4 text-sm font-medium text-gray-700">{row.label}</div>
+          <div className="px-4 py-3">
+            {row.multiline ? (
+              <textarea
+                value={row.value}
+                onChange={(event) => row.onChange(event.target.value)}
+                rows={5}
+                readOnly={readOnly}
+                className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-gray-200 bg-gray-50 text-gray-700' : 'border-gray-300 bg-white text-gray-900 focus:border-green-500'}`}
+              />
+            ) : (
+              <input
+                value={row.value}
+                onChange={(event) => row.onChange(event.target.value)}
+                readOnly={readOnly}
+                className={`w-full rounded-lg border px-3 py-2 text-sm outline-none ${readOnly ? 'border-transparent bg-transparent text-gray-800' : 'border-gray-300 bg-white text-gray-900 focus:border-green-500'}`}
+              />
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
-  const updateTableRow = (section: string, index: number, field: string, value: string) => {
-    const key = `scope_${section}` as keyof TemplateData;
-    const data = (template[key] as any[]) || [];
-    data[index] = { ...data[index], [field]: value };
-    updateField(key, data);
-  };
+  const renderRowGrid = (
+    title: string,
+    rows: Array<Record<string, string>>,
+    columns: Array<{ key: string; label: string }>,
+    onChange: (rowIndex: number, key: string, value: string) => void,
+    onAdd: () => void,
+    onRemove: (rowIndex: number) => void,
+  ) => (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-semibold text-green-700">{title}</h3>
+        {!readOnly ? (
+          <Button type="button" onClick={onAdd} className="bg-green-600 text-white hover:bg-green-700">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Row
+          </Button>
+        ) : null}
+      </div>
+      <div className="overflow-hidden rounded-xl border border-green-100 bg-white shadow-sm">
+        <div className={`grid border-b border-green-100 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800`} style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr)) ${readOnly ? '' : '64px'}` }}>
+          {columns.map((column) => <div key={column.key}>{column.label}</div>)}
+          {!readOnly ? <div>Action</div> : null}
+        </div>
+        {rows.map((row, rowIndex) => (
+          <div key={`${title}-${rowIndex}`} className="grid items-center border-b border-gray-100 px-4 py-3 last:border-b-0" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr)) ${readOnly ? '' : '64px'}` }}>
+            {columns.map((column) => (
+              <div key={column.key} className="pr-3">
+                <input
+                  value={row[column.key] || ''}
+                  onChange={(event) => onChange(rowIndex, column.key, event.target.value)}
+                  readOnly={readOnly}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm outline-none ${readOnly ? 'border-transparent bg-transparent text-gray-800' : 'border-gray-300 bg-white text-gray-900 focus:border-green-500'}`}
+                />
+              </div>
+            ))}
+            {!readOnly ? (
+              <button type="button" onClick={() => onRemove(rowIndex)} className="rounded-lg p-2 text-red-600 hover:bg-red-50">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
-  const addTableRow = (section: string) => {
-    const key = `scope_${section}` as keyof TemplateData;
-    const data = (template[key] as any[]) || [];
-    data.push({});
-    updateField(key, data);
-  };
+  const sectionEditor = useMemo(() => {
+    if (activeSection === 'scope') {
+      const scope = currentSection as TemplateSectionContent;
+      return (
+        <div className="space-y-6">
+          {renderFieldTable([
+            { label: 'Section Title', value: scope.title, onChange: (value) => updateSection('scope', (section) => ({ ...section, title: value })) },
+            { label: 'Scope Description', value: scope.body || '', onChange: (value) => updateSection('scope', (section) => ({ ...section, body: value })), multiline: true },
+            { label: 'Application Details Title', value: scope.fields?.application_details_title || '', onChange: (value) => updateSection('scope', (section) => ({ ...section, fields: { ...(section.fields || {}), application_details_title: value } })) },
+            { label: 'User Roles Title', value: scope.fields?.user_roles_title || '', onChange: (value) => updateSection('scope', (section) => ({ ...section, fields: { ...(section.fields || {}), user_roles_title: value } })) },
+            { label: 'Tools Title', value: scope.fields?.tools_title || '', onChange: (value) => updateSection('scope', (section) => ({ ...section, fields: { ...(section.fields || {}), tools_title: value } })) },
+          ])}
 
-  const removeTableRow = (section: string, index: number) => {
-    const key = `scope_${section}` as keyof TemplateData;
-    const data = (template[key] as any[]) || [];
-    data.splice(index, 1);
-    updateField(key, data);
-  };
+          {renderRowGrid(
+            scope.fields?.application_details_title || 'Application Details',
+            scope.application_rows || [],
+            [
+              { key: 'name', label: 'Name' },
+              { key: 'url', label: 'URL' },
+            ],
+            (rowIndex, key, value) => updateSection('scope', (section) => {
+              const next = [...(section.application_rows || [])];
+              next[rowIndex] = { ...next[rowIndex], [key]: value };
+              return { ...section, application_rows: next };
+            }),
+            () => updateSection('scope', (section) => ({ ...section, application_rows: [...(section.application_rows || []), { name: '', url: '' }] })),
+            (rowIndex) => updateSection('scope', (section) => ({ ...section, application_rows: (section.application_rows || []).filter((_, idx) => idx !== rowIndex) })),
+          )}
+
+          {renderRowGrid(
+            scope.fields?.user_roles_title || 'User Roles (Web application & API)',
+            scope.user_role_rows || [],
+            [
+              { key: 'role', label: 'Role' },
+              { key: 'description', label: 'Description' },
+            ],
+            (rowIndex, key, value) => updateSection('scope', (section) => {
+              const next = [...(section.user_role_rows || [])];
+              next[rowIndex] = { ...next[rowIndex], [key]: value };
+              return { ...section, user_role_rows: next };
+            }),
+            () => updateSection('scope', (section) => ({ ...section, user_role_rows: [...(section.user_role_rows || []), { role: '', description: '' }] })),
+            (rowIndex) => updateSection('scope', (section) => ({ ...section, user_role_rows: (section.user_role_rows || []).filter((_, idx) => idx !== rowIndex) })),
+          )}
+
+          {renderRowGrid(
+            scope.fields?.tools_title || 'Tools',
+            scope.tool_rows || [],
+            [
+              { key: 'name', label: 'Tool Name' },
+              { key: 'description', label: 'Description' },
+            ],
+            (rowIndex, key, value) => updateSection('scope', (section) => {
+              const next = [...(section.tool_rows || [])];
+              next[rowIndex] = { ...next[rowIndex], [key]: value };
+              return { ...section, tool_rows: next };
+            }),
+            () => updateSection('scope', (section) => ({ ...section, tool_rows: [...(section.tool_rows || []), { name: '', description: '' }] })),
+            (rowIndex) => updateSection('scope', (section) => ({ ...section, tool_rows: (section.tool_rows || []).filter((_, idx) => idx !== rowIndex) })),
+          )}
+        </div>
+      );
+    }
+
+    if (activeSection === 'table_of_contents') {
+      return (
+        <div className="space-y-6">
+          {renderFieldTable([
+            { label: 'Section Title', value: currentSection.title, onChange: (value) => updateSection('table_of_contents', (section) => ({ ...section, title: value })) },
+          ])}
+          {renderRowGrid(
+            'Static Section Outline',
+            (currentSection.items || []).map((item) => ({ item })),
+            [{ key: 'item', label: 'Section / Subsection' }],
+            (rowIndex, _key, value) => updateSection('table_of_contents', (section) => {
+              const next = [...(section.items || [])];
+              next[rowIndex] = value;
+              return { ...section, items: next };
+            }),
+            () => updateSection('table_of_contents', (section) => ({ ...section, items: [...(section.items || []), 'New Section'] })),
+            (rowIndex) => updateSection('table_of_contents', (section) => ({ ...section, items: (section.items || []).filter((_, idx) => idx !== rowIndex) })),
+          )}
+        </div>
+      );
+    }
+
+    if (activeSection === 'risk_classification') {
+      const risk = currentSection as TemplateSectionContent;
+      return (
+        <div className="space-y-6">
+          {renderFieldTable([
+            { label: 'Section Title', value: risk.title, onChange: (value) => updateSection('risk_classification', (section) => ({ ...section, title: value })) },
+            { label: 'Body Content', value: risk.body || '', onChange: (value) => updateSection('risk_classification', (section) => ({ ...section, body: value })), multiline: true },
+            { label: 'Matrix Title', value: risk.fields?.matrix_title || '', onChange: (value) => updateSection('risk_classification', (section) => ({ ...section, fields: { ...(section.fields || {}), matrix_title: value } })) },
+            { label: 'Matrix Subtitle', value: risk.fields?.matrix_subtitle || '', onChange: (value) => updateSection('risk_classification', (section) => ({ ...section, fields: { ...(section.fields || {}), matrix_subtitle: value } })) },
+          ])}
+          {renderRowGrid(
+            'Risk Matrix',
+            risk.matrix_rows || [],
+            [
+              { key: 'low', label: 'Low Likelihood' },
+              { key: 'medium', label: 'Medium Likelihood' },
+              { key: 'high', label: 'High Likelihood' },
+            ],
+            (rowIndex, key, value) => updateSection('risk_classification', (section) => {
+              const next = [...(section.matrix_rows || [])];
+              next[rowIndex] = { ...next[rowIndex], [key]: value };
+              return { ...section, matrix_rows: next };
+            }),
+            () => updateSection('risk_classification', (section) => ({ ...section, matrix_rows: [...(section.matrix_rows || []), { low: '', medium: '', high: '' }] })),
+            (rowIndex) => updateSection('risk_classification', (section) => ({ ...section, matrix_rows: (section.matrix_rows || []).filter((_, idx) => idx !== rowIndex) })),
+          )}
+        </div>
+      );
+    }
+
+    if (activeSection === 'appendix_a') {
+      const appendix = currentSection as TemplateSectionContent;
+      return (
+        <div className="space-y-6">
+          {renderFieldTable([
+            { label: 'Section Title', value: appendix.title, onChange: (value) => updateSection('appendix_a', (section) => ({ ...section, title: value })) },
+            { label: 'Introductory Text', value: appendix.body || '', onChange: (value) => updateSection('appendix_a', (section) => ({ ...section, body: value })), multiline: true },
+          ])}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-green-700">Appendix Entries</h3>
+              {!readOnly ? (
+                <Button
+                  type="button"
+                  onClick={() => updateSection('appendix_a', (section) => ({ ...section, appendix_entries: [...(section.appendix_entries || []), { title: 'Appendix', body: '' }] }))}
+                  className="bg-green-600 text-white hover:bg-green-700"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Appendix
+                </Button>
+              ) : null}
+            </div>
+            {(appendix.appendix_entries || []).map((entry, rowIndex) => (
+              <div key={`appendix-${rowIndex}`} className="rounded-xl border border-green-100 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-gray-700">Appendix {rowIndex + 1}</span>
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      onClick={() => updateSection('appendix_a', (section) => ({ ...section, appendix_entries: (section.appendix_entries || []).filter((_, idx) => idx !== rowIndex) }))}
+                      className="rounded-lg p-2 text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </div>
+                <div className="space-y-3">
+                  <input
+                    value={entry.title || ''}
+                    onChange={(event) => updateSection('appendix_a', (section) => {
+                      const next = [...(section.appendix_entries || [])];
+                      next[rowIndex] = { ...next[rowIndex], title: event.target.value };
+                      return { ...section, appendix_entries: next };
+                    })}
+                    readOnly={readOnly}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm outline-none ${readOnly ? 'border-transparent bg-transparent text-gray-800' : 'border-gray-300 bg-white text-gray-900 focus:border-green-500'}`}
+                  />
+                  <textarea
+                    value={entry.body || ''}
+                    onChange={(event) => updateSection('appendix_a', (section) => {
+                      const next = [...(section.appendix_entries || [])];
+                      next[rowIndex] = { ...next[rowIndex], body: event.target.value };
+                      return { ...section, appendix_entries: next };
+                    })}
+                    rows={4}
+                    readOnly={readOnly}
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-gray-200 bg-gray-50 text-gray-700' : 'border-gray-300 bg-white text-gray-900 focus:border-green-500'}`}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    return renderFieldTable([
+      { label: 'Section Title', value: currentSection.title, onChange: (value) => updateSection(activeSection, (section) => ({ ...section, title: value })) },
+      { label: 'Body Content', value: currentSection.body || '', onChange: (value) => updateSection(activeSection, (section) => ({ ...section, body: value })), multiline: true },
+      ...(currentSection.fields ? Object.entries(currentSection.fields).map(([fieldKey, fieldValue]) => ({
+        label: fieldKey.replace(/_/g, ' '),
+        value: fieldValue,
+        onChange: (value: string) => updateSection(activeSection, (section) => ({ ...section, fields: { ...(section.fields || {}), [fieldKey]: value } })),
+      })) : []),
+      ...(Array.isArray(currentSection.items) ? [{
+        label: 'List Items',
+        value: currentSection.items.join('\n'),
+        onChange: (value: string) => updateSection(activeSection, (section) => ({ ...section, items: value.split('\n').map((item) => item.trim()).filter(Boolean) })),
+        multiline: true,
+      }] : []),
+    ]);
+  }, [activeSection, currentSection, readOnly]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mb-4"></div>
-          <p className="text-gray-600">Loading template...</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <Loader2 className="h-8 w-8 animate-spin text-green-600" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      {/* Header */}
-      <div className="mb-6">
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/templates')}
-          className="mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Templates
-        </Button>
-
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">Template Editor</h1>
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            <Save className="w-4 h-4 mr-2" />
-            {saving ? 'Saving...' : 'Save Template'}
+    <div className="min-h-screen bg-[#111111] p-6 text-white">
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <Button variant="ghost" onClick={() => navigate('/templates')} className="mb-3 px-0 text-gray-300 hover:bg-transparent hover:text-white">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Templates
           </Button>
+          <h1 className="text-3xl font-bold text-white">{templateId === 'new' ? 'Create Template' : template.name}</h1>
+          <p className="mt-1 text-gray-300">Edit the static report content here. Dynamic finding content is injected automatically during report generation.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="secondary"
+            onClick={() => setSearchParams({ mode: readOnly ? 'edit' : 'view' })}
+            className="border-[#3a3a3a] bg-[#1a1a1a] text-gray-200 hover:bg-[#242424]"
+          >
+            {readOnly ? <Pencil className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
+            {readOnly ? 'Edit Mode' : 'View Mode'}
+          </Button>
+          {!readOnly ? (
+            <Button onClick={() => void handleSave()} disabled={saving} className="bg-green-600 text-white hover:bg-green-700">
+              <Save className="mr-2 h-4 w-4" />
+              {saving ? 'Saving...' : 'Save Template'}
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="mb-6 border-b border-gray-200">
-        <div className="flex gap-4">
-          {['basic', 'confidentiality', 'introduction', 'approach', 'scope', 'appendix'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                activeTab === tab
-                  ? 'border-green-600 text-green-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
-        </div>
+      <div className="mb-6 rounded-xl border border-[#1f4d33] bg-[#15271d] px-4 py-3 text-sm text-[#b8f5c3]">
+        Dynamic placeholders available in template content: <code>{'{{CLIENT_NAME}}'}</code>, <code>{'{{PROJECT_NAME}}'}</code>, <code>{'{{DATE}}'}</code>. Keep these placeholders in the template text where you want report generation to replace them automatically.
       </div>
 
-      {/* Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Editor */}
-        <div className="lg:col-span-2">
-          <Card className="p-6 bg-white">
-            {/* Basic Settings */}
-            {activeTab === 'basic' && (
+      <div className="grid grid-cols-[320px_minmax(0,1fr)] gap-6">
+        <Card className="h-fit overflow-hidden border border-[#2a2a2a] bg-[#1a1a1a] p-0 text-white">
+          <div className="flex items-center justify-between border-b border-[#2a2a2a] px-4 py-3">
+            <h2 className="text-lg font-semibold text-white">Document Tabs</h2>
+          </div>
+          <div className="max-h-[calc(100vh-220px)] overflow-y-auto p-3">
+              <button
+                type="button"
+                onClick={() => setActiveSection('table_of_contents')}
+                className={`mb-3 flex w-full items-center rounded-2xl px-4 py-3 text-left text-sm font-medium ${activeSection === 'table_of_contents' ? 'bg-[#1b3a2a] text-[#9cff93]' : 'text-gray-300 hover:bg-[#202020]'}`}
+              >
+                Tab 1
+              </button>
+            <div className="space-y-1 border-l border-[#2f2f2f] pl-4">
+              {sectionOrder.map((section) => (
+                <button
+                  key={section.key}
+                  type="button"
+                  onClick={() => setActiveSection(section.key)}
+                  className={`block w-full rounded-lg px-3 py-2 text-left text-sm ${activeSection === section.key ? 'bg-[#1b3a2a] font-semibold text-[#9cff93]' : 'text-gray-300 hover:bg-[#202020]'}`}
+                >
+                  {content.sections[section.key].title || section.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <div className="space-y-6">
+          <Card className="border border-[#2a2a2a] bg-[#1a1a1a] p-6 text-white">
+            <div className="mb-6 grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-gray-200">Template Name</label>
+                <input
+                  value={template.name}
+                  onChange={(event) => updateTemplateField('name', event.target.value)}
+                  readOnly={readOnly}
+                  className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-gray-200">Company Name</label>
+                <input
+                  value={content.company_name}
+                  onChange={(event) => updateContent((current) => ({ ...current, company_name: event.target.value }))}
+                  readOnly={readOnly}
+                  className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
+                />
+              </div>
+            </div>
+
+            <div className="mb-6 grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-gray-200">Description</label>
+                <textarea
+                  value={template.description || ''}
+                  onChange={(event) => updateTemplateField('description', event.target.value)}
+                  rows={3}
+                  readOnly={readOnly}
+                  className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
+                />
+              </div>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Template Name
-                  </label>
+                  <label className="mb-2 block text-sm font-semibold text-gray-200">Logo URL</label>
                   <input
-                    type="text"
-                    value={template.name}
-                    onChange={(e) => updateField('name', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
+                    value={content.logo_path}
+                    onChange={(event) => updateContent((current) => ({ ...current, logo_path: event.target.value }))}
+                    readOnly={readOnly}
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Description
-                  </label>
-                  <textarea
-                    value={template.description || ''}
-                    onChange={(e) => updateField('description', e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Logo URL
-                  </label>
+                  <label className="mb-2 block text-sm font-semibold text-gray-200">Cover Subtitle</label>
                   <input
-                    type="text"
-                    value={template.logo_path || ''}
-                    onChange={(e) => updateField('logo_path', e.target.value)}
-                    placeholder="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
+                    value={content.cover_subtitle}
+                    onChange={(event) => updateContent((current) => ({ ...current, cover_subtitle: event.target.value }))}
+                    readOnly={readOnly}
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
                   />
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Highlight Color
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="color"
-                      value={template.highlight_color || '#ffff00'}
-                      onChange={(e) => updateField('highlight_color', e.target.value)}
-                      className="w-12 h-10 border border-gray-300 rounded-lg cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={template.highlight_color || '#ffff00'}
-                      onChange={(e) => updateField('highlight_color', e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="is_default"
-                    checked={template.is_default || false}
-                    onChange={(e) => updateField('is_default', e.target.checked)}
-                    className="w-4 h-4 text-green-600 rounded"
-                  />
-                  <label htmlFor="is_default" className="text-sm font-medium text-gray-700">
-                    Set as default template
-                  </label>
-                </div>
               </div>
-            )}
-
-            {/* Confidentiality */}
-            {activeTab === 'confidentiality' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Confidentiality and Distribution Restrictions
-                </label>
-                <textarea
-                  value={template.confidentiality_text || ''}
-                  onChange={(e) => updateField('confidentiality_text', e.target.value)}
-                  rows={10}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 font-mono text-sm"
-                  placeholder="Enter confidentiality text..."
-                />
-              </div>
-            )}
-
-            {/* Introduction */}
-            {activeTab === 'introduction' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Introduction
-                </label>
-                <textarea
-                  value={template.introduction_text || ''}
-                  onChange={(e) => updateField('introduction_text', e.target.value)}
-                  rows={10}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 font-mono text-sm"
-                  placeholder="Enter introduction text..."
-                />
-              </div>
-            )}
-
-            {/* Approach */}
-            {activeTab === 'approach' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Approach
-                </label>
-                <textarea
-                  value={template.approach_text || ''}
-                  onChange={(e) => updateField('approach_text', e.target.value)}
-                  rows={10}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 font-mono text-sm"
-                  placeholder="Enter approach text..."
-                />
-              </div>
-            )}
-
-            {/* Scope */}
-            {activeTab === 'scope' && (
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Scope Description
-                  </label>
-                  <textarea
-                    value={template.scope_text || ''}
-                    onChange={(e) => updateField('scope_text', e.target.value)}
-                    rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 font-mono text-sm"
-                  />
-                </div>
-
-                {/* Applications Table */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium text-gray-900">Application Details</h3>
-                    <Button
-                      size="sm"
-                      onClick={() => addTableRow('applications')}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      Add Row
-                    </Button>
-                  </div>
-                  <div className="overflow-x-auto border border-gray-300 rounded-lg">
-                    <table className="w-full text-sm">
-                      <thead className="bg-green-600 text-white">
-                        <tr>
-                          <th className="px-4 py-2 text-left">Name</th>
-                          <th className="px-4 py-2 text-left">URL</th>
-                          <th className="px-4 py-2 text-center w-10">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(template.scope_applications || []).map((app, idx) => (
-                          <tr key={idx} className="border-t border-gray-300">
-                            <td className="px-4 py-2">
-                              <input
-                                type="text"
-                                value={app.name || ''}
-                                onChange={(e) => updateTableRow('applications', idx, 'name', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded"
-                              />
-                            </td>
-                            <td className="px-4 py-2">
-                              <input
-                                type="text"
-                                value={app.url || ''}
-                                onChange={(e) => updateTableRow('applications', idx, 'url', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded"
-                              />
-                            </td>
-                            <td className="px-4 py-2 text-center">
-                              <button
-                                onClick={() => removeTableRow('applications', idx)}
-                                className="text-red-600 hover:text-red-800"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* User Roles Table */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium text-gray-900">User Roles</h3>
-                    <Button
-                      size="sm"
-                      onClick={() => addTableRow('user_roles')}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      Add Row
-                    </Button>
-                  </div>
-                  <div className="overflow-x-auto border border-gray-300 rounded-lg">
-                    <table className="w-full text-sm">
-                      <thead className="bg-green-600 text-white">
-                        <tr>
-                          <th className="px-4 py-2 text-left">Role</th>
-                          <th className="px-4 py-2 text-left">Description</th>
-                          <th className="px-4 py-2 text-center w-10">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(template.scope_user_roles || []).map((role, idx) => (
-                          <tr key={idx} className="border-t border-gray-300">
-                            <td className="px-4 py-2">
-                              <input
-                                type="text"
-                                value={role.role || ''}
-                                onChange={(e) => updateTableRow('user_roles', idx, 'role', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded"
-                              />
-                            </td>
-                            <td className="px-4 py-2">
-                              <input
-                                type="text"
-                                value={role.description || ''}
-                                onChange={(e) => updateTableRow('user_roles', idx, 'description', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded"
-                              />
-                            </td>
-                            <td className="px-4 py-2 text-center">
-                              <button
-                                onClick={() => removeTableRow('user_roles', idx)}
-                                className="text-red-600 hover:text-red-800"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Tools Table */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium text-gray-900">Tools Used</h3>
-                    <Button
-                      size="sm"
-                      onClick={() => addTableRow('tools')}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      Add Row
-                    </Button>
-                  </div>
-                  <div className="overflow-x-auto border border-gray-300 rounded-lg">
-                    <table className="w-full text-sm">
-                      <thead className="bg-green-600 text-white">
-                        <tr>
-                          <th className="px-4 py-2 text-left">Tool Name</th>
-                          <th className="px-4 py-2 text-left">Description</th>
-                          <th className="px-4 py-2 text-center w-10">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(template.scope_tools || []).map((tool, idx) => (
-                          <tr key={idx} className="border-t border-gray-300">
-                            <td className="px-4 py-2">
-                              <input
-                                type="text"
-                                value={tool.name || ''}
-                                onChange={(e) => updateTableRow('tools', idx, 'name', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded"
-                              />
-                            </td>
-                            <td className="px-4 py-2">
-                              <input
-                                type="text"
-                                value={tool.description || ''}
-                                onChange={(e) => updateTableRow('tools', idx, 'description', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded"
-                              />
-                            </td>
-                            <td className="px-4 py-2 text-center">
-                              <button
-                                onClick={() => removeTableRow('tools', idx)}
-                                className="text-red-600 hover:text-red-800"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Appendix */}
-            {activeTab === 'appendix' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Appendix A - Verification Requirements
-                </label>
-                <textarea
-                  value={template.appendix_text || ''}
-                  onChange={(e) => updateField('appendix_text', e.target.value)}
-                  rows={10}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 font-mono text-sm"
-                  placeholder="Enter appendix text..."
-                />
-              </div>
-            )}
-          </Card>
-        </div>
-
-        {/* Preview */}
-        <div>
-          <Card className="p-4 bg-white sticky top-6">
-            <h3 className="font-medium text-gray-900 mb-4">Preview</h3>
-            <div className="space-y-3 text-sm">
-              <div>
-                <p className="text-gray-600">Template Name</p>
-                <p className="font-medium text-gray-900">{template.name}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Highlight Color</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <div
-                    className="w-8 h-8 rounded border border-gray-300"
-                    style={{ backgroundColor: template.highlight_color || '#ffff00' }}
-                  />
-                  <p className="font-mono text-gray-900">{template.highlight_color}</p>
-                </div>
-              </div>
-              {template.logo_path && (
-                <div>
-                  <p className="text-gray-600 mb-2">Logo Preview</p>
-                  <img
-                    src={template.logo_path}
-                    alt="Logo"
-                    className="max-w-full h-auto"
-                    onError={() => <p className="text-red-600 text-xs">Logo failed to load</p>}
-                  />
-                </div>
-              )}
             </div>
+
+            {sectionEditor}
           </Card>
         </div>
       </div>

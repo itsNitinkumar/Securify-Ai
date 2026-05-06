@@ -18,6 +18,17 @@ import AuthCallbackPage from '../pages/AuthCallbackPage';
 import TemplateManagementPage from '../pages/TemplateManagementPage';
 import TemplateEditorPage from '../pages/TemplateEditorPage';
 import ReportTemplatesPage from '../pages/ReportTemplatesPage';
+import ProjectDetailPage from '../pages/ProjectDetailPage';
+import CreateProjectPage from '../pages/CreateProjectPage';
+import CreateFindingPage from '../pages/CreateFindingPage';
+import GenerateFindingAIPage from '../pages/GenerateFindingAIPage';
+import ApproveUserPage from '../pages/ApproveUserPage';
+import CreateManagerPage from '../pages/CreateManagerPage';
+import EditUserPage from '../pages/EditUserPage';
+import RoleRequestPage from '../pages/RoleRequestPage';
+import FindingLibraryPage from '../pages/FindingLibraryPage';
+import FindingTemplateDetailPage from '../pages/FindingTemplateDetailPage';
+import FindingTemplateCreatePage from '../pages/FindingTemplateCreatePage';
 
 const AppRoutes = () => {
   return (
@@ -38,16 +49,27 @@ const AppRoutes = () => {
       >
         <Route index element={<DashboardPage />} />
         <Route path="projects" element={<ProjectsPage />} />
+        <Route path="projects/new" element={<CreateProjectPage />} />
+        <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+        <Route path="projects/:projectId/findings/new" element={<CreateFindingPage />} />
+        <Route path="projects/:projectId/findings/generate" element={<GenerateFindingAIPage />} />
         <Route path="projects/:projectId/report" element={<ReportBuilderPage />} />
         <Route path="reports/:projectId/view" element={<ReportViewPage />} />
         <Route path="templates" element={<ReportTemplatesPage />} />
         <Route path="templates/:templateId" element={<TemplateEditorPage />} />
         <Route path="search" element={<SearchIntelPage />} />
         <Route path="findings/:id" element={<FindingDetailPage />} />
+        <Route path="finding-library" element={<FindingLibraryPage />} />
+        <Route path="finding-library/new" element={<FindingTemplateCreatePage />} />
+        <Route path="finding-library/:templateId" element={<FindingTemplateDetailPage />} />
         <Route path="activity" element={<ActivityLogsPage />} />
         <Route path="users" element={<UsersManagementPage />} />
+        <Route path="users/create-manager" element={<CreateManagerPage />} />
+        <Route path="users/:userId/approve" element={<ApproveUserPage />} />
+        <Route path="users/:userId/edit" element={<EditUserPage />} />
         <Route path="settings" element={<RBACSettingsPage />} />
         <Route path="profile" element={<ProfileSettingsPage />} />
+        <Route path="profile/role-request" element={<RoleRequestPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

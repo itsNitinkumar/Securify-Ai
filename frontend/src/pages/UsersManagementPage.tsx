@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Users, UserPlus, Shield } from 'lucide-react';
 import { userApi } from '@/api/userApi';
 import { authApi } from '@/api/authApi';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import UsersTable from '@/components/users/UsersTable';
-import ApproveUserDialog from '@/components/users/ApproveUserDialog';
-import CreateManagerDialog from '@/components/users/CreateManagerDialog';
+import { toast } from 'react-hot-toast';
 
 interface User {
   id: number;
@@ -19,11 +19,9 @@ interface User {
 }
 
 const UsersManagementPage = () => {
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
-  const [isCreateManagerOpen, setIsCreateManagerOpen] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string>('');
 
   useEffect(() => {
@@ -54,30 +52,21 @@ const UsersManagementPage = () => {
   };
 
   const handleApprove = (userId: number) => {
-    const user = users.find(u => u.id === userId);
-    if (user) {
-      setSelectedUser(user);
-      setIsApproveDialogOpen(true);
-    }
+    navigate(`/users/${userId}/approve`);
   };
 
   const handleEdit = (user: User) => {
-    setSelectedUser(user);
-    setIsApproveDialogOpen(true);
+    navigate(`/users/${user.id}/edit`);
   };
 
   const handleDelete = async (userId: number) => {
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      return;
-    }
-
     try {
       await userApi.delete(userId);
-      alert('User deleted successfully');
+      toast.success('User deleted');
       loadUsers();
     } catch (error: any) {
       console.error('Failed to delete user:', error);
-      alert(error.response?.data?.message || 'Failed to delete user');
+      toast.error(error.response?.data?.message || 'Failed to delete user');
     }
   };
 
@@ -109,7 +98,7 @@ const UsersManagementPage = () => {
           {/* Admin only: Create Manager button */}
           {currentUserRole === 'admin' && (
             <Button
-              onClick={() => setIsCreateManagerOpen(true)}
+              onClick={() => navigate('/users/create-manager')}
               className="bg-primary text-surface hover:bg-primary/90 w-full md:w-auto"
             >
               <Shield className="w-4 h-4 mr-2" />
@@ -184,23 +173,6 @@ const UsersManagementPage = () => {
           onApprove={handleApprove}
         />
       )}
-
-      {/* Dialogs */}
-      {selectedUser && (
-        <ApproveUserDialog
-          user={selectedUser}
-          currentUserRole={currentUserRole}
-          open={isApproveDialogOpen}
-          onOpenChange={setIsApproveDialogOpen}
-          onSuccess={loadUsers}
-        />
-      )}
-
-      <CreateManagerDialog
-        open={isCreateManagerOpen}
-        onOpenChange={setIsCreateManagerOpen}
-        onSuccess={loadUsers}
-      />
     </div>
   );
 };

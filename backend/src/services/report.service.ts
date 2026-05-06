@@ -1217,8 +1217,37 @@ class ReportService {
     const setParaText = (el: any, text: string) => {
       const runs = $(el).find('w\\:t').toArray();
       if (!runs.length) return;
-      $(runs[0]).text(escapeXmlText(text));
+      $(runs[0]).replaceWith(`<w:t xml:space="preserve">${escapeXmlText(text)}</w:t>`);
       for (let i = 1; i < runs.length; i++) $(runs[i]).text('');
+    };
+    const setParagraphSegments = (
+      scope: any,
+      paragraphEl: any,
+      segments: Array<{ text: string; bold?: boolean; color?: string; underline?: string }>,
+    ) => {
+      const p = scope(paragraphEl);
+      p.children('w\\:r').remove();
+      p.children('w\\:hyperlink').remove();
+
+      const segmentXml = segments
+        .filter((segment) => segment.text)
+        .map((segment) => {
+          const rPrParts: string[] = [];
+          if (segment.bold) {
+            rPrParts.push('<w:b w:val="1"/><w:bCs w:val="1"/>');
+          }
+          if (segment.color) {
+            rPrParts.push(`<w:color w:val="${segment.color}"/>`);
+          }
+          if (segment.underline) {
+            rPrParts.push(`<w:u w:val="${segment.underline}"/>`);
+          }
+          const rPrXml = rPrParts.length ? `<w:rPr>${rPrParts.join('')}</w:rPr>` : '';
+          return `<w:r>${rPrXml}<w:t xml:space="preserve">${escapeXmlText(segment.text)}</w:t></w:r>`;
+        })
+        .join('');
+
+      p.append(segmentXml);
     };
     const cloneNode = (el: any) => cheerio.load($.xml(el), { xmlMode: true, decodeEntities: false }).root().children().first();
     const clearRunFormatting = (scope: any, root: any, opts?: { bold?: boolean; color?: string; underline?: string }) => {
@@ -1435,12 +1464,23 @@ class ReportService {
 
     const paragraphs = body.find('w\\:p').toArray();
 
-    // 1) Force confidentiality to start on a new page.
+    // 1) Force key major sections to start on their own pages.
     for (const p of paragraphs) {
       const txt = paraText(p);
       if (txt === 'Confidentiality and Distribution Restrictions') {
         ensurePageBreakBefore(p);
-        break;
+      }
+      if (txt === 'Introduction') {
+        ensurePageBreakBefore(p);
+      }
+      if (txt === 'Approach') {
+        ensurePageBreakBefore(p);
+      }
+      if (txt === 'Scope') {
+        ensurePageBreakBefore(p);
+      }
+      if (txt === 'Assessment Limitation') {
+        ensurePageBreakBefore(p);
       }
     }
 
@@ -1599,20 +1639,210 @@ class ReportService {
     }
 
     const normalizedTemplate = data.template as any;
-    const applications = Array.isArray(normalizedTemplate.scope_applications) && normalizedTemplate.scope_applications.length
-      ? normalizedTemplate.scope_applications
+    const templateData = normalizedTemplate?.template_data && typeof normalizedTemplate.template_data === 'object'
+      ? normalizedTemplate.template_data
+      : {};
+    const defaultSectionConfig: Record<string, any> = {
+      confidentiality: {
+        body: 'The conclusions and recommendations in this report represent the opinions of Securify. Determinations of appropriate corrective action(s) are the responsibility of the entity receiving the report. This report and any other materials furnished by Securify in connection with this engagement are confidential and may not be duplicated, modified, or otherwise reproduced and distributed without the express prior written consent of Securify or Client Name.',
+      },
+      introduction: {
+        body: 'As part of an ongoing security program, {{CLIENT_NAME}} identified the need to conduct an application security assessment of its Web application & APIs.\n\nThis report presents the agreed scope, methodology, risk measurement model, summarized findings, and detailed technical observations for the selected assessment window.',
+        fields: {
+          list_title: 'The following lists the objectives of this assessment:',
+          closing_title: 'This report includes the following parameters and results of the assessment:',
+        },
+        items: [
+          'Determine the overall security posture of the application',
+          'Provide a list of key findings and recommendations for remediation',
+          'Document the assessment scope, risk evaluation, and final outcomes',
+          'Support remediation planning with actionable technical detail',
+        ],
+      },
+      approach: {
+        body: 'Securify performed a Runtime Application Vulnerability Assessment of the client environment using a combination of manual testing, guided analysis, and targeted verification of identified attack paths.\n\nTesting focused on authentication, authorization, business logic, session management, input handling, information disclosure, and transport-layer protections.\n\nWhere appropriate, the assessment also included abuse-case validation, access-control bypass attempts, forced browsing, parameter tampering, and endpoint enumeration.',
+      },
+      runtime_assessment: {
+        body: 'The runtime assessment focused on security behavior observable in the live application and API flows, including authentication, authorization, input handling, business logic, sensitive data exposure, and common attack-surface weaknesses.\n\nThe engagement emphasized practical exploitability and realistic attacker behavior rather than purely theoretical weaknesses.',
+        items: [
+          'Information Gathering - The application was reviewed as an anonymous, authenticated, and privileged user to understand differences in access and behavior.',
+          'Authentication Testing - Authentication mechanisms were evaluated to determine the strength of login controls, password policies, and account recovery processes.',
+          'Authorization Testing - Tests were conducted to identify weaknesses in access control, including attempts to access other users\' data or privileged functionality.',
+          'Session Management - Session handling was assessed to ensure secure creation, storage, and invalidation of session tokens.',
+          'Input Validation Attacks - User-controlled input fields were tested with malformed and malicious data to identify injection flaws and logic bypasses.',
+          'Business Logic Testing - The application workflows were reviewed to identify opportunities to misuse or bypass intended processes.',
+        ],
+      },
+      assessment_limitation: {
+        body: 'This assessment was performed within the agreed timebox and only against systems explicitly included in scope. Absence of identified vulnerabilities should not be interpreted as a guarantee that no issues remain. Security posture can change over time as the application, infrastructure, integrations, and threat landscape evolve.',
+      },
+      findings_recommendation: {
+        body: 'The sections below summarize the observed risks and provide the measurement criteria used to classify findings across the engagement. Each finding is evaluated using the same impact and likelihood model so remediation can be prioritized consistently.',
+      },
+      risk_classification: {
+        body: 'Risk is determined by evaluating the combined effect of impact and likelihood for each issue identified during testing. The matrix below is used as the standard model for determining overall severity.',
+        fields: {
+          matrix_title: 'Risk Matrix',
+          matrix_subtitle: 'Impact x Likelihood',
+        },
+      },
+      overall_risk: {
+        body: 'The following graph illustrates how Impact x Likelihood scores translate to overall Low, Medium, and High-risk ratings:',
+        items: [
+          'Low Impact + Low Likelihood = Low Risk',
+          'High Impact + High Likelihood = Critical Risk',
+        ],
+      },
+    };
+    const configuredSections = templateData?.sections && typeof templateData.sections === 'object'
+      ? templateData.sections
+      : {};
+    const getSection = (key: string) => configuredSections?.[key] && typeof configuredSections[key] === 'object'
+      ? { ...(defaultSectionConfig[key] || {}), ...configuredSections[key] }
+      : (defaultSectionConfig[key] || {});
+    const resolvePlaceholders = (value: string) => String(value || '')
+      .replace(/\{\{CLIENT_NAME\}\}/g, String(data.project.client_name || 'N/A'))
+      .replace(/\{\{PROJECT_NAME\}\}/g, String(data.project.name || 'N/A'))
+      .replace(/\{\{DATE\}\}/g, String(data.metadata.generatedDate || ''));
+    const sectionTitle = (key: string, fallback: string) => {
+      const raw = getSection(key)?.title;
+      return typeof raw === 'string' && raw.trim() ? resolvePlaceholders(raw.trim()) : fallback;
+    };
+    const sectionBody = (key: string, fallback = '') => {
+      const section = getSection(key);
+      const parts: string[] = [];
+      const body = typeof section?.body === 'string' && section.body.trim() ? section.body.trim() : fallback;
+      if (body) parts.push(body);
+
+      if (typeof section?.fields?.list_title === 'string' && section.fields.list_title.trim()) {
+        parts.push(section.fields.list_title.trim());
+      }
+
+      if (Array.isArray(section?.items) && section.items.length) {
+        parts.push(...section.items.map((item: any) => `- ${String(item || '').trim()}`).filter((item: string) => item !== '-'));
+      }
+
+      if (typeof section?.fields?.closing_title === 'string' && section.fields.closing_title.trim()) {
+        parts.push(section.fields.closing_title.trim());
+      }
+
+      return resolvePlaceholders(parts.filter(Boolean).join('\n\n'));
+    };
+    const splitBodyParagraphs = (text: string): string[] => String(text || '')
+      .split(/\n{2,}/)
+      .map((part) => part.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const replaceSectionParagraphBlock = (headingText: string, stopHeadings: string[], replacementText: string) => {
+      const parts = splitBodyParagraphs(replacementText);
+      if (!parts.length) return;
+
+      const children = bodyChildren();
+      const startIdx = children.findIndex((el: any) => paraText(el) === headingText);
+      if (startIdx === -1) return;
+
+      let endIdx = children.findIndex((el: any, idx: number) => idx > startIdx && stopHeadings.includes(paraText(el)));
+      if (endIdx === -1) endIdx = children.length;
+
+      const range = children.slice(startIdx + 1, endIdx);
+      const paragraphsInRange = range.filter((el: any) => el.tagName === 'w:p');
+      const templateParagraph = paragraphsInRange.find((p: any) => paraText(p)) || paragraphsInRange[0];
+      if (!templateParagraph) return;
+
+      const insertBeforeNode = range.find((el: any) => el.tagName !== 'w:p') || children[endIdx];
+      paragraphsInRange.forEach((p: any) => $(p).remove());
+
+      const insertNode = insertBeforeNode || null;
+      parts.forEach((part) => {
+        const paragraph = cloneNode(templateParagraph);
+        const isListLike = part.startsWith('- ');
+        const finalText = isListLike ? part.replace(/^-\s*/, '') : part;
+        if (isListLike) {
+          const emDashIndex = finalText.indexOf(' — ');
+          const hyphenIndex = finalText.indexOf(' - ');
+          const colonIndex = finalText.indexOf(': ');
+          const splitIndex = emDashIndex !== -1 ? emDashIndex : hyphenIndex !== -1 ? hyphenIndex : colonIndex;
+          const separator = emDashIndex !== -1 ? ' — ' : hyphenIndex !== -1 ? ' - ' : colonIndex !== -1 ? ': ' : '';
+
+          if (splitIndex !== -1 && separator) {
+            const lead = finalText.slice(0, splitIndex + (separator === ': ' ? 1 : 0));
+            const tail = finalText.slice(splitIndex + separator.length);
+            setParagraphSegments($, paragraph.get(0), [
+              { text: '• ', color: '4CC51F' },
+              { text: lead, bold: true, color: '000000' },
+              { text: separator === ': ' ? ' ' : separator, color: '000000' },
+              { text: tail, color: '000000' },
+            ]);
+          } else {
+            setParagraphSegments($, paragraph.get(0), [
+              { text: '• ', color: '4CC51F' },
+              { text: finalText, color: '000000' },
+            ]);
+          }
+        } else {
+          setParaText(paragraph.get(0), finalText);
+        }
+        if (insertNode) {
+          $(insertNode).before($.xml(paragraph));
+        } else {
+          body.append($.xml(paragraph));
+        }
+      });
+    };
+
+    replaceSectionParagraphBlock('Confidentiality and Distribution Restrictions', ['Table of Contents'], sectionBody('confidentiality', normalizedTemplate.confidentiality_text || ''));
+    replaceSectionParagraphBlock('Introduction', ['Approach'], sectionBody('introduction', normalizedTemplate.introduction_text || ''));
+    replaceSectionParagraphBlock('Approach', ['Runtime Application Vulnerability Assessment'], sectionBody('approach', normalizedTemplate.approach_text || ''));
+    replaceSectionParagraphBlock('Runtime Application Vulnerability Assessment', ['Scope'], sectionBody('runtime_assessment', ''));
+    replaceSectionParagraphBlock('Assessment Limitation', ['Findings and Recommendation'], sectionBody('assessment_limitation', ''));
+    replaceSectionParagraphBlock('Risk Classification', ['Measurement of Impact'], sectionBody('risk_classification', ''));
+    replaceSectionParagraphBlock('Measurement of Impact', ['Measurement of Likelihood'], sectionBody('measurement_impact', ''));
+    replaceSectionParagraphBlock('Measurement of Likelihood', ['Overall Risk'], sectionBody('measurement_likelihood', ''));
+    replaceSectionParagraphBlock('Overall Risk', ['Zero-risk Issues'], sectionBody('overall_risk', ''));
+    replaceSectionParagraphBlock('Zero-risk Issues', ['Vulnerabilities'], sectionBody('zero_risk_issues', ''));
+    replaceSectionParagraphBlock('Summary', ['Detailed Vulnerabilities'], sectionBody('summary', ''));
+    replaceSectionParagraphBlock('Appendix A', [], sectionBody('appendix_a', normalizedTemplate.appendix_text || ''));
+
+    replaceAllParagraphText('Table of Contents', sectionTitle('table_of_contents', 'Table of Contents'));
+    replaceAllParagraphText('Confidentiality and Distribution Restrictions', sectionTitle('confidentiality', 'Confidentiality and Distribution Restrictions'));
+    replaceAllParagraphText('Introduction', sectionTitle('introduction', 'Introduction'));
+    replaceAllParagraphText('Approach', sectionTitle('approach', 'Approach'));
+    replaceAllParagraphText('Runtime Application Vulnerability Assessment', sectionTitle('runtime_assessment', 'Runtime Application Vulnerability Assessment'));
+    replaceAllParagraphText('Scope', sectionTitle('scope', 'Scope'));
+    replaceAllParagraphText('Assessment Limitation', sectionTitle('assessment_limitation', 'Assessment Limitation'));
+    replaceAllParagraphText('Findings and Recommendation', sectionTitle('findings_recommendation', 'Findings and Recommendation'));
+    replaceAllParagraphText('Risk Classification', sectionTitle('risk_classification', 'Risk Classification'));
+    replaceAllParagraphText('Measurement of Impact', sectionTitle('measurement_impact', 'Measurement of Impact'));
+    replaceAllParagraphText('Measurement of Likelihood', sectionTitle('measurement_likelihood', 'Measurement of Likelihood'));
+    replaceAllParagraphText('Overall Risk', sectionTitle('overall_risk', 'Overall Risk'));
+    replaceAllParagraphText('Zero-risk Issues', sectionTitle('zero_risk_issues', 'Zero-risk Issues'));
+    replaceAllParagraphText('Vulnerabilities', sectionTitle('vulnerabilities', 'Vulnerabilities'));
+    replaceAllParagraphText('Summary', sectionTitle('summary', 'Summary'));
+    replaceAllParagraphText('Detailed Vulnerabilities', sectionTitle('detailed_vulnerabilities', 'Detailed Vulnerabilities'));
+    replaceAllParagraphText('Appendix A', sectionTitle('appendix_a', 'Appendix A'));
+    replaceAllParagraphText('Application Details', String(getSection('scope')?.fields?.application_details_title || 'Application Details'));
+    replaceAllParagraphText('User Roles (Web application & API)', String(getSection('scope')?.fields?.user_roles_title || 'User Roles (Web application & API)'));
+    replaceAllParagraphText('Tools', String(getSection('scope')?.fields?.tools_title || 'Tools'));
+
+    const applications = Array.isArray(getSection('scope')?.application_rows) && getSection('scope').application_rows.length
+      ? getSection('scope').application_rows
+      : Array.isArray(normalizedTemplate.scope_applications) && normalizedTemplate.scope_applications.length
+        ? normalizedTemplate.scope_applications
       : [
           { name: 'Application Name 1', url: 'http://test.com' },
           { name: 'Application Name 2', url: 'http://admin.test.com' },
         ];
-    const userRoles = Array.isArray(normalizedTemplate.scope_user_roles) && normalizedTemplate.scope_user_roles.length
-      ? normalizedTemplate.scope_user_roles
+    const userRoles = Array.isArray(getSection('scope')?.user_role_rows) && getSection('scope').user_role_rows.length
+      ? getSection('scope').user_role_rows
+      : Array.isArray(normalizedTemplate.scope_user_roles) && normalizedTemplate.scope_user_roles.length
+        ? normalizedTemplate.scope_user_roles
       : [
-          { role: 'Customer', username: 'user1' },
-          { role: 'Admin', username: 'admin1' },
+          { role: 'Customer', username: 'user1', description: 'Authenticated customer user' },
+          { role: 'Admin', username: 'admin1', description: 'Privileged administrative user' },
         ];
-    const tools = Array.isArray(normalizedTemplate.scope_tools) && normalizedTemplate.scope_tools.length
-      ? normalizedTemplate.scope_tools
+    const tools = Array.isArray(getSection('scope')?.tool_rows) && getSection('scope').tool_rows.length
+      ? getSection('scope').tool_rows
+      : Array.isArray(normalizedTemplate.scope_tools) && normalizedTemplate.scope_tools.length
+        ? normalizedTemplate.scope_tools
       : [
           { name: 'Burp Professional Pro', description: 'An advanced proxy for testing web security.' },
           { name: 'OpenSSL', description: 'An open-source package to assess security in transit.' },
@@ -1623,6 +1853,14 @@ class ReportService {
         ];
 
     const tables = body.find('w\\:tbl').toArray();
+    const setTableHeader = (tbl: any, values: string[]) => {
+      const rows = $(tbl).find('> w\\:tr').toArray();
+      if (!rows.length) return;
+      const cells = $(rows[0]).find('> w\\:tc').toArray();
+      values.forEach((value, idx) => {
+        if (cells[idx]) setParaText(cells[idx], value);
+      });
+    };
     const setTableRows = (tbl: any, rowsData: Array<string[]>) => {
       const rows = $(tbl).find('> w\\:tr').toArray();
       if (rows.length < 2) return;
@@ -1638,12 +1876,67 @@ class ReportService {
       }
     };
 
-    if (tables[0]) setTableRows(tables[0], applications.map((r: any) => [String(r.name || ''), String(r.url || '')]));
-    if (tables[1]) setTableRows(tables[1], userRoles.map((r: any) => [String(r.role || ''), String(r.username || '')]));
-    if (tables[2]) setTableRows(tables[2], tools.map((r: any) => [String(r.name || ''), String(r.description || '')]));
+    if (tables[0]) {
+      setTableHeader(tables[0], ['Name', 'URL']);
+      setTableRows(tables[0], applications.map((r: any) => [String(r.name || ''), String(r.url || '')]));
+    }
+    if (tables[1]) {
+      setTableHeader(tables[1], ['Role', 'Description']);
+      setTableRows(tables[1], userRoles.map((r: any) => [String(r.role || ''), String(r.description || r.username || '')]));
+    }
+    if (tables[2]) {
+      setTableHeader(tables[2], ['Tool Name', 'Description']);
+      setTableRows(tables[2], tools.map((r: any) => [String(r.name || ''), String(r.description || '')]));
+    }
     if (tables[0]) applySimpleTableTheme(tables[0]);
     if (tables[1]) applySimpleTableTheme(tables[1]);
     if (tables[2]) applySimpleTableTheme(tables[2]);
+
+    const matrixRows = Array.isArray(getSection('risk_classification')?.matrix_rows) && getSection('risk_classification').matrix_rows.length
+      ? getSection('risk_classification').matrix_rows
+      : [
+          { low: 'Medium', medium: 'High', high: 'Critical' },
+          { low: 'Low', medium: 'Medium', high: 'High' },
+          { low: 'Low', medium: 'Low', high: 'Medium' },
+        ];
+    const riskFillForValue = (value: string) => {
+      const normalized = String(value || '').toLowerCase();
+      if (normalized === 'critical') return { fill: 'D61F1F', text: 'FFFFFF' };
+      if (normalized === 'high') return { fill: 'F28C28', text: 'FFFFFF' };
+      if (normalized === 'medium') return { fill: 'F2C94C', text: '111111' };
+      return { fill: '2F80ED', text: 'FFFFFF' };
+    };
+    if (tables[0]) {
+      const childrenForMatrix = bodyChildren();
+      const measurementImpactHeading = childrenForMatrix.find((el: any) => paraText(el) === sectionTitle('zero_risk_issues', 'Zero-risk Issues'));
+      if (measurementImpactHeading) {
+        const matrixTable = cloneNode(tables[0]);
+        const existingRows = matrixTable.find('> w\\:tr').toArray();
+        const rowTemplate = existingRows[1] || existingRows[0];
+        existingRows.forEach((row: any) => matrixTable.find(`> w\\:tr`).eq(0).remove());
+
+        matrixRows.forEach((matrixRow: any) => {
+          const row = cloneNode(rowTemplate);
+          while (row.find('w\\:tc').toArray().length < 3) {
+            const currentCells = row.find('w\\:tc').toArray();
+            const cloneCell = cloneNode(currentCells[currentCells.length - 1]);
+            row.append($.xml(cloneCell));
+          }
+          const cells = row.find('w\\:tc').toArray();
+          const values = [matrixRow.low, matrixRow.medium, matrixRow.high].map((value: any) => String(value || ''));
+          values.forEach((value, idx) => {
+            if (!cells[idx]) return;
+            setParaText(cells[idx], value);
+            const fill = riskFillForValue(value);
+            ensureShading(cells[idx], fill.fill);
+            ensureTextColor(cells[idx], fill.text);
+          });
+          matrixTable.append($.xml(row));
+        });
+
+        $(measurementImpactHeading).before($.xml(matrixTable));
+      }
+    }
 
     console.log(`📊 Processing ${data.findings.length} findings for DOCX report`);
     const findingsSummary = data.findings.map((f: any) => ({
@@ -1739,7 +2032,7 @@ class ReportService {
           const sectionSetParaText = (el: any, text: string) => {
             const runs = sectionDoc(el).find('w\\:t').toArray();
             if (!runs.length) return;
-            sectionDoc(runs[0]).text(escapeXmlText(text));
+            sectionDoc(runs[0]).replaceWith(`<w:t xml:space="preserve">${escapeXmlText(text)}</w:t>`);
             for (let ri = 1; ri < runs.length; ri++) sectionDoc(runs[ri]).text('');
           };
 
@@ -1770,6 +2063,21 @@ class ReportService {
             sectionDoc(beforeNode).before(sectionDoc.xml(p));
           };
 
+          const appendSectionSplitParagraph = (
+            beforeNode: any,
+            sourceNode: any,
+            lead: string,
+            tail: string,
+            opts?: { color?: string; underline?: string }
+          ) => {
+            const p = cloneSectionNode(sourceNode);
+            setParagraphSegments(sectionDoc, p.get(0), [
+              { text: lead, bold: true, color: opts?.color || '000000' },
+              { text: tail ? ` ${tail}` : '', color: opts?.color || '000000', underline: opts?.underline },
+            ]);
+            sectionDoc(beforeNode).before(sectionDoc.xml(p));
+          };
+
           const paras = sectionRoot.children('w\\:p').toArray();
           const paraByText = (label: string) => paras.find((p: any) => sectionParaText(p) === label);
           
@@ -1793,6 +2101,7 @@ class ReportService {
           const riskPara = paras.find((p: any) => sectionParaText(p).startsWith('Risk:'));
           const descLabel = paraByText('Description:');
           const urlLabel = paraByText('Affected URL:');
+          const impactLikelihoodHeading = paraByText('Impact and Likelihood:');
           const impactLabel = paraByText('Impact:');
           const likelihoodLabel = paraByText('Likelihood:');
           const stepsLabel = paraByText('Steps to Reproduce:');
@@ -1802,6 +2111,15 @@ class ReportService {
 
           console.log(`   - Found title para: "${titlePara ? sectionParaText(titlePara) : 'NONE'}"`);
           console.log(`   - Will replace with: "${String(finding.title || 'Untitled Finding')}"`);
+
+          const riskTextColor = (() => {
+            const severity = String(finding.severity || '').toLowerCase();
+            if (severity === 'critical') return 'C00000';
+            if (severity === 'high') return 'FF0000';
+            if (severity === 'medium') return 'C59A00';
+            if (severity === 'low') return '70AD47';
+            return '2F80ED';
+          })();
           
           if (titlePara) {
             const oldTitle = sectionParaText(titlePara);
@@ -1810,6 +2128,7 @@ class ReportService {
           }
           if (riskPara) {
             sectionSetParaText(riskPara, `Risk: ${String(finding.severity || '')}`);
+            clearRunFormatting(sectionDoc, riskPara, { bold: true, color: riskTextColor });
           }
 
           console.log(`📝 Processing finding: ${finding.title}`);
@@ -1859,7 +2178,7 @@ class ReportService {
 
           const affected = String(finding.affected_target || '').trim();
           console.log(`   - Affected target: "${affected}"`);
-          if (urlLabel && affected) appendSectionParagraph(impactLabel || backPara || titlePara, neutralParagraphTemplate, affected, { color: '000000' });
+          if (urlLabel && affected) appendSectionParagraph(impactLikelihoodHeading || impactLabel || backPara || titlePara, neutralParagraphTemplate, affected, { color: '000000' });
 
           // Extract impact - handle both object and string formats
           let impactText = '';
@@ -1903,13 +2222,25 @@ class ReportService {
           console.log(`   - Inserting ${steps.length} steps`);
           for (let si = 0; si < steps.length; si++) {
             console.log(`     Step ${si + 1}: "${steps[si].substring(0, 50)}..."`);
-            appendSectionParagraph(recLabel || backPara || titlePara, stepTemplate, `Step ${si + 1}: ${steps[si]}`, { color: '000000' });
+            appendSectionSplitParagraph(recLabel || backPara || titlePara, stepTemplate, `Step ${si + 1}:`, steps[si], { color: '000000' });
           }
 
           const recs = toLines(finding.recommendation);
           console.log(`   - Inserting ${recs.length} recommendations`);
           for (let ri = 0; ri < recs.length; ri++) {
-            appendSectionParagraph(refLabel || backPara || titlePara, recTemplate, recs[ri], { color: '000000', cleanMarkdown: true });
+            const cleaned = stripMarkdownEmphasis(recs[ri]);
+            const colonIndex = cleaned.indexOf(':');
+            if (colonIndex !== -1) {
+              appendSectionSplitParagraph(
+                refLabel || backPara || titlePara,
+                recTemplate,
+                cleaned.slice(0, colonIndex + 1),
+                cleaned.slice(colonIndex + 1).trim(),
+                { color: '000000' }
+              );
+            } else {
+              appendSectionParagraph(refLabel || backPara || titlePara, recTemplate, cleaned, { color: '000000', bold: true });
+            }
           }
 
           // Handle references - support both 'references' and 'finding_references' fields

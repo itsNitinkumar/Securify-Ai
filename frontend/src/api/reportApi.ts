@@ -36,7 +36,7 @@ export interface ReportTemplate {
 export interface CreateTemplateData {
   name: string;
   description?: string;
-  template_data: string;
+  template_data: any;
   logo_path?: string;
   is_default?: boolean;
 }

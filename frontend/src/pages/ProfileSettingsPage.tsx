@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { RoleRequestButton } from '@/components/profile/RoleRequestButton';
 import { useAuth } from '@/contexts/AuthContext';
 import axios from '@/api/axios';
+import { toast } from 'react-hot-toast';
 
 const ProfileSettingsPage = () => {
   const { user, isLoading } = useAuth();
@@ -83,20 +84,20 @@ const ProfileSettingsPage = () => {
     // Simulate API call
     setTimeout(() => {
       setSaving(false);
-      alert('Profile updated successfully');
+      toast.success('Profile updated successfully');
     }, 1000);
   };
 
   const handleChangePassword = async () => {
     if (password.new !== password.confirm) {
-      alert('Passwords do not match');
+      toast.error('Passwords do not match');
       return;
     }
     setSaving(true);
     setTimeout(() => {
       setSaving(false);
       setPassword({ current: '', new: '', confirm: '' });
-      alert('Password changed successfully');
+      toast.success('Password changed successfully');
     }, 1000);
   };
 

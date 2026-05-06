@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, Plus, BookOpen, Sparkles } from 'lucide-react';
 import { findingLibraryApi, FindingTemplate } from '@/api/findingLibraryApi';
 import { Button } from '@/components/ui/button';
@@ -6,18 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import TemplateCard from '@/components/finding-library/TemplateCard';
-import TemplateDetailDialog from '@/components/finding-library/TemplateDetailDialog';
-import CreateTemplateDialog from '@/components/finding-library/CreateTemplateDialog';
 
 const FindingLibraryPage = () => {
+  const navigate = useNavigate();
   const [templates, setTemplates] = useState<FindingTemplate[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<FindingTemplate[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All Categories');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTemplate, setSelectedTemplate] = useState<FindingTemplate | null>(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -65,8 +62,7 @@ const FindingLibraryPage = () => {
   };
 
   const handleTemplateClick = (template: FindingTemplate) => {
-    setSelectedTemplate(template);
-    setIsDetailOpen(true);
+    navigate(`/finding-library/${template.id}`);
   };
 
   const handleSearch = async (query: string) => {
@@ -108,7 +104,7 @@ const FindingLibraryPage = () => {
           />
         </div>
         <Button
-          onClick={() => setIsCreateOpen(true)}
+          onClick={() => navigate('/finding-library/new')}
           className="bg-primary text-surface hover:bg-primary/90"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -174,21 +170,6 @@ const FindingLibraryPage = () => {
         </div>
       )}
 
-      {/* Dialogs */}
-      {selectedTemplate && (
-        <TemplateDetailDialog
-          template={selectedTemplate}
-          open={isDetailOpen}
-          onOpenChange={setIsDetailOpen}
-          onUpdate={loadData}
-        />
-      )}
-
-      <CreateTemplateDialog
-        open={isCreateOpen}
-        onOpenChange={setIsCreateOpen}
-        onSuccess={loadData}
-      />
     </div>
   );
 };
