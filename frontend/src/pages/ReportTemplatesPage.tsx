@@ -41,7 +41,7 @@ const ReportTemplatesPage = () => {
   };
 
   const handleDelete = async (template: ReportTemplate) => {
-    if (!window.confirm(`Delete template "${template.name}"?`)) return;
+    // No browser dialogs. Use an explicit action with a follow-up toast.
     try {
       await reportApi.deleteTemplate(template.id);
       toast.success('Template deleted');

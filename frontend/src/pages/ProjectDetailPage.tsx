@@ -3,16 +3,24 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, CheckCircle, ExternalLink, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { authApi } from '@/api/authApi';
-import { projectApi } from '@/api/projectApi';
+import { projectApi, CreateProjectData } from '@/api/projectApi';
+import { clientApi, Client } from '@/api/clientApi';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import InlineConfirm from '@/components/ui/inline-confirm';
 
 type ProjectWithFindings = {
   id: number;
   name: string;
   description?: string;
   client_name?: string;
+  client_id?: number;
+  start_date?: string;
+  end_date?: string;
+  application_details?: Array<{ name: string; url: string }>;
+  user_roles?: Array<{ role: string; username: string }>;
   status?: string;
   created_at: string;
   updated_at: string;
@@ -26,10 +34,43 @@ const ProjectDetailPage = () => {
   const [deleting, setDeleting] = useState(false);
   const [project, setProject] = useState<ProjectWithFindings | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string>('');
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientQuery, setClientQuery] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [pendingClientId, setPendingClientId] = useState<number | null>(null);
+  const [pendingClientName, setPendingClientName] = useState<string>('');
+  const [confirmClientChange, setConfirmClientChange] = useState(false);
+  const [editForm, setEditForm] = useState<CreateProjectData>({
+    name: '',
+    description: '',
+    start_date: undefined,
+    end_date: undefined,
+    application_details: [{ name: '', url: '' }],
+    user_roles: [{ role: '', username: '' }],
+  });
 
   useEffect(() => {
     void load();
   }, [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await clientApi.listClients();
+        const list = (res as any)?.data || res;
+        if (!cancelled) setClients(Array.isArray(list) ? list : []);
+      } catch (error) {
+        console.error('Failed to load clients:', error);
+        if (!cancelled) setClients([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = async () => {
     if (!projectId) return;
@@ -42,9 +83,26 @@ const ProjectDetailPage = () => {
       const loadedProject = (projectRes as any)?.data || projectRes;
       const userData = (profileRes.data as any)?.data || (profileRes.data as any)?.user || profileRes.data;
       setCurrentUserRole(userData?.role || '');
-      setProject({
+      const normalized: ProjectWithFindings = {
         ...(loadedProject as any),
         findings: Array.isArray((loadedProject as any)?.findings) ? (loadedProject as any).findings : [],
+      };
+      setProject(normalized);
+
+      // Initialize edit state from the loaded project.
+      setSelectedClientId(normalized.client_id ?? null);
+      setClientQuery(normalized.client_name || '');
+      setEditForm({
+        name: normalized.name,
+        description: normalized.description || '',
+        start_date: normalized.start_date || undefined,
+        end_date: normalized.end_date || undefined,
+        application_details: Array.isArray(normalized.application_details) && normalized.application_details.length
+          ? normalized.application_details.map((r) => ({ name: r.name || '', url: r.url || '' }))
+          : [{ name: '', url: '' }],
+        user_roles: Array.isArray(normalized.user_roles) && normalized.user_roles.length
+          ? normalized.user_roles.map((r) => ({ role: r.role || '', username: r.username || '' }))
+          : [{ role: '', username: '' }],
       });
     } catch (error) {
       console.error('Failed to load project:', error);
@@ -68,6 +126,111 @@ const ProjectDetailPage = () => {
       toast.error('Failed to delete project');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const filteredClients = useMemo(() => {
+    const q = clientQuery.trim().toLowerCase();
+    if (!q) return clients;
+    return clients.filter((c) => c.name.toLowerCase().includes(q));
+  }, [clients, clientQuery]);
+
+  const updateApplicationRow = (idx: number, patch: Partial<{ name: string; url: string }>) => {
+    setEditForm((current) => {
+      const rows = (current.application_details || []).slice();
+      const prev = rows[idx] || { name: '', url: '' };
+      rows[idx] = { ...prev, ...patch };
+      return { ...current, application_details: rows };
+    });
+  };
+
+  const addApplicationRow = () => {
+    setEditForm((current) => ({
+      ...current,
+      application_details: [...(current.application_details || []), { name: '', url: '' }],
+    }));
+  };
+
+  const removeApplicationRow = (idx: number) => {
+    setEditForm((current) => {
+      const rows = (current.application_details || []).slice();
+      rows.splice(idx, 1);
+      return { ...current, application_details: rows.length ? rows : [{ name: '', url: '' }] };
+    });
+  };
+
+  const updateUserRoleRow = (idx: number, patch: Partial<{ role: string; username: string }>) => {
+    setEditForm((current) => {
+      const rows = (current.user_roles || []).slice();
+      const prev = rows[idx] || { role: '', username: '' };
+      rows[idx] = { ...prev, ...patch };
+      return { ...current, user_roles: rows };
+    });
+  };
+
+  const addUserRoleRow = () => {
+    setEditForm((current) => ({
+      ...current,
+      user_roles: [...(current.user_roles || []), { role: '', username: '' }],
+    }));
+  };
+
+  const removeUserRoleRow = (idx: number) => {
+    setEditForm((current) => {
+      const rows = (current.user_roles || []).slice();
+      rows.splice(idx, 1);
+      return { ...current, user_roles: rows.length ? rows : [{ role: '', username: '' }] };
+    });
+  };
+
+  const requestClientChange = (next: { client_id: number | null; client_name: string }) => {
+    if (!project) return;
+    const currentId = project.client_id ?? null;
+    const currentName = project.client_name || '';
+    if (next.client_id === currentId && next.client_name === currentName) return;
+    setPendingClientId(next.client_id);
+    setPendingClientName(next.client_name);
+    setConfirmClientChange(true);
+  };
+
+  const applyClientChange = () => {
+    setConfirmClientChange(false);
+    setSelectedClientId(pendingClientId);
+    setClientQuery(pendingClientName);
+    setPendingClientId(null);
+    setPendingClientName('');
+  };
+
+  const cancelClientChange = () => {
+    setConfirmClientChange(false);
+    setPendingClientId(null);
+    setPendingClientName('');
+  };
+
+  const handleSaveProject = async () => {
+    if (!project) return;
+    try {
+      setSaving(true);
+      const payload: Partial<CreateProjectData> = {
+        name: editForm.name,
+        description: editForm.description || undefined,
+        start_date: editForm.start_date || undefined,
+        end_date: editForm.end_date || undefined,
+        application_details: (editForm.application_details || []).filter((r) => (r.name || '').trim() || (r.url || '').trim()),
+        user_roles: (editForm.user_roles || []).filter((r) => (r.role || '').trim() || (r.username || '').trim()),
+        client_id: selectedClientId || undefined,
+        client_name: !selectedClientId && clientQuery.trim() ? clientQuery.trim() : undefined,
+      };
+
+      await projectApi.updateProject(project.id, payload);
+      toast.success('Project updated');
+      setEditing(false);
+      await load();
+    } catch (error) {
+      console.error('Failed to update project:', error);
+      toast.error('Failed to update project');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -176,6 +339,303 @@ const ProjectDetailPage = () => {
           ) : null}
         </div>
       </div>
+
+      {currentUserRole === 'manager' ? (
+        <Card className="mb-6 p-4 bg-surface-high border-outline">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-on-surface">Project Details</h3>
+              <p className="mt-1 text-xs text-on-surface-variant">Managers can edit project/client/scope metadata used in reports.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {editing ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setEditing(false);
+                      // Reset to last loaded values.
+                      if (project) {
+                        setSelectedClientId(project.client_id ?? null);
+                        setClientQuery(project.client_name || '');
+                        setEditForm({
+                          name: project.name,
+                          description: project.description || '',
+                          start_date: project.start_date || undefined,
+                          end_date: project.end_date || undefined,
+                          application_details: Array.isArray(project.application_details) && project.application_details.length
+                            ? project.application_details.map((r) => ({ name: r.name || '', url: r.url || '' }))
+                            : [{ name: '', url: '' }],
+                          user_roles: Array.isArray(project.user_roles) && project.user_roles.length
+                            ? project.user_roles.map((r) => ({ role: r.role || '', username: r.username || '' }))
+                            : [{ role: '', username: '' }],
+                        });
+                      }
+                    }}
+                    className="border-outline text-on-surface-variant"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleSaveProject}
+                    disabled={saving}
+                    className="bg-primary text-surface hover:bg-primary/90"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditing(true)}
+                  className="border-outline text-on-surface-variant hover:text-primary"
+                >
+                  Edit
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {editing ? (
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="text-sm font-medium text-on-surface mb-2 block">Project Name</label>
+                <Input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((c) => ({ ...c, name: e.target.value }))}
+                  className="bg-surface border-outline text-on-surface"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-on-surface mb-2 block">Client Name</label>
+                {confirmClientChange ? (
+                  <InlineConfirm
+                    title="Do you want to change the client?"
+                    description={`Current: ${project.client_name || 'None'} New: ${pendingClientName || 'None'}`}
+                    confirmText="Yes, change"
+                    cancelText="No"
+                    onConfirm={applyClientChange}
+                    onCancel={cancelClientChange}
+                    danger
+                  />
+                ) : null}
+
+                <Input
+                  value={clientQuery}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setClientQuery(v);
+                    setSelectedClientId(null);
+                  }}
+                  placeholder="Type to search or add a new client"
+                  className="bg-surface border-outline text-on-surface"
+                />
+                <div className="mt-2 max-h-44 overflow-auto rounded-md border border-outline-variant bg-surface">
+                  {filteredClients.length ? (
+                    <div className="divide-y divide-outline-variant">
+                      {filteredClients.slice(0, 50).map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => requestClientChange({ client_id: c.id, client_name: c.name })}
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-surface-high ${selectedClientId === c.id ? 'bg-surface-high text-primary' : 'text-on-surface'}`}
+                        >
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-on-surface-variant">No clients found</div>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={async () => {
+                      const name = clientQuery.trim();
+                      if (!name) return;
+                      try {
+                        const res = await clientApi.createClient(name);
+                        const created = ((res as any)?.data || res) as Client;
+                        setClients((current) => {
+                          const exists = current.some((x) => x.id === created.id || x.name.toLowerCase() === created.name.toLowerCase());
+                          const next = exists ? current : [...current, created];
+                          return next.slice().sort((a, b) => a.name.localeCompare(b.name));
+                        });
+                        requestClientChange({ client_id: created.id, client_name: created.name });
+                        toast.success('Client added');
+                      } catch (error) {
+                        console.error('Failed to add client:', error);
+                        toast.error('Failed to add client');
+                      }
+                    }}
+                    className="border-outline text-on-surface-variant"
+                  >
+                    Add Client
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => requestClientChange({ client_id: null, client_name: '' })}
+                    className="border-outline text-on-surface-variant"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-on-surface mb-2 block">Description</label>
+                <textarea
+                  value={editForm.description || ''}
+                  onChange={(e) => setEditForm((c) => ({ ...c, description: e.target.value }))}
+                  rows={4}
+                  className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-on-surface mb-2 block">Start Date</label>
+                  <Input
+                    type="date"
+                    value={editForm.start_date || ''}
+                    onChange={(e) => setEditForm((c) => ({ ...c, start_date: e.target.value || undefined }))}
+                    className="bg-surface border-outline text-on-surface"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-on-surface mb-2 block">End Date</label>
+                  <Input
+                    type="date"
+                    value={editForm.end_date || ''}
+                    onChange={(e) => setEditForm((c) => ({ ...c, end_date: e.target.value || undefined }))}
+                    className="bg-surface border-outline text-on-surface"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-on-surface mb-2 block">Application Details</label>
+                <div className="overflow-auto rounded-md border border-outline-variant">
+                  <table className="w-full text-sm">
+                    <thead className="bg-surface">
+                      <tr className="text-left">
+                        <th className="px-3 py-2 text-on-surface">Name</th>
+                        <th className="px-3 py-2 text-on-surface">URL</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant bg-surface-high">
+                      {(editForm.application_details || []).map((row, idx) => (
+                        <tr key={idx}>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={row.name}
+                              onChange={(e) => updateApplicationRow(idx, { name: e.target.value })}
+                              className="bg-surface border-outline text-on-surface"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={row.url}
+                              onChange={(e) => updateApplicationRow(idx, { url: e.target.value })}
+                              className="bg-surface border-outline text-on-surface"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => removeApplicationRow(idx)}
+                              className="border-outline text-on-surface-variant"
+                            >
+                              Remove
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="pt-2">
+                  <Button type="button" variant="outline" onClick={addApplicationRow} className="border-outline text-on-surface-variant">
+                    Add Row
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-on-surface mb-2 block">User Role</label>
+                <div className="overflow-auto rounded-md border border-outline-variant">
+                  <table className="w-full text-sm">
+                    <thead className="bg-surface">
+                      <tr className="text-left">
+                        <th className="px-3 py-2 text-on-surface">Role</th>
+                        <th className="px-3 py-2 text-on-surface">Username/Email</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant bg-surface-high">
+                      {(editForm.user_roles || []).map((row, idx) => (
+                        <tr key={idx}>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={row.role}
+                              onChange={(e) => updateUserRoleRow(idx, { role: e.target.value })}
+                              className="bg-surface border-outline text-on-surface"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={row.username}
+                              onChange={(e) => updateUserRoleRow(idx, { username: e.target.value })}
+                              className="bg-surface border-outline text-on-surface"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => removeUserRoleRow(idx)}
+                              className="border-outline text-on-surface-variant"
+                            >
+                              Remove
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="pt-2">
+                  <Button type="button" variant="outline" onClick={addUserRoleRow} className="border-outline text-on-surface-variant">
+                    Add Row
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="p-3 rounded-lg bg-surface border border-outline-variant">
+                <div className="text-xs text-on-surface-variant">Client</div>
+                <div className="mt-1 text-on-surface">{project.client_name || 'N/A'}</div>
+              </div>
+              <div className="p-3 rounded-lg bg-surface border border-outline-variant">
+                <div className="text-xs text-on-surface-variant">Assessment Window</div>
+                <div className="mt-1 text-on-surface">
+                  {(project.start_date || 'Start Date')} to {(project.end_date || 'End Date')}
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+      ) : null}
 
       {project.description ? (
         <Card className="mb-6 p-4 bg-surface-high border-outline">

@@ -3,6 +3,8 @@ import { Upload, X, File, Image, FileText } from 'lucide-react';
 import { evidenceApi, Evidence } from '@/api/evidenceApi';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { toast } from 'react-hot-toast';
+import InlineConfirm from '@/components/ui/inline-confirm';
 
 interface EvidenceUploaderProps {
     findingId: number;
@@ -20,6 +22,7 @@ const EvidenceUploader = ({ findingId, onUploadComplete }: EvidenceUploaderProps
     const [uploadedEvidence, setUploadedEvidence] = useState<Evidence[]>([]);
     const [isDragging, setIsDragging] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [confirmDeleteEvidenceId, setConfirmDeleteEvidenceId] = useState<number | null>(null);
 
     // Load existing evidence when component mounts
     useEffect(() => {
@@ -112,7 +115,7 @@ const EvidenceUploader = ({ findingId, onUploadComplete }: EvidenceUploaderProps
             onUploadComplete?.();
         } catch (error) {
             console.error('Failed to upload file:', error);
-            alert(`Failed to upload ${fileData.file.name}`);
+            toast.error(`Failed to upload ${fileData.file.name}`);
             setUploadingFiles(prev => prev.filter((_, i) => i !== index));
         }
     };
@@ -122,14 +125,13 @@ const EvidenceUploader = ({ findingId, onUploadComplete }: EvidenceUploaderProps
     };
 
     const deleteEvidence = async (id: number) => {
-        if (!confirm('Are you sure you want to delete this evidence?')) return;
-
         try {
             await evidenceApi.delete(id);
             setUploadedEvidence(prev => prev.filter(e => e.id !== id));
+            setConfirmDeleteEvidenceId((current) => (current === id ? null : current));
         } catch (error) {
             console.error('Failed to delete evidence:', error);
-            alert('Failed to delete evidence');
+            toast.error('Failed to delete evidence');
         }
     };
 
@@ -255,12 +257,25 @@ const EvidenceUploader = ({ findingId, onUploadComplete }: EvidenceUploaderProps
                                     type="button"
                                     size="sm"
                                     variant="ghost"
-                                    onClick={() => deleteEvidence(evidence.id)}
+                                    onClick={() => setConfirmDeleteEvidenceId(evidence.id)}
                                     className="text-error"
                                 >
                                     <X className="w-4 h-4" />
                                 </Button>
                             </div>
+
+                            {confirmDeleteEvidenceId === evidence.id ? (
+                              <div className="mt-3">
+                                <InlineConfirm
+                                  danger
+                                  title="Delete evidence?"
+                                  description="This will remove the uploaded file from this finding."
+                                  confirmText="Delete"
+                                  onCancel={() => setConfirmDeleteEvidenceId(null)}
+                                  onConfirm={() => void deleteEvidence(evidence.id)}
+                                />
+                              </div>
+                            ) : null}
                         </Card>
                     ))}
                 </div>

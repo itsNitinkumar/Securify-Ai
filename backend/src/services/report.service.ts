@@ -162,8 +162,41 @@ class ReportService {
 
     html = html
       .replace(/{{CLIENT_NAME}}/g, project.client_name || 'N/A')
-      .replace(/{{PROJECT_NAME}}/g, project.name)
+      .replace(/{{PROJECT_NAME}}/g, project.name || 'Penetration Test Report')
       .replace(/{{DATE}}/g, metadata.generatedDate);
+
+    // Ensure a scope paragraph and tables exist across all templates so dynamic
+    // replacements work even if an older template file lacks them.
+    {
+      const scopeParagraph = '<p>The assessment was conducted between Start Date and End Date. The re-assessment was conducted between Start Date and End Date. Testing was performed remotely.</p>';
+      const appDetailsBlock = `
+        <h2>Application Details</h2>
+        <table>
+          <thead>
+            <tr><th>Name</th><th>URL</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Application Name 1</td><td>http://test.com</td></tr>
+            <tr><td>Application Name 2</td><td>http://admin.test.com</td></tr>
+          </tbody>
+        </table>`;
+      const userRolesBlock = `
+        <h2>User Roles (Web application &amp; API)</h2>
+        <table>
+          <thead>
+            <tr><th>Role</th><th>Username</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Customer</td><td>user1</td></tr>
+            <tr><td>Admin</td><td>admin1</td></tr>
+          </tbody>
+        </table>`;
+
+      // Only patch when missing. We anchor to the findings placeholder since all templates have it.
+      if (!html.includes('The assessment was conducted between Start Date and End Date')) {
+        html = html.replace('{{FINDINGS_SECTION}}', `${scopeParagraph}${appDetailsBlock}${userRolesBlock}\n{{FINDINGS_SECTION}}`);
+      }
+    }
 
     const findingsMarkup = ReportGeneratorService.generateHTML(project, findings) as unknown;
     const findingsHTML = typeof findingsMarkup === 'string'
@@ -171,6 +204,48 @@ class ReportService {
       : String((findingsMarkup as { FINDINGS_SECTION?: string })?.FINDINGS_SECTION || '');
 
     html = html.replace('{{FINDINGS_SECTION}}', findingsHTML);
+
+    // If templates contain the scope paragraph and tables, update them using project metadata.
+    // (This runs after findings injection because some templates may insert scope before findings.)
+    {
+      const start = (project as any)?.start_date
+        ? formatDate(new Date((project as any).start_date), 'MMMM dd, yyyy')
+        : 'Start Date';
+      const end = (project as any)?.end_date
+        ? formatDate(new Date((project as any).end_date), 'MMMM dd, yyyy')
+        : 'End Date';
+      html = html.replace(/Start Date/g, start).replace(/End Date/g, end);
+
+      const apps = Array.isArray((project as any)?.application_details) ? (project as any).application_details : null;
+      if (apps && apps.length) {
+        const rows = apps
+          .map((r: any) => ({ name: String(r?.name || '').trim(), url: String(r?.url || '').trim() }))
+          .filter((r: any) => r.name || r.url)
+          .map((r: any) => `<tr><td>${r.name || 'N/A'}</td><td>${r.url || 'N/A'}</td></tr>`)
+          .join('');
+        if (rows) {
+          html = html.replace(
+            /(<h2[^>]*>\s*Application Details\s*<\/h2>[\s\S]*?<table[\s\S]*?<tbody>)[\s\S]*?(<\/tbody>[\s\S]*?<\/table>)/i,
+            `$1${rows}$2`
+          );
+        }
+      }
+
+      const roles = Array.isArray((project as any)?.user_roles) ? (project as any).user_roles : null;
+      if (roles && roles.length) {
+        const rows = roles
+          .map((r: any) => ({ role: String(r?.role || '').trim(), username: String(r?.username || '').trim() }))
+          .filter((r: any) => r.role || r.username)
+          .map((r: any) => `<tr><td>${r.role || 'N/A'}</td><td>${r.username || 'N/A'}</td></tr>`)
+          .join('');
+        if (rows) {
+          html = html.replace(
+            /(<h2[^>]*>\s*User Roles \(Web application[^<]*<\/h2>[\s\S]*?<table[\s\S]*?<tbody>)[\s\S]*?(<\/tbody>[\s\S]*?<\/table>)/i,
+            `$1${rows}$2`
+          );
+        }
+      }
+    }
 
     if (opts?.inlineImages) {
       // html-to-docx will try to fetch http(s) images; avoid network dependency by
@@ -944,7 +1019,10 @@ class ReportService {
       : new TextRun({ text: 'SECURIFY', bold: true, color: this.brand.greenDark, size: 64 });
 
     const client = (project.client_name || 'Client Name') as string;
-    const subtitle = 'Web Application & API Penetration Test Report';
+
+    // Requirement: use project name as report title.
+    // Keep client name as the prominent line below the hero.
+    const subtitle = String(project.name || 'Penetration Test Report');
 
     const hero = new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
@@ -1330,15 +1408,43 @@ class ReportService {
     replaceAllParagraphText('Client Name', data.project.client_name || 'N/A');
     replaceAllParagraphText('November 26, 2025', data.metadata.generatedDate);
 
+    // Extract start and end dates from project
+    const startDate = (data.project as any)?.start_date
+      ? formatDate(new Date((data.project as any).start_date), 'MMMM dd, yyyy')
+      : 'Start Date';
+    const endDate = (data.project as any)?.end_date
+      ? formatDate(new Date((data.project as any).end_date), 'MMMM dd, yyyy')
+      : 'End Date';
+
     body.find('w\\:p').each((_: number, p: any) => {
       const text = paraText(p);
       if (!text) return;
       if (text.includes('Client Name')) {
         setParaText(p, text.replace(/Client Name/g, data.project.client_name || 'N/A'));
+        return;
+      }
+      // Robust cover-title replacement: match paragraphs containing both keywords
+      // (exact match often fails when Word splits runs with different formatting).
+      if (text.includes('Web Application') && text.includes('Penetration Test Report')) {
+        setParaText(p, data.project.name || 'Penetration Test Report');
+        return;
       }
       if (text.includes('The assessment was conducted between Start Date and End Date.')) {
         const custom = (data.template.scope_text || text) as string;
-        setParaText(p, custom.replace(/Client Name/g, data.project.client_name || 'N/A'));
+        const replaced = custom
+          .replace(/Client Name/g, data.project.client_name || 'N/A')
+          .replace(/Start Date/g, startDate)
+          .replace(/End Date/g, endDate);
+        setParaText(p, replaced);
+        return;
+      }
+      // Also handle any other occurrences of Start Date and End Date
+      if (text.includes('Start Date') || text.includes('End Date')) {
+        const replaced = text
+          .replace(/Start Date/g, startDate)
+          .replace(/End Date/g, endDate);
+        setParaText(p, replaced);
+        return;
       }
       if (text === 'Page ( of  )' || text === 'Page ( of )') {
         return;
@@ -1823,22 +1929,33 @@ class ReportService {
     replaceAllParagraphText('User Roles (Web application & API)', String(getSection('scope')?.fields?.user_roles_title || 'User Roles (Web application & API)'));
     replaceAllParagraphText('Tools', String(getSection('scope')?.fields?.tools_title || 'Tools'));
 
-    const applications = Array.isArray(getSection('scope')?.application_rows) && getSection('scope').application_rows.length
-      ? getSection('scope').application_rows
-      : Array.isArray(normalizedTemplate.scope_applications) && normalizedTemplate.scope_applications.length
-        ? normalizedTemplate.scope_applications
-      : [
-          { name: 'Application Name 1', url: 'http://test.com' },
-          { name: 'Application Name 2', url: 'http://admin.test.com' },
-        ];
-    const userRoles = Array.isArray(getSection('scope')?.user_role_rows) && getSection('scope').user_role_rows.length
-      ? getSection('scope').user_role_rows
-      : Array.isArray(normalizedTemplate.scope_user_roles) && normalizedTemplate.scope_user_roles.length
-        ? normalizedTemplate.scope_user_roles
-      : [
-          { role: 'Customer', username: 'user1', description: 'Authenticated customer user' },
-          { role: 'Admin', username: 'admin1', description: 'Privileged administrative user' },
-        ];
+    const projectApplications = Array.isArray((data.project as any)?.application_details)
+      ? (data.project as any).application_details
+      : null;
+    const projectUserRoles = Array.isArray((data.project as any)?.user_roles)
+      ? (data.project as any).user_roles
+      : null;
+
+    const applications = projectApplications && projectApplications.length
+      ? projectApplications
+      : Array.isArray(getSection('scope')?.application_rows) && getSection('scope').application_rows.length
+        ? getSection('scope').application_rows
+        : Array.isArray(normalizedTemplate.scope_applications) && normalizedTemplate.scope_applications.length
+          ? normalizedTemplate.scope_applications
+        : [
+            { name: 'Application Name 1', url: 'http://test.com' },
+            { name: 'Application Name 2', url: 'http://admin.test.com' },
+          ];
+    const userRoles = projectUserRoles && projectUserRoles.length
+      ? projectUserRoles
+      : Array.isArray(getSection('scope')?.user_role_rows) && getSection('scope').user_role_rows.length
+        ? getSection('scope').user_role_rows
+        : Array.isArray(normalizedTemplate.scope_user_roles) && normalizedTemplate.scope_user_roles.length
+          ? normalizedTemplate.scope_user_roles
+        : [
+            { role: 'Customer', username: 'user1', description: 'Authenticated customer user' },
+            { role: 'Admin', username: 'admin1', description: 'Privileged administrative user' },
+          ];
     const tools = Array.isArray(getSection('scope')?.tool_rows) && getSection('scope').tool_rows.length
       ? getSection('scope').tool_rows
       : Array.isArray(normalizedTemplate.scope_tools) && normalizedTemplate.scope_tools.length

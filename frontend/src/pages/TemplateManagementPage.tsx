@@ -83,8 +83,6 @@ const TemplateManagementPage = () => {
   };
 
   const handleDeleteTemplate = async (templateId: number) => {
-    if (!confirm('Are you sure you want to delete this template?')) return;
-
     try {
       await axios.delete(`/reports/templates/${templateId}`);
       toast.success('Template deleted successfully');

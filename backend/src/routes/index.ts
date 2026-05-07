@@ -9,6 +9,7 @@ import dashboardRoutes from './dashboard.routes';
 import templateRoutes from './template.routes';
 import commentRoutes from './comment.routes';
 import roleRequestRoutes from './role-request.routes';
+import clientRoutes from './client.routes';
 
 const router = Router();
 
@@ -24,8 +25,11 @@ router.use('/role-requests', roleRequestRoutes);
 // Dashboard routes
 router.use('/dashboard', dashboardRoutes);
 
-// Project routes
-router.use('/projects', projectRoutes);
+  // Project routes
+  router.use('/projects', projectRoutes);
+
+  // Client routes
+  router.use('/clients', clientRoutes);
 
 // Finding routes
 router.use('/findings', findingRoutes);

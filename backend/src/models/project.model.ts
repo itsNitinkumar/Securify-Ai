@@ -5,6 +5,11 @@ interface Project {
   name: string;
   description?: string;
   client_name?: string;
+  client_id?: number;
+  start_date?: string; // DATE in DB
+  end_date?: string; // DATE in DB
+  application_details?: Array<{ name: string; url: string }>;
+  user_roles?: Array<{ role: string; username: string }>;
   created_by?: number;
   created_at: Date;
   updated_at: Date;
@@ -13,10 +18,30 @@ interface Project {
 class ProjectModel {
   static async create(data: Partial<Project>): Promise<Project> {
     const result = await pool.query(
-      `INSERT INTO projects (name, description, client_name, created_by)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO projects (
+         name,
+         description,
+         client_name,
+         client_id,
+         start_date,
+         end_date,
+         application_details,
+         user_roles,
+         created_by
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [data.name, data.description, data.client_name, data.created_by]
+      [
+        data.name,
+        data.description,
+        data.client_name,
+        data.client_id ?? null,
+        data.start_date ?? null,
+        data.end_date ?? null,
+        data.application_details ? JSON.stringify(data.application_details) : null,
+        data.user_roles ? JSON.stringify(data.user_roles) : null,
+        data.created_by,
+      ]
     );
     return result.rows[0];
   }
@@ -32,15 +57,31 @@ class ProjectModel {
   }
 
   static async update(id: number, data: Partial<Project>): Promise<Project> {
+    const updates: string[] = [];
+    const values: any[] = [];
+    let param = 1;
+
+    const set = (field: string, value: any) => {
+      updates.push(`${field} = $${param++}`);
+      values.push(value);
+    };
+
+    if (data.name !== undefined) set('name', data.name);
+    if (data.description !== undefined) set('description', data.description);
+    if (data.client_name !== undefined) set('client_name', data.client_name);
+    if (data.client_id !== undefined) set('client_id', data.client_id);
+    if (data.start_date !== undefined) set('start_date', data.start_date);
+    if (data.end_date !== undefined) set('end_date', data.end_date);
+    if (data.application_details !== undefined) set('application_details', data.application_details ? JSON.stringify(data.application_details) : null);
+    if (data.user_roles !== undefined) set('user_roles', data.user_roles ? JSON.stringify(data.user_roles) : null);
+
+    // Always bump updated_at on any update call.
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+
+    values.push(id);
     const result = await pool.query(
-      `UPDATE projects SET
-        name = COALESCE($1, name),
-        description = COALESCE($2, description),
-        client_name = COALESCE($3, client_name),
-        updated_at = CURRENT_TIMESTAMP
-       WHERE id = $4
-       RETURNING *`,
-      [data.name, data.description, data.client_name, id]
+      `UPDATE projects SET ${updates.join(', ')} WHERE id = $${param} RETURNING *`,
+      values
     );
     return result.rows[0];
   }

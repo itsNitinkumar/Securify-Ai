@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Send, CheckCircle, XCircle, Edit, Trash2, Loader2, MessageSquare } from 'lucide-react';
 import { findingApi, Finding } from '@/api/findingApi';
 import { Button } from '@/components/ui/button';
+import { toast } from 'react-hot-toast';
+import InlineConfirm from '@/components/ui/inline-confirm';
 
 interface FindingWorkflowButtonsProps {
   finding: Finding;
@@ -19,6 +21,9 @@ const FindingWorkflowButtons = ({
   onEditClick,
 }: FindingWorkflowButtonsProps) => {
   const [loading, setLoading] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<null | 'submit' | 'approve' | 'delete'>(null);
+  const [requestChangesOpen, setRequestChangesOpen] = useState(false);
+  const [requestChangesComment, setRequestChangesComment] = useState('');
 
   const isCreator = finding.created_by === currentUserId;
   
@@ -51,80 +56,139 @@ const FindingWorkflowButtons = ({
   console.log('Button Visibility:', { canEdit, canDelete, canSubmit, canReview });
 
   const handleSubmitForReview = async () => {
-    if (!confirm('Submit this finding for review? You will not be able to edit it after submission.')) {
-      return;
-    }
-
     try {
       setLoading(true);
       await findingApi.submitForReview(finding.id);
       onUpdate();
     } catch (error) {
       console.error('Failed to submit for review:', error);
-      alert('Failed to submit for review');
+      toast.error('Failed to submit for review');
     } finally {
       setLoading(false);
+      setConfirmAction(null);
     }
   };
 
   const handleApprove = async () => {
-    if (!confirm('Approve this finding?')) {
-      return;
-    }
-
     try {
       setLoading(true);
       await findingApi.approve(finding.id);
       onUpdate();
     } catch (error) {
       console.error('Failed to approve finding:', error);
-      alert('Failed to approve finding');
+      toast.error('Failed to approve finding');
     } finally {
       setLoading(false);
+      setConfirmAction(null);
     }
   };
 
   const handleRequestChanges = async () => {
-    const comment = prompt('Please provide feedback for the analyst (optional):');
-    
-    // Allow empty comment (user can click OK without typing)
-    if (comment === null) return; // User clicked Cancel
-    
     try {
       setLoading(true);
-      await findingApi.requestChanges(finding.id, comment || undefined);
+      await findingApi.requestChanges(finding.id, requestChangesComment.trim() || undefined);
       onUpdate();
     } catch (error) {
       console.error('Failed to request changes:', error);
-      alert('Failed to request changes');
+      toast.error('Failed to request changes');
     } finally {
       setLoading(false);
+      setRequestChangesOpen(false);
+      setRequestChangesComment('');
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this finding? This action cannot be undone.')) {
-      return;
-    }
-
     try {
       setLoading(true);
       await findingApi.delete(finding.id);
       onUpdate();
     } catch (error) {
       console.error('Failed to delete finding:', error);
-      alert('Failed to delete finding');
+      toast.error('Failed to delete finding');
     } finally {
       setLoading(false);
+      setConfirmAction(null);
     }
   };
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="space-y-3">
+      {(confirmAction === 'submit' || confirmAction === 'approve' || confirmAction === 'delete') ? (
+        <InlineConfirm
+          danger={confirmAction === 'delete'}
+          title={
+            confirmAction === 'submit'
+              ? 'Submit for review?'
+              : confirmAction === 'approve'
+              ? 'Approve this finding?'
+              : 'Delete this finding?'
+          }
+          description={
+            confirmAction === 'submit'
+              ? 'You will not be able to edit it after submission.'
+              : confirmAction === 'delete'
+              ? 'This action cannot be undone.'
+              : undefined
+          }
+          confirmText={
+            confirmAction === 'submit'
+              ? 'Submit'
+              : confirmAction === 'approve'
+              ? 'Approve'
+              : 'Delete'
+          }
+          busy={loading}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={() => {
+            if (confirmAction === 'submit') void handleSubmitForReview();
+            if (confirmAction === 'approve') void handleApprove();
+            if (confirmAction === 'delete') void handleDelete();
+          }}
+        />
+      ) : null}
+
+      {requestChangesOpen ? (
+        <div className="rounded-lg border border-outline-variant bg-surface-low p-3">
+          <div className="text-sm font-semibold text-on-surface">Request changes</div>
+          <div className="mt-1 text-xs text-on-surface-variant">Optional feedback for the analyst.</div>
+          <textarea
+            value={requestChangesComment}
+            onChange={(e) => setRequestChangesComment(e.target.value)}
+            rows={3}
+            className="mt-2 w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+            placeholder="e.g., Add reproduction steps and evidence for the impact statement"
+          />
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={loading}
+              onClick={() => {
+                setRequestChangesOpen(false);
+                setRequestChangesComment('');
+              }}
+              className="border-outline text-on-surface-variant"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={loading}
+              onClick={() => void handleRequestChanges()}
+              className="bg-orange-500 text-surface hover:bg-orange-500/90"
+            >
+              {loading ? 'Working…' : 'Send'}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-2 flex-wrap">
       {/* Submit for Review - Analyst (creator) only, draft or changes_requested status */}
       {canSubmit && (
         <Button
-          onClick={handleSubmitForReview}
+          onClick={() => setConfirmAction('submit')}
           disabled={loading}
           className="bg-primary text-surface hover:bg-primary/90"
         >
@@ -141,7 +205,7 @@ const FindingWorkflowButtons = ({
       {canReview && (
         <>
           <Button
-            onClick={handleApprove}
+            onClick={() => setConfirmAction('approve')}
             disabled={loading}
             className="bg-green-500 text-white hover:bg-green-600"
           >
@@ -153,7 +217,7 @@ const FindingWorkflowButtons = ({
             Approve
           </Button>
           <Button
-            onClick={handleRequestChanges}
+            onClick={() => setRequestChangesOpen((v) => !v)}
             disabled={loading}
             variant="ghost"
             className="text-orange-400 hover:bg-orange-500/10"
@@ -183,7 +247,7 @@ const FindingWorkflowButtons = ({
       {/* Delete - Analyst (creator) or Manager */}
       {canDelete && (
         <Button
-          onClick={handleDelete}
+          onClick={() => setConfirmAction('delete')}
           disabled={loading}
           variant="ghost"
           className="border-error text-error hover:bg-error/10"
@@ -230,6 +294,7 @@ const FindingWorkflowButtons = ({
           Rejected
         </div>
       )}
+      </div>
     </div>
   );
 };

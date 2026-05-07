@@ -4,6 +4,8 @@ import { commentApi, Comment } from '@/api/commentApi';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { toast } from 'react-hot-toast';
+import InlineConfirm from '@/components/ui/inline-confirm';
 
 interface FindingCommentsProps {
   findingId: number;
@@ -18,6 +20,7 @@ const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingC
   const [editText, setEditText] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
     loadComments();
@@ -46,7 +49,7 @@ const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingC
       loadComments();
     } catch (error) {
       console.error('Failed to create comment:', error);
-      alert('Failed to add comment');
+      toast.error('Failed to add comment');
     } finally {
       setSubmitting(false);
     }
@@ -62,19 +65,18 @@ const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingC
       loadComments();
     } catch (error) {
       console.error('Failed to update comment:', error);
-      alert('Failed to update comment');
+      toast.error('Failed to update comment');
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this comment?')) return;
-
     try {
       await commentApi.delete(id);
+      setConfirmDeleteId((current) => (current === id ? null : current));
       loadComments();
     } catch (error) {
       console.error('Failed to delete comment:', error);
-      alert('Failed to delete comment');
+      toast.error('Failed to delete comment');
     }
   };
 
@@ -197,7 +199,7 @@ const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingC
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDelete(comment.id)}
+                          onClick={() => setConfirmDeleteId(comment.id)}
                           className="h-6 w-6 p-0 text-on-surface-variant hover:text-error"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -240,6 +242,19 @@ const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingC
                   {comment.comment}
                 </p>
               )}
+
+              {confirmDeleteId === comment.id ? (
+                <div className="mt-3">
+                  <InlineConfirm
+                    danger
+                    title="Delete comment?"
+                    description="This cannot be undone."
+                    confirmText="Delete"
+                    onCancel={() => setConfirmDeleteId(null)}
+                    onConfirm={() => void handleDelete(comment.id)}
+                  />
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

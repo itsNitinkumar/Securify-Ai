@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import InlineConfirm from '@/components/ui/inline-confirm';
 import { Shield, Users, Lock, Key, AlertTriangle, CheckCircle, Plus, Edit2, Trash2, Save, X, UserCog } from 'lucide-react';
 import { RoleRequestsDashboard } from '@/components/manager/RoleRequestsDashboard';
 
@@ -22,6 +23,7 @@ const RBACSettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'roles' | 'permissions' | 'audit' | 'requests'>('roles');
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [showAddRole, setShowAddRole] = useState(false);
+  const [confirmDeleteRoleId, setConfirmDeleteRoleId] = useState<string | null>(null);
 
   // Mock data
   const permissions: Permission[] = [
@@ -74,9 +76,8 @@ const RBACSettingsPage: React.FC = () => {
   ];
 
   const handleDeleteRole = (roleId: string) => {
-    if (window.confirm('Are you sure you want to delete this role?')) {
-      setRoles(roles.filter(r => r.id !== roleId));
-    }
+    setRoles(roles.filter(r => r.id !== roleId));
+    setConfirmDeleteRoleId((current) => (current === roleId ? null : current));
   };
 
   const groupedPermissions = permissions.reduce((acc, perm) => {
@@ -204,7 +205,7 @@ const RBACSettingsPage: React.FC = () => {
                         </button>
                         {!role.isSystem && (
                           <button
-                            onClick={() => handleDeleteRole(role.id)}
+                            onClick={() => setConfirmDeleteRoleId(role.id)}
                             className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -212,6 +213,19 @@ const RBACSettingsPage: React.FC = () => {
                         )}
                       </div>
                     </div>
+
+                    {confirmDeleteRoleId === role.id ? (
+                      <div className="mt-3">
+                        <InlineConfirm
+                          danger
+                          title={`Delete role "${role.name}"?`}
+                          description="This is mock data in the UI today, but treat it as destructive."
+                          confirmText="Delete"
+                          onCancel={() => setConfirmDeleteRoleId(null)}
+                          onConfirm={() => handleDeleteRole(role.id)}
+                        />
+                      </div>
+                    ) : null}
 
                     {/* Permission Pills */}
                     <div className="flex flex-wrap gap-2">

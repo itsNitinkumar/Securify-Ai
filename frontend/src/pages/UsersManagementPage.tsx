@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import UsersTable from '@/components/users/UsersTable';
 import { toast } from 'react-hot-toast';
+import InlineConfirm from '@/components/ui/inline-confirm';
 
 interface User {
   id: number;
@@ -23,6 +24,8 @@ const UsersManagementPage = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserRole, setCurrentUserRole] = useState<string>('');
+  const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<number | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -61,12 +64,16 @@ const UsersManagementPage = () => {
 
   const handleDelete = async (userId: number) => {
     try {
+      setDeletingUserId(userId);
       await userApi.delete(userId);
       toast.success('User deleted');
       loadUsers();
     } catch (error: any) {
       console.error('Failed to delete user:', error);
       toast.error(error.response?.data?.message || 'Failed to delete user');
+    } finally {
+      setDeletingUserId(null);
+      setConfirmDeleteUserId((current) => (current === userId ? null : current));
     }
   };
 
@@ -166,12 +173,29 @@ const UsersManagementPage = () => {
           </p>
         </Card>
       ) : (
-        <UsersTable
-          users={users}
-          onEdit={handleEdit}
-          onDelete={currentUserRole === 'admin' ? handleDelete : undefined}
-          onApprove={handleApprove}
-        />
+        <div className="space-y-4">
+          {confirmDeleteUserId !== null ? (
+            <InlineConfirm
+              danger
+              title="Delete user?"
+              description="This action cannot be undone."
+              confirmText="Delete"
+              busy={deletingUserId === confirmDeleteUserId}
+              onCancel={() => setConfirmDeleteUserId(null)}
+              onConfirm={() => void handleDelete(confirmDeleteUserId)}
+            />
+          ) : null}
+          <UsersTable
+            users={users}
+            onEdit={handleEdit}
+            onDelete={
+              currentUserRole === 'admin'
+                ? (userId) => setConfirmDeleteUserId(userId)
+                : undefined
+            }
+            onApprove={handleApprove}
+          />
+        </div>
       )}
     </div>
   );

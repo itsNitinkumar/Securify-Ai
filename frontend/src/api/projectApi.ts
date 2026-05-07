@@ -5,6 +5,11 @@ export interface Project {
   name: string;
   description?: string;
   client_name?: string;
+  client_id?: number;
+  start_date?: string;
+  end_date?: string;
+  application_details?: Array<{ name: string; url: string }>;
+  user_roles?: Array<{ role: string; username: string }>;
   created_by: number;
   created_at: string;
   updated_at: string;
@@ -18,6 +23,11 @@ export interface CreateProjectData {
   name: string;
   description?: string;
   client_name?: string;
+  client_id?: number;
+  start_date?: string;
+  end_date?: string;
+  application_details?: Array<{ name: string; url: string }>;
+  user_roles?: Array<{ role: string; username: string }>;
 }
 
 export const projectApi = {

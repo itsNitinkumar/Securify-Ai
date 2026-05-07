@@ -21,6 +21,8 @@ import ApprovalWorkflow from '@/components/findings/ApprovalWorkflow';
 import EvidenceVault from '@/components/findings/EvidenceVault';
 import VersionHistory from '@/components/findings/VersionHistory';
 import AIActions from '@/components/findings/AIActions';
+import InlineConfirm from '@/components/ui/inline-confirm';
+import { toast } from 'react-hot-toast';
 
 const FindingDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -29,6 +31,7 @@ const FindingDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -50,14 +53,12 @@ const FindingDetailPage = () => {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this finding?')) return;
-
     try {
       await findingApi.deleteFinding(parseInt(id!));
       navigate('/findings');
     } catch (error) {
       console.error('Failed to delete finding:', error);
-      alert('Failed to delete finding');
+      toast.error('Failed to delete finding');
     }
   };
 
@@ -67,7 +68,7 @@ const FindingDetailPage = () => {
       loadFinding();
     } catch (error) {
       console.error('Failed to approve finding:', error);
-      alert('Failed to approve finding');
+      toast.error('Failed to approve finding');
     }
   };
 
@@ -77,7 +78,7 @@ const FindingDetailPage = () => {
       loadFinding();
     } catch (error) {
       console.error('Failed to regenerate section:', error);
-      alert('Failed to regenerate section');
+      toast.error('Failed to regenerate section');
     }
   };
 
@@ -185,7 +186,7 @@ const FindingDetailPage = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleDelete}
+              onClick={() => setConfirmDelete(true)}
               className="border-error/30 text-error hover:bg-error/10"
             >
               <Trash2 className="w-4 h-4 mr-2" />
@@ -194,6 +195,19 @@ const FindingDetailPage = () => {
           </div>
         </div>
       </div>
+
+      {confirmDelete ? (
+        <div className="mb-6">
+          <InlineConfirm
+            danger
+            title="Delete this finding?"
+            description="This action cannot be undone."
+            confirmText="Delete"
+            onCancel={() => setConfirmDelete(false)}
+            onConfirm={() => void handleDelete()}
+          />
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
