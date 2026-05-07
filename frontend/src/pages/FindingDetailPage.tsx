@@ -4,23 +4,18 @@ import {
   ArrowLeft,
   Edit,
   Trash2,
-  Sparkles,
-  CheckCircle,
   XCircle,
-  Clock,
-  Upload,
   History,
 } from 'lucide-react';
 import { findingApi, Finding } from '@/api/findingApi';
+import { authApi } from '@/api/authApi';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import FindingMetadata from '@/components/findings/FindingMetadata';
 import FindingContent from '@/components/findings/FindingContent';
+import FindingWorkflowButtons from '@/components/findings/FindingWorkflowButtons';
 import ApprovalWorkflow from '@/components/findings/ApprovalWorkflow';
-import EvidenceVault from '@/components/findings/EvidenceVault';
 import VersionHistory from '@/components/findings/VersionHistory';
-import AIActions from '@/components/findings/AIActions';
 import InlineConfirm from '@/components/ui/inline-confirm';
 import { toast } from 'react-hot-toast';
 
@@ -32,12 +27,26 @@ const FindingDetailPage = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<string>('');
+  const [currentUserId, setCurrentUserId] = useState<number>(0);
 
   useEffect(() => {
     if (id) {
       loadFinding();
+      loadCurrentUser();
     }
   }, [id]);
+
+  const loadCurrentUser = async () => {
+    try {
+      const response = await authApi.getProfile();
+      const userData = (response.data as any)?.data || (response.data as any)?.user || response.data;
+      setCurrentUserRole(userData?.role || '');
+      setCurrentUserId(userData?.id || 0);
+    } catch (error) {
+      console.error('Failed to load user profile:', error);
+    }
+  };
 
   const loadFinding = async () => {
     try {
@@ -59,16 +68,6 @@ const FindingDetailPage = () => {
     } catch (error) {
       console.error('Failed to delete finding:', error);
       toast.error('Failed to delete finding');
-    }
-  };
-
-  const handleApprove = async () => {
-    try {
-      await findingApi.approveFinding(parseInt(id!));
-      loadFinding();
-    } catch (error) {
-      console.error('Failed to approve finding:', error);
-      toast.error('Failed to approve finding');
     }
   };
 
@@ -212,8 +211,14 @@ const FindingDetailPage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Metadata */}
-          <FindingMetadata finding={finding} />
+          {/* Workflow Buttons */}
+          <FindingWorkflowButtons
+            finding={finding}
+            currentUserRole={currentUserRole}
+            currentUserId={currentUserId}
+            onUpdate={loadFinding}
+            onEditClick={() => setIsEditing(!isEditing)}
+          />
 
           {/* Content Sections */}
           <FindingContent
@@ -222,25 +227,12 @@ const FindingDetailPage = () => {
             onUpdate={loadFinding}
             onRegenerateSection={handleRegenerateSection}
           />
-
-          {/* Evidence Vault */}
-          <EvidenceVault findingId={finding.id} />
-
-          {/* AI Actions */}
-          <AIActions
-            findingId={finding.id}
-            onRegenerateSection={handleRegenerateSection}
-          />
         </div>
 
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Approval Workflow */}
-          <ApprovalWorkflow
-            finding={finding}
-            onApprove={handleApprove}
-            onUpdate={loadFinding}
-          />
+          <ApprovalWorkflow finding={finding} />
 
           {/* Version History */}
           {showVersions && (

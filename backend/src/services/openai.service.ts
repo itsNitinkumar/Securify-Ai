@@ -297,7 +297,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config/env';
 
-// Initialize the Gemini client (Make sure to update your config to include gemini.apiKey)
+// Initialize the Gemini client
 const genAI = new GoogleGenerativeAI(config.gemini.apikey);
 
 const SYSTEM_PROMPT = `You are SecurifyAI, a professional penetration testing finding generation engine used in VAPT engagements, bug bounty reporting, and security assessments.

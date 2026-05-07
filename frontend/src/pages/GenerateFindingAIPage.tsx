@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, RefreshCw, Sparkles, Upload } from 'lucide-react';
+import { ArrowLeft, Loader2, RefreshCw, Sparkles, Upload, FileText, Shield, AlertTriangle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { findingApi } from '@/api/findingApi';
 import EvidenceUploader from '@/components/findings/EvidenceUploader';
@@ -278,21 +278,143 @@ const GenerateFindingAIPage = () => {
 
         {step === 'review' && generatedFinding ? (
           <div className="space-y-6">
-            <Card className="p-4 bg-surface border-outline-variant">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-semibold text-on-surface mb-2">Title</h4>
-                  <p className="text-sm text-on-surface-variant">{generatedFinding.title}</p>
+            <Card className="p-6 bg-surface border-outline-variant">
+              <div className="space-y-6">
+                {/* Title */}
+                <div className="pb-4 border-b border-outline-variant">
+                  <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2">Title</h4>
+                  <p className="text-base font-semibold text-on-surface">{generatedFinding.title}</p>
                 </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-on-surface mb-2">Description</h4>
-                  <p className="text-sm text-on-surface-variant whitespace-pre-wrap">{generatedFinding.description}</p>
+
+                {/* Description */}
+                <div className="pb-4 border-b border-outline-variant">
+                  <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2 flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    Description
+                  </h4>
+                  <p className="text-sm text-on-surface-variant whitespace-pre-wrap leading-relaxed">
+                    {generatedFinding.description}
+                  </p>
                 </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-on-surface mb-2">Affected Target</h4>
-                  <p className="text-sm text-on-surface-variant">{generatedFinding.affected_target || 'N/A'}</p>
+
+                {/* Affected Target */}
+                <div className="pb-4 border-b border-outline-variant">
+                  <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2">Affected Target</h4>
+                  <p className="text-sm text-on-surface font-mono bg-surface-low px-3 py-2 rounded">
+                    {generatedFinding.affected_target || 'N/A'}
+                  </p>
                 </div>
+
+                {/* Likelihood & Impact */}
+                <div className="pb-4 border-b border-outline-variant">
+                  <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3">Risk Assessment</h4>
+                  <div className="space-y-4">
+                    {generatedFinding.likelihood && (
+                      <div className="bg-surface-low p-4 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-semibold text-on-surface uppercase">Likelihood:</span>
+                          <Badge className={`${
+                            generatedFinding.likelihood.severity === 'High' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                            generatedFinding.likelihood.severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                            'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                          }`}>
+                            {generatedFinding.likelihood.severity || 'N/A'}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-on-surface-variant leading-relaxed">
+                          {generatedFinding.likelihood.detail || 'N/A'}
+                        </p>
+                      </div>
+                    )}
+
+                    {generatedFinding.impact && (
+                      <div className="bg-surface-low p-4 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertTriangle className="w-4 h-4 text-on-surface" />
+                          <span className="text-xs font-semibold text-on-surface uppercase">Impact:</span>
+                          <Badge className={`${
+                            generatedFinding.impact.severity === 'High' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                            generatedFinding.impact.severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                            'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                          }`}>
+                            {generatedFinding.impact.severity || 'N/A'}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-on-surface-variant leading-relaxed">
+                          {generatedFinding.impact.detail || 'N/A'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Steps to Reproduce */}
+                {generatedFinding.steps_to_reproduce && generatedFinding.steps_to_reproduce.length > 0 && (
+                  <div className="pb-4 border-b border-outline-variant">
+                    <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3">Steps to Reproduce</h4>
+                    <ol className="list-decimal list-inside text-sm text-on-surface-variant space-y-2 ml-2">
+                      {generatedFinding.steps_to_reproduce.map((step: string, index: number) => (
+                        <li key={index} className="leading-relaxed">{step}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {generatedFinding.recommendation && generatedFinding.recommendation.length > 0 && (
+                  <div className="pb-4 border-b border-outline-variant">
+                    <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <Shield className="w-4 h-4" />
+                      Recommendations
+                    </h4>
+                    <ul className="list-disc list-outside ml-5 space-y-3">
+                      {generatedFinding.recommendation.map((rec: string, index: number) => {
+                        const match = rec.match(/^\*\*(.+?)\*\*:?\s*(.+)$/s);
+                        if (match) {
+                          return (
+                            <li key={index} className="text-sm text-on-surface-variant">
+                              <span className="font-semibold text-on-surface">{match[1]}:</span> {match[2]}
+                            </li>
+                          );
+                        }
+                        return (
+                          <li key={index} className="text-sm text-on-surface-variant">
+                            {rec}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+
+                {/* References */}
+                {generatedFinding.references && generatedFinding.references.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3">References</h4>
+                    <ul className="space-y-2">
+                      {generatedFinding.references.map((ref: string, index: number) => (
+                        <li key={index} className="flex items-start gap-2">
+                          <span className="text-primary mt-1">→</span>
+                          <a
+                            href={ref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-primary hover:underline break-all"
+                          >
+                            {ref}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
+            </Card>
+
+            <Card className="p-4 bg-green-500/10 border-green-500/20">
+              <p className="text-sm text-green-400">
+                ✓ Finding generated successfully! Review the details above and click "Accept & Save" to add it to your project.
+              </p>
             </Card>
 
             <div className="flex flex-wrap items-center justify-end gap-2">

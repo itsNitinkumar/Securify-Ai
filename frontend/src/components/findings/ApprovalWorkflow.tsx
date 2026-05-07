@@ -1,26 +1,23 @@
 import { Finding } from '@/api/findingApi';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, Clock, Send } from 'lucide-react';
+import { CheckCircle, Clock } from 'lucide-react';
 
 interface ApprovalWorkflowProps {
   finding: Finding;
-  onApprove: () => void;
-  onUpdate: () => void;
 }
 
-const ApprovalWorkflow = ({ finding, onApprove, onUpdate }: ApprovalWorkflowProps) => {
+const ApprovalWorkflow = ({ finding }: ApprovalWorkflowProps) => {
   const getStatusIcon = () => {
     switch (finding.status) {
       case 'approved':
         return <CheckCircle className="w-5 h-5 text-green-400" />;
       case 'rejected':
-        return <XCircle className="w-5 h-5 text-error" />;
+        return <CheckCircle className="w-5 h-5 text-error" />;
       case 'pending_review':
         return <Clock className="w-5 h-5 text-yellow-400" />;
       default:
-        return <Send className="w-5 h-5 text-on-surface-variant" />;
+        return <Clock className="w-5 h-5 text-on-surface-variant" />;
     }
   };
 
@@ -110,46 +107,6 @@ const ApprovalWorkflow = ({ finding, onApprove, onUpdate }: ApprovalWorkflowProp
             <CheckCircle className="w-4 h-4 text-primary" />
           )}
         </div>
-      </div>
-
-      {/* Actions */}
-      <div className="space-y-2">
-        {finding.status === 'draft' && (
-          <Button
-            onClick={onUpdate}
-            className="w-full bg-primary text-surface hover:bg-primary/90"
-          >
-            <Send className="w-4 h-4 mr-2" />
-            Submit for Review
-          </Button>
-        )}
-
-        {finding.status === 'pending_review' && (
-          <>
-            <Button
-              onClick={onApprove}
-              className="w-full bg-primary text-surface hover:bg-primary/90"
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Approve Finding
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full border-error/30 text-error hover:bg-error/10"
-            >
-              <XCircle className="w-4 h-4 mr-2" />
-              Reject
-            </Button>
-          </>
-        )}
-
-        {finding.status === 'approved' && (
-          <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-            <p className="text-sm text-green-400 text-center">
-              ✓ Finding approved and ready for inclusion in reports
-            </p>
-          </div>
-        )}
       </div>
 
       {/* Reviewer Info */}

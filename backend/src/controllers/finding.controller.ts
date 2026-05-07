@@ -191,9 +191,15 @@ class FindingController {
       hasReferences: !!finding.references,
       hasSteps: !!finding.steps_to_reproduce,
       likelihood: finding.likelihood,
+      likelihoodType: typeof finding.likelihood,
       impact: finding.impact,
+      impactType: typeof finding.impact,
       recommendation: finding.recommendation,
+      recommendationType: typeof finding.recommendation,
       references: finding.references,
+      referencesType: typeof finding.references,
+      steps_to_reproduce: finding.steps_to_reproduce,
+      stepsType: typeof finding.steps_to_reproduce,
     });
 
     res.json({

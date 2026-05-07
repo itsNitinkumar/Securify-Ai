@@ -49,11 +49,11 @@ const FindingViewer = ({
       setLoading(true);
       const response = await findingApi.getById(findingId);
       console.log('📥 Finding data received:', response.data.data);
-      console.log('  - likelihood:', response.data.data?.likelihood);
-      console.log('  - impact:', response.data.data?.impact);
-      console.log('  - recommendation:', response.data.data?.recommendation);
-      console.log('  - references:', response.data.data?.references);
-      console.log('  - steps_to_reproduce:', response.data.data?.steps_to_reproduce);
+      console.log('  - likelihood:', response.data.data?.likelihood, 'type:', typeof response.data.data?.likelihood);
+      console.log('  - impact:', response.data.data?.impact, 'type:', typeof response.data.data?.impact);
+      console.log('  - recommendation:', response.data.data?.recommendation, 'type:', typeof response.data.data?.recommendation);
+      console.log('  - references:', response.data.data?.references, 'type:', typeof response.data.data?.references);
+      console.log('  - steps_to_reproduce:', response.data.data?.steps_to_reproduce, 'type:', typeof response.data.data?.steps_to_reproduce);
       setFinding(response.data.data || null);
     } catch (error) {
       console.error('Failed to load finding:', error);

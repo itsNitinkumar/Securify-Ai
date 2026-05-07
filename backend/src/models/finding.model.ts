@@ -62,9 +62,15 @@ class FindingModel {
       console.log('🔍 Raw finding from DB:', {
         id: finding.id,
         likelihood: finding.likelihood,
+        likelihoodType: typeof finding.likelihood,
         impact: finding.impact,
+        impactType: typeof finding.impact,
         recommendation: finding.recommendation,
+        recommendationType: typeof finding.recommendation,
         references: finding.references,
+        referencesType: typeof finding.references,
+        steps_to_reproduce: finding.steps_to_reproduce,
+        stepsType: typeof finding.steps_to_reproduce,
       });
     }
     
@@ -107,6 +113,18 @@ class FindingModel {
   }
 
   static async update(id: number, data: Partial<Finding>): Promise<Finding> {
+    console.log('📝 Updating finding with data:', {
+      id,
+      likelihood: data.likelihood,
+      likelihoodType: typeof data.likelihood,
+      impact: data.impact,
+      impactType: typeof data.impact,
+      recommendation: data.recommendation,
+      recommendationType: typeof data.recommendation,
+      references: data.references,
+      referencesType: typeof data.references,
+    });
+
     const result = await pool.query(
       `UPDATE findings SET
         title = COALESCE($1, title),
@@ -144,6 +162,15 @@ class FindingModel {
         id,
       ]
     );
+    
+    console.log('✅ Updated finding result:', {
+      id: result.rows[0].id,
+      likelihood: result.rows[0].likelihood,
+      likelihoodType: typeof result.rows[0].likelihood,
+      impact: result.rows[0].impact,
+      impactType: typeof result.rows[0].impact,
+    });
+    
     return result.rows[0];
   }
 

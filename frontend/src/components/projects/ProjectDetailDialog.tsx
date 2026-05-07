@@ -4,7 +4,6 @@ import { Edit, Trash2, ExternalLink, AlertTriangle, CheckCircle, Plus, Sparkles 
 import { Project, projectApi } from '@/api/projectApi';
 import { authApi } from '@/api/authApi';
 import CreateFindingDialog from '@/components/findings/CreateFindingDialog';
-import AIGenerateDialog from '@/components/findings/AIGenerateDialog';
 import FindingViewer from '@/components/findings/FindingViewer';
 import {
   Dialog,
@@ -35,7 +34,6 @@ const ProjectDetailDialog = ({
   const [projectDetails, setProjectDetails] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [isCreateFindingOpen, setIsCreateFindingOpen] = useState(false);
-  const [isAIGenerateOpen, setIsAIGenerateOpen] = useState(false);
   const [selectedFindingId, setSelectedFindingId] = useState<number | null>(null);
   const [isFindingViewerOpen, setIsFindingViewerOpen] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string>('');
@@ -194,7 +192,7 @@ const ProjectDetailDialog = ({
                         Add Manually
                       </Button>
                       <Button
-                        onClick={() => setIsAIGenerateOpen(true)}
+                        onClick={() => navigate(`/projects/${project.id}/findings/generate`)}
                         size="sm"
                         className="bg-primary text-surface hover:bg-primary/90"
                       >
@@ -289,7 +287,7 @@ const ProjectDetailDialog = ({
                       Add Manually
                     </Button>
                     <Button
-                      onClick={() => setIsAIGenerateOpen(true)}
+                      onClick={() => navigate(`/projects/${project.id}/findings/generate`)}
                       className="bg-primary text-surface hover:bg-primary/90"
                     >
                       <Sparkles className="w-4 h-4 mr-2" />
@@ -380,14 +378,6 @@ const ProjectDetailDialog = ({
         projectId={project.id}
         open={isCreateFindingOpen}
         onOpenChange={setIsCreateFindingOpen}
-        onSuccess={loadProjectDetails}
-      />
-
-      {/* AI Generate Dialog */}
-      <AIGenerateDialog
-        projectId={project.id}
-        open={isAIGenerateOpen}
-        onOpenChange={setIsAIGenerateOpen}
         onSuccess={loadProjectDetails}
       />
 
