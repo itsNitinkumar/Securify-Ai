@@ -2,17 +2,14 @@ import {
   AlignmentType,
   HighlightColor,
   BorderStyle,
-  Document,
   Footer,
   Header,
   HeadingLevel,
   ImageRun,
   PageNumber,
-  Packer,
   PageBreak,
   Paragraph,
   SimpleField,
-  SectionType,
   ShadingType,
   Table,
   TableCell,
@@ -665,9 +662,11 @@ class ReportService {
             if (!clean) continue;
             blocks.push(
               new Paragraph({
-                bullet: { level: 0 },
                 spacing: { after: 70 },
-                children: [new TextRun({ text: clean, color: this.brand.text, size: 22 })],
+                children: [
+                  new TextRun({ text: '● ', color: this.brand.green, size: 32 }),
+                  new TextRun({ text: clean, color: this.brand.text, size: 22 })
+                ],
               })
             );
           }
@@ -1301,7 +1300,7 @@ class ReportService {
     const setParagraphSegments = (
       scope: any,
       paragraphEl: any,
-      segments: Array<{ text: string; bold?: boolean; color?: string; underline?: string }>,
+      segments: Array<{ text: string; bold?: boolean; color?: string; underline?: string; size?: number }>,
     ) => {
       const p = scope(paragraphEl);
       p.children('w\\:r').remove();
@@ -1319,6 +1318,9 @@ class ReportService {
           }
           if (segment.underline) {
             rPrParts.push(`<w:u w:val="${segment.underline}"/>`);
+          }
+          if (segment.size) {
+            rPrParts.push(`<w:sz w:val="${segment.size}"/><w:szCs w:val="${segment.size}"/>`);
           }
           const rPrXml = rPrParts.length ? `<w:rPr>${rPrParts.join('')}</w:rPr>` : '';
           return `<w:r>${rPrXml}<w:t xml:space="preserve">${escapeXmlText(segment.text)}</w:t></w:r>`;
@@ -1873,14 +1875,14 @@ class ReportService {
             const lead = finalText.slice(0, splitIndex + (separator === ': ' ? 1 : 0));
             const tail = finalText.slice(splitIndex + separator.length);
             setParagraphSegments($, paragraph.get(0), [
-              { text: '• ', color: '4CC51F' },
+              { text: '● ', color: '4CC51F', size: 32 },
               { text: lead, bold: true, color: '000000' },
               { text: separator === ': ' ? ' ' : separator, color: '000000' },
               { text: tail, color: '000000' },
             ]);
           } else {
             setParagraphSegments($, paragraph.get(0), [
-              { text: '• ', color: '4CC51F' },
+              { text: '● ', color: '4CC51F', size: 32 },
               { text: finalText, color: '000000' },
             ]);
           }
@@ -2295,7 +2297,14 @@ class ReportService {
 
           const affected = String(finding.affected_target || '').trim();
           console.log(`   - Affected target: "${affected}"`);
-          if (urlLabel && affected) appendSectionParagraph(impactLikelihoodHeading || impactLabel || backPara || titlePara, neutralParagraphTemplate, affected, { color: '000000' });
+          if (urlLabel && affected) {
+            // Check if it's a URL and format as hyperlink
+            if (affected.startsWith('http://') || affected.startsWith('https://')) {
+              appendSectionParagraph(impactLikelihoodHeading || impactLabel || backPara || titlePara, neutralParagraphTemplate, affected, { color: '1155CC', underline: 'single' });
+            } else {
+              appendSectionParagraph(impactLikelihoodHeading || impactLabel || backPara || titlePara, neutralParagraphTemplate, affected, { color: '000000' });
+            }
+          }
 
           // Extract impact - handle both object and string formats
           let impactText = '';
@@ -2348,15 +2357,22 @@ class ReportService {
             const cleaned = stripMarkdownEmphasis(recs[ri]);
             const colonIndex = cleaned.indexOf(':');
             if (colonIndex !== -1) {
-              appendSectionSplitParagraph(
-                refLabel || backPara || titlePara,
-                recTemplate,
-                cleaned.slice(0, colonIndex + 1),
-                cleaned.slice(colonIndex + 1).trim(),
-                { color: '000000' }
-              );
+              // Create paragraph with larger green bullet point
+              const p = cloneSectionNode(recTemplate);
+              setParagraphSegments(sectionDoc, p.get(0), [
+                { text: '● ', color: '4CC51F', size: 32 },
+                { text: cleaned.slice(0, colonIndex + 1), bold: true, color: '000000' },
+                { text: ' ' + cleaned.slice(colonIndex + 1).trim(), color: '000000' },
+              ]);
+              sectionDoc(refLabel || backPara || titlePara).before(sectionDoc.xml(p));
             } else {
-              appendSectionParagraph(refLabel || backPara || titlePara, recTemplate, cleaned, { color: '000000', bold: true });
+              // Create paragraph with larger green bullet point
+              const p = cloneSectionNode(recTemplate);
+              setParagraphSegments(sectionDoc, p.get(0), [
+                { text: '● ', color: '4CC51F', size: 32 },
+                { text: cleaned, bold: true, color: '000000' },
+              ]);
+              sectionDoc(refLabel || backPara || titlePara).before(sectionDoc.xml(p));
             }
           }
 
