@@ -35,6 +35,7 @@ export interface ReportTemplateContent {
     measurement_impact: TemplateSectionContent;
     measurement_likelihood: TemplateSectionContent;
     overall_risk: TemplateSectionContent;
+    out_of_scope: TemplateSectionContent;
     zero_risk_issues: TemplateSectionContent;
     vulnerabilities: TemplateSectionContent;
     summary: TemplateSectionContent;
@@ -86,43 +87,57 @@ export const defaultTemplateContent = (): ReportTemplateContent => ({
     },
     confidentiality: {
       title: 'Confidentiality and Distribution Restrictions',
-      body: 'The conclusions and recommendations in this report represent the opinions of Securify. Determinations of appropriate corrective action(s) are the responsibility of the entity receiving the report. This report and any other materials furnished by Securify in connection with this engagement are confidential and may not be duplicated, modified, or otherwise reproduced and distributed without the express prior written consent of Securify or Client Name.',
+      body: 'The conclusions and recommendations in this report represent the opinions of Securify.\n\nDeterminations of appropriate corrective action(s) are the responsibility of the entity receiving the report.\n\nThis report and/or any other materials furnished by Securify in connection with this engagement is confidential and may not be duplicated, modified, or otherwise reproduced and distributed without the express prior written consent of Securify or {{CLIENT_NAME}}. Because this work may contain copyrighted images or other material, permission from the copyright holder may also be necessary if you wish to reproduce.',
     },
     introduction: {
       title: 'Introduction',
       body: 'As part of an ongoing security program, {{CLIENT_NAME}} identified the need to conduct an application security assessment of its Web application & APIs.\n\nThis report presents the agreed scope, methodology, risk measurement model, summarized findings, and detailed technical observations for the selected assessment window.',
+      fields: {
+        list_title: 'The following lists the objectives of this assessment:',
+        closing_title: 'This report includes the following parameters and results of the assessment:',
+      },
       items: [
         'Determine the overall security posture of the application',
         'Provide a list of key findings and recommendations for remediation',
         'Document the assessment scope, risk evaluation, and final outcomes',
         'Support remediation planning with actionable technical detail',
+        "Securify's approach to the assessment",
+        'Assessment scope',
+        'Key findings listed with their qualitative risk assessment',
+        'Detailed recommendations for each finding',
+        'A remediation plan',
       ],
-      fields: {
-        list_title: 'The following lists the objectives of this assessment:',
-        closing_title: 'This report includes the following parameters and results of the assessment:',
-      },
     },
     approach: {
       title: 'Approach',
-      body: 'Securify performed a Runtime Application Vulnerability Assessment of the client environment using a combination of manual testing, guided analysis, and targeted verification of identified attack paths.\n\nTesting focused on authentication, authorization, business logic, session management, input handling, information disclosure, and transport-layer protections.\n\nWhere appropriate, the assessment also included abuse-case validation, access-control bypass attempts, forced browsing, parameter tampering, and endpoint enumeration.',
+      body: 'Securify performed a Runtime Application Vulnerability Assessment of the {{CLIENT_NAME}}\'s web application, associated APIs, and all components defined within the assessment scope.\n\nThe assessment was conducted using industry-accepted methodologies, primarily based on the OWASP Web Security Testing Guide (WSTG) and OWASP ASVS, and involved both manual testing and automated analysis.',
     },
     runtime_assessment: {
       title: 'Runtime Application Vulnerability Assessment',
-      body: 'The runtime assessment focused on security behavior observable in the live application and API flows, including authentication, authorization, input handling, business logic, sensitive data exposure, and common attack-surface weaknesses.\n\nThe engagement emphasized practical exploitability and realistic attacker behavior rather than purely theoretical weaknesses.',
+      body: 'The Runtime Application Vulnerability Assessment involved detecting security vulnerabilities through detailed examination and testing of the application in a runtime environment. This assessment emulates an attack by a skilled adversary in a controlled setting and allows {{CLIENT_NAME}} to ascertain the kinds of vulnerabilities that may be realistically exploited. A Runtime Application Vulnerability Assessment includes the following phases:',
+      items: [
+        'Information Gathering \u2013 The application was reviewed as an anonymous, authenticated, and privileged user to understand differences in access and behavior. Technologies, frameworks, APIs, and third-party integrations were also identified to support targeted testing.',
+        'Authentication Testing \u2013 Authentication mechanisms were evaluated to determine the strength of login controls, password policies, and account recovery processes. Protections against brute-force attempts and session takeover scenarios were also reviewed to ensure users are securely authenticated.',
+        'Authorization Testing \u2013 Tests were conducted to identify weaknesses in access control, including attempts to access other users\' data or privileged functionality.',
+        'Session Management \u2013 Session handling was assessed to ensure secure creation, storage, and invalidation of session tokens.',
+        'Input Validation Attacks \u2013 User-controlled input fields were tested with malformed and malicious data to identify injection flaws and logic bypasses. This included attempts to exploit unexpected behavior, access unprotected functionality, or inject vulnerabilities such as XSS, SQL Injection, and Command Injection.',
+        'Business Logic Testing \u2013 The application workflows were reviewed to identify opportunities to misuse or bypass intended processes. This included testing for logic errors, insufficient validation, and scenarios where typical constraints could be circumvented.',
+      ],
     },
     scope: {
       title: 'Scope',
-      body: 'The assessment was conducted between Start Date and End Date. The scope of the assessment was limited to the environments and targets below:',
+      body: 'The assessment was conducted between Start Date and End Date. The re-assessment was conducted between Start Date and End Date. Testing was performed remotely.\n\nThe scope of the assessment was limited to the environments and targets below:',
       fields: {
         application_details_title: 'Application Details',
         user_roles_title: 'User Roles (Web application & API)',
         tools_title: 'Tools',
+        out_of_scope_title: 'The following components and tests were out of scope for this review:',
       },
       rows: [],
     },
     assessment_limitation: {
       title: 'Assessment Limitation',
-      body: 'This assessment was performed within the agreed timebox and only against systems explicitly included in scope. Absence of identified vulnerabilities should not be interpreted as a guarantee that no issues remain.',
+      body: 'The ever-changing technology landscape and the increasing sophistication of attacks against networked systems are reasons why no entity can truthfully claim to identify all security issues or guarantee the lifetime security of an organization\'s network and applications. Note that this point-in-time assessment was based on a best-effort basis. It was also performed only in the environment provided by {{CLIENT_NAME}}. Thus, changes to the environment may impact the applicability of the results provided herein.\n\nSecurify cannot guarantee 100% coverage for any security assessment.',
     },
     findings_recommendation: {
       title: 'Findings and Recommendation',
@@ -130,7 +145,7 @@ export const defaultTemplateContent = (): ReportTemplateContent => ({
     },
     risk_classification: {
       title: 'Risk Classification',
-      body: 'Risk is determined by evaluating the combined effect of impact and likelihood for each issue identified during testing.\n\nThe matrix below is used as the standard model for determining overall severity.',
+      body: 'The remainder of this report describes the vulnerabilities that Securify identified as part of the assessment, their impact, and recommendations for resolving the vulnerabilities. To assist in determining the risk posed by these vulnerabilities, Securify leverages the OWASP Application Security Risk Rating Methodology. The observations have been categorized based on technical Impact and Likelihood, explained below. These impact and likelihood scores may be further modified by {{CLIENT_NAME}} based on the business criticality of the target.',
       fields: {
         matrix_title: 'Risk Matrix',
         matrix_subtitle: 'Impact x Likelihood',
@@ -143,34 +158,48 @@ export const defaultTemplateContent = (): ReportTemplateContent => ({
     },
     measurement_impact: {
       title: 'Measurement of Impact',
-      body: 'Impact reflects the potential business, technical, operational, and data-related consequences if a vulnerability is successfully exploited.',
+      body: 'Impact is an estimation of the potential damage via a successful exploit of a vulnerability. We\'ll use the following factors to help qualitatively determine the impact of a vulnerability.',
       items: [
-        'Critical Impact: Severe compromise of confidentiality, integrity, or availability with material business or operational consequence.',
-        'High Impact: Significant unauthorized access, data exposure, or business-process abuse affecting sensitive functions or users.',
-        'Medium Impact: Meaningful security weakness with constrained scope, partial exposure, or limited operational effect.',
-        'Low Impact: Minor weakness with limited practical consequence or low-value exposure.',
+        'Low Impact: When most/all factors indicate limited consequences (e.g., non-sensitive data, no ability to alter/delete key data, and low victim count).',
+        'Medium Impact: When about half of the factors suggest higher damage and half point to limited effects.',
+        'High Impact: When most/all factors highlight significant damage (e.g., sensitive data loss, wide data corruption, and a large number of victims).',
       ],
     },
     measurement_likelihood: {
       title: 'Measurement of Likelihood',
-      body: 'Likelihood reflects how feasible exploitation is in practice, considering attacker capability, required access, and environmental constraints.',
+      body: 'Likelihood is a qualitative estimation of the probability of an attacker exploiting the vulnerability in question. In order to determine the likelihood of exploitation, we can consider the following factors:',
       items: [
-        'High Likelihood: Exploitation is straightforward and requires limited skill, access, or environmental dependency.',
-        'Medium Likelihood: Exploitation is feasible but requires some knowledge, sequencing, or favorable conditions.',
-        'Low Likelihood: Exploitation requires significant effort, elevated preconditions, or specialized capability.',
+        'Low Likelihood: Most/all factors suggest significant barriers to exploitation (e.g., complex skillset, limited attackers, high cost, or complex delivery).',
+        'Medium Likelihood: About half the factors indicate ease of exploitation, while the other half show barriers.',
+        'High Likelihood: Most/all factors point to easy and accessible exploitation (e.g., basic skills, low cost, and simple attack mechanisms).',
       ],
     },
     overall_risk: {
       title: 'Overall Risk',
-      body: 'Overall risk is derived from the intersection of impact and likelihood and is used to prioritize remediation efforts. Findings with the highest combined rating should be addressed first, especially where exploitability and business consequence are both significant.',
+      body: 'The following graph illustrates how Impact x Likelihood scores translate to overall Low, Medium, and High-risk ratings:\n\nOverall risk is derived from the intersection of impact and likelihood and is used to prioritize remediation efforts. Findings with the highest combined rating should be addressed first, especially where exploitability and business consequence are both significant.',
       items: [
         'Low Impact + Low Likelihood = Low Risk',
         'High Impact + High Likelihood = Critical Risk',
       ],
     },
+    out_of_scope: {
+      title: 'Out of Scope',
+      fields: {
+        title: 'The following components and tests were out of scope for this review:',
+      },
+      items: [
+        'Any applications and infrastructure external to the {{CLIENT_NAME}}\'s Web Application & API.',
+        'In cases where the {{CLIENT_NAME}}\'s Web Application & API had inbound and/or outbound interfaces with:',
+        'Another application, the interfaces, and communications were considered in scope.',
+        'All other external elements were excluded.',
+        'Supporting policies, procedures, and processes.',
+        'Social Engineering.',
+        'Software Development Life Cycle.',
+      ],
+    },
     zero_risk_issues: {
       title: 'Zero-risk Issues',
-      body: 'Items categorized as zero-risk or informational are included where useful for context but should not be treated as exploitable vulnerabilities. These entries may still be valuable for hardening, visibility, or long-term security maturity planning.',
+      body: 'There are cases where a particular issue doesn\'t have direct security impact or likelihood of exploitation. These could be issues related to documentation or semantics that are suggested based on the security assessors\' technical and industry experience. Such issues shall be reported with an Informational risk rating.',
     },
     vulnerabilities: {
       title: 'Vulnerabilities',
@@ -269,6 +298,7 @@ export const buildTemplateContent = (template?: ReportTemplateRecord | null): Re
       measurement_impact: { ...fallback.sections.measurement_impact, ...(sections.measurement_impact || {}) },
       measurement_likelihood: { ...fallback.sections.measurement_likelihood, ...(sections.measurement_likelihood || {}) },
       overall_risk: { ...fallback.sections.overall_risk, ...(sections.overall_risk || {}) },
+      out_of_scope: { ...fallback.sections.out_of_scope, ...(sections.out_of_scope || {}) },
       zero_risk_issues: { ...fallback.sections.zero_risk_issues, ...(sections.zero_risk_issues || {}) },
       vulnerabilities: { ...fallback.sections.vulnerabilities, ...(sections.vulnerabilities || {}) },
       summary: { ...fallback.sections.summary, ...(sections.summary || {}) },

@@ -127,16 +127,16 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden border-t-4" style={{ borderTopColor: '#00d639' }}>
+    <div className="bg-surface-high rounded-lg shadow overflow-hidden border-t-4" style={{ borderTopColor: '#00d639' }}>
       {/* Header */}
-      <div className="bg-gray-900 px-8 py-6 border-b-4" style={{ borderBottomColor: '#00d639' }}>
+      <div className="bg-surface px-8 py-6 border-b-4" style={{ borderBottomColor: '#00d639' }}>
         <div className="flex items-center gap-3">
           <img
             src="https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png"
             alt="Securify"
             className="h-4"
           />
-          <h3 className="text-white text-lg font-bold">Generate Report</h3>
+          <h3 className="text-on-surface text-lg font-bold">Generate Report</h3>
         </div>
       </div>
 
@@ -144,11 +144,11 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
       <div className="p-8 space-y-6">
         {/* Template Selection */}
         <div>
-          <label className="block text-sm font-bold text-gray-900 mb-4" style={{ color: '#00d639' }}>
+          <label className="block text-sm font-bold text-on-surface mb-4" style={{ color: '#00d639' }}>
             SELECT REPORT TEMPLATE
           </label>
           {isLoadingTemplates ? (
-            <div className="flex items-center gap-2 p-4 text-gray-600 bg-gray-50 rounded-lg">
+            <div className="flex items-center gap-2 p-4 text-on-surface-variant bg-surface rounded-lg">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-sm">Loading templates...</span>
             </div>
@@ -157,7 +157,7 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
               value={selectedTemplate || ''}
               onChange={(e) => setSelectedTemplate(parseInt(e.target.value))}
               disabled={isGenerating}
-              className="w-full px-4 py-3 border-2 rounded-lg text-gray-900 bg-white focus:outline-none transition-all"
+              className="w-full px-4 py-3 border-2 rounded-lg text-on-surface bg-surface focus:outline-none transition-all"
               style={{ borderColor: '#e5e7eb' }}
             >
               <option value="">Select a template...</option>
@@ -168,7 +168,7 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
               ))}
             </select>
           ) : (
-            <div className="p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded text-yellow-800 text-sm">
+            <div className="p-4 bg-yellow-500/10 border-l-4 border-yellow-500 rounded text-yellow-400 text-sm">
               No templates available. Please create a template first.
             </div>
           )}
@@ -176,12 +176,12 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
 
         {/* Format Selection */}
         <div>
-          <label className="block text-sm font-bold text-gray-900 mb-4" style={{ color: '#00d639' }}>
+          <label className="block text-sm font-bold text-on-surface mb-4" style={{ color: '#00d639' }}>
             SELECT REPORT FORMAT
           </label>
           <div className="space-y-3">
             {/* PDF Option */}
-            <label className="flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50" 
+            <label className="flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-surface"
               style={{ borderColor: format === 'pdf' ? '#00d639' : '#e5e7eb' }}>
               <input
                 type="radio"
@@ -193,14 +193,14 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
                 style={{ accentColor: '#00d639' }}
               />
               <div className="flex-1">
-                <div className="font-semibold text-gray-900">PDF Document</div>
-                <div className="text-xs text-gray-600 mt-1">Professional formatted report with exact styling and colors</div>
+                <div className="font-semibold text-on-surface">PDF Document</div>
+                <div className="text-xs text-on-surface-variant mt-1">Professional formatted report with exact styling and colors</div>
               </div>
               <FileText className="w-6 h-6 text-red-600" />
             </label>
 
             {/* DOCX Option */}
-            <label className="flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+            <label className="flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-surface"
               style={{ borderColor: format === 'docx' ? '#00d639' : '#e5e7eb' }}>
               <input
                 type="radio"
@@ -212,8 +212,8 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
                 style={{ accentColor: '#00d639' }}
               />
               <div className="flex-1">
-                <div className="font-semibold text-gray-900">Word Document</div>
-                <div className="text-xs text-gray-600 mt-1">Editable report for further customization and client modifications</div>
+                <div className="font-semibold text-on-surface">Word Document</div>
+                <div className="text-xs text-on-surface-variant mt-1">Editable report for further customization and client modifications</div>
               </div>
               <FileJson className="w-6 h-6 text-blue-600" />
             </label>
@@ -226,9 +226,9 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
           disabled={isGenerating || isPreviewing || selectedFindingIds.length === 0}
           className="w-full flex items-center justify-center gap-2 px-6 py-4 rounded-lg font-bold transition-all text-sm border-2"
           style={{
-            backgroundColor: '#ffffff',
+            backgroundColor: 'transparent',
             color: isGenerating || isPreviewing || selectedFindingIds.length === 0 ? '#9ca3af' : '#00b82e',
-            borderColor: isGenerating || isPreviewing || selectedFindingIds.length === 0 ? '#d1d5db' : '#00d639',
+            borderColor: isGenerating || isPreviewing || selectedFindingIds.length === 0 ? '#374151' : '#00d639',
             cursor: isGenerating || isPreviewing || selectedFindingIds.length === 0 ? 'not-allowed' : 'pointer',
           }}
         >
@@ -248,9 +248,9 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
         <button
           onClick={handleGenerateReport}
           disabled={isGenerating || selectedFindingIds.length === 0}
-          className="w-full flex items-center justify-center gap-2 px-6 py-4 text-white rounded-lg font-bold transition-all text-sm"
+          className="w-full flex items-center justify-center gap-2 px-6 py-4 text-surface rounded-lg font-bold transition-all text-sm"
           style={{
-            backgroundColor: isGenerating || selectedFindingIds.length === 0 ? '#9ca3af' : '#00d639',
+            backgroundColor: isGenerating || selectedFindingIds.length === 0 ? '#374151' : '#00d639',
             cursor: isGenerating || selectedFindingIds.length === 0 ? 'not-allowed' : 'pointer',
           }}
         >
@@ -268,11 +268,11 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
         </button>
 
         {/* Info Box */}
-        <div className="bg-gray-50 border-l-4 rounded p-4" style={{ borderLeftColor: '#00d639' }}>
-          <p className="text-xs text-gray-700 leading-relaxed">
-            <span className="font-bold">ℹ️ Report Contents:</span> The report will include <strong>{selectedFindingIds.length}</strong> selected approved findings for this project with:
+        <div className="bg-surface border-l-4 rounded p-4" style={{ borderLeftColor: '#00d639' }}>
+          <p className="text-xs text-on-surface-variant leading-relaxed">
+            <span className="font-bold text-on-surface">Report Contents:</span> The report will include <strong>{selectedFindingIds.length}</strong> selected approved findings for this project with:
           </p>
-          <ul className="text-xs text-gray-700 mt-2 ml-4 space-y-1">
+          <ul className="text-xs text-on-surface-variant mt-2 ml-4 space-y-1">
             <li>✓ Cover page with project details</li>
             <li>✓ Executive summary with severity breakdown</li>
             <li>✓ Vulnerability summary table</li>
@@ -283,8 +283,8 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
       </div>
 
       {/* Footer */}
-      <div className="bg-gray-50 px-8 py-4 border-t-4" style={{ borderTopColor: '#00d639' }}>
-        <p className="text-xs text-gray-600 text-center">
+      <div className="bg-surface px-8 py-4 border-t-4" style={{ borderTopColor: '#00d639' }}>
+        <p className="text-xs text-on-surface-variant text-center">
           © {new Date().getFullYear()} SecurifyAI | Confidential - For Authorized Recipients Only
         </p>
       </div>

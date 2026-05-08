@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Save, X, AlertTriangle, Shield, FileText } from 'lucide-react';
 
+const findingSeverities = ['Critical', 'High', 'Medium', 'Low', 'Informational'] as const;
+const riskSeverities = ['High', 'Medium', 'Low'] as const;
+
 interface FindingContentProps {
   finding: Finding;
   isEditing: boolean;
@@ -19,6 +22,7 @@ const FindingContent = ({
   onRegenerateSection,
 }: FindingContentProps) => {
   const [editData, setEditData] = useState({
+    severity: finding.severity,
     description: finding.description,
     affected_target: finding.affected_target || '',
     steps_to_reproduce: Array.isArray(finding.steps_to_reproduce)
@@ -26,6 +30,10 @@ const FindingContent = ({
       : finding.steps_to_reproduce ? [finding.steps_to_reproduce] : [],
     recommendation: finding.recommendation || [],
     remediation: finding.remediation || '',
+    impact_severity: (typeof finding.impact === 'object' ? finding.impact?.severity : '') || '',
+    impact_detail: (typeof finding.impact === 'object' ? finding.impact?.detail : '') || (typeof finding.impact === 'string' ? finding.impact : ''),
+    likelihood_severity: (typeof finding.likelihood === 'object' ? finding.likelihood?.severity : '') || '',
+    likelihood_detail: (typeof finding.likelihood === 'object' ? finding.likelihood?.detail : '') || (typeof finding.likelihood === 'string' ? finding.likelihood : ''),
   });
   const [saving, setSaving] = useState(false);
 
@@ -33,6 +41,7 @@ const FindingContent = ({
     try {
       setSaving(true);
       const payload: any = {
+        severity: editData.severity,
         description: editData.description,
         affected_target: editData.affected_target,
         steps_to_reproduce: editData.steps_to_reproduce,
@@ -42,6 +51,16 @@ const FindingContent = ({
       }
       if (editData.remediation) {
         payload.remediation = editData.remediation;
+      }
+      if (editData.impact_detail || editData.impact_severity) {
+        payload.impact = editData.impact_severity
+          ? { severity: editData.impact_severity, detail: editData.impact_detail }
+          : editData.impact_detail;
+      }
+      if (editData.likelihood_detail || editData.likelihood_severity) {
+        payload.likelihood = editData.likelihood_severity
+          ? { severity: editData.likelihood_severity, detail: editData.likelihood_detail }
+          : editData.likelihood_detail;
       }
       await findingApi.updateFinding(finding.id, payload);
       onUpdate();
@@ -66,6 +85,22 @@ const FindingContent = ({
 
   return (
     <div className="space-y-6">
+      {/* Severity */}
+      {isEditing && (
+        <Card className="p-4 md:p-6 bg-surface-high border-outline">
+          <h3 className="text-sm font-semibold text-on-surface mb-3">Severity</h3>
+          <select
+            value={editData.severity}
+            onChange={(e) => setEditData({ ...editData, severity: e.target.value as Finding['severity'] })}
+            className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            {findingSeverities.map((sev) => (
+              <option key={sev} value={sev}>{sev}</option>
+            ))}
+          </select>
+        </Card>
+      )}
+
       {/* Description */}
       <Card className="p-4 md:p-6 bg-surface-high border-outline">
         <div className="flex items-center justify-between mb-4">
@@ -110,7 +145,7 @@ const FindingContent = ({
       )}
 
       {/* Impact & Likelihood */}
-      {(finding.impact || finding.likelihood) && (
+      {(finding.impact || finding.likelihood || isEditing) && (
         <Card className="p-4 md:p-6 bg-surface-high border-outline">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2">
@@ -145,34 +180,78 @@ const FindingContent = ({
             )}
           </div>
           <div className="space-y-4">
-            {finding.impact && (
+            {(finding.impact || isEditing) && (
               <div className="bg-surface p-4 rounded-lg border border-outline-variant">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-sm font-semibold text-on-surface">Impact:</span>
-                  {typeof finding.impact === 'object' && finding.impact.severity && (
+                  {!isEditing && typeof finding.impact === 'object' && finding.impact.severity && (
                     <Badge className={severityBadge(finding.impact.severity)}>
                       {finding.impact.severity}
                     </Badge>
                   )}
                 </div>
-                <p className="text-sm text-on-surface-variant leading-relaxed">
-                  {typeof finding.impact === 'object' ? finding.impact.detail : finding.impact}
-                </p>
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <select
+                      value={editData.impact_severity}
+                      onChange={(e) => setEditData({ ...editData, impact_severity: e.target.value })}
+                      className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="">Select severity...</option>
+                      {riskSeverities.map((sev) => (
+                        <option key={sev} value={sev}>{sev}</option>
+                      ))}
+                    </select>
+                    <textarea
+                      value={editData.impact_detail}
+                      onChange={(e) => setEditData({ ...editData, impact_detail: e.target.value })}
+                      rows={3}
+                      placeholder="Impact detail..."
+                      className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
+                    {typeof finding.impact === 'object' ? finding.impact.detail : finding.impact}
+                  </p>
+                )}
               </div>
             )}
-            {finding.likelihood && (
+            {(finding.likelihood || isEditing) && (
               <div className="bg-surface p-4 rounded-lg border border-outline-variant">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-sm font-semibold text-on-surface">Likelihood:</span>
-                  {typeof finding.likelihood === 'object' && finding.likelihood.severity && (
+                  {!isEditing && typeof finding.likelihood === 'object' && finding.likelihood.severity && (
                     <Badge className={severityBadge(finding.likelihood.severity)}>
                       {finding.likelihood.severity}
                     </Badge>
                   )}
                 </div>
-                <p className="text-sm text-on-surface-variant leading-relaxed">
-                  {typeof finding.likelihood === 'object' ? finding.likelihood.detail : finding.likelihood}
-                </p>
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <select
+                      value={editData.likelihood_severity}
+                      onChange={(e) => setEditData({ ...editData, likelihood_severity: e.target.value })}
+                      className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="">Select severity...</option>
+                      {riskSeverities.map((sev) => (
+                        <option key={sev} value={sev}>{sev}</option>
+                      ))}
+                    </select>
+                    <textarea
+                      value={editData.likelihood_detail}
+                      onChange={(e) => setEditData({ ...editData, likelihood_detail: e.target.value })}
+                      rows={3}
+                      placeholder="Likelihood detail..."
+                      className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
+                    {typeof finding.likelihood === 'object' ? finding.likelihood.detail : finding.likelihood}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -354,6 +433,7 @@ const FindingContent = ({
             variant="outline"
             onClick={() => {
               setEditData({
+                severity: finding.severity,
                 description: finding.description,
                 affected_target: finding.affected_target || '',
                 steps_to_reproduce: Array.isArray(finding.steps_to_reproduce)
@@ -361,6 +441,10 @@ const FindingContent = ({
                   : finding.steps_to_reproduce ? [finding.steps_to_reproduce] : [],
                 recommendation: finding.recommendation || [],
                 remediation: finding.remediation || '',
+                impact_severity: (typeof finding.impact === 'object' ? finding.impact?.severity : '') || '',
+                impact_detail: (typeof finding.impact === 'object' ? finding.impact?.detail : '') || (typeof finding.impact === 'string' ? finding.impact : ''),
+                likelihood_severity: (typeof finding.likelihood === 'object' ? finding.likelihood?.severity : '') || '',
+                likelihood_detail: (typeof finding.likelihood === 'object' ? finding.likelihood?.detail : '') || (typeof finding.likelihood === 'string' ? finding.likelihood : ''),
               });
             }}
             className="border-outline text-on-surface-variant"

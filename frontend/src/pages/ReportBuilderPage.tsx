@@ -21,8 +21,19 @@ const ReportBuilderPage = () => {
   const [loading, setLoading] = useState(true);
   const [showPreview] = useState(true);
 
+  const severityOrder: Record<string, number> = {
+    Critical: 0,
+    High: 1,
+    Medium: 2,
+    Low: 3,
+    Informational: 4,
+  };
+
   const approvedFindings = useMemo(
-    () => findings.filter((finding) => finding.status === 'approved'),
+    () =>
+      findings
+        .filter((finding) => finding.status === 'approved')
+        .sort((a, b) => (severityOrder[a.severity] ?? 5) - (severityOrder[b.severity] ?? 5)),
     [findings]
   );
 
@@ -96,7 +107,7 @@ const ReportBuilderPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen bg-surface p-4 md:p-6 lg:p-8">
       {/* Header */}
       <div className="mb-6 md:mb-8">
         <Button
@@ -111,14 +122,14 @@ const ReportBuilderPage = () => {
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 rounded-lg bg-green-100">
-                <FileText className="w-6 h-6 md:w-8 md:h-8 text-green-600" />
+              <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                <FileText className="w-6 h-6 md:w-8 md:h-8 text-primary" />
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+              <h1 className="text-2xl md:text-3xl font-bold text-on-surface">
                 {project.name}
               </h1>
             </div>
-            <p className="text-sm md:text-base text-gray-600">
+            <p className="text-sm md:text-base text-on-surface-variant">
               Client: {project.client_name || 'N/A'} • {selectedFindings.length} findings selected
             </p>
           </div>
@@ -126,8 +137,8 @@ const ReportBuilderPage = () => {
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => navigate('/projects')}
-              variant="secondary"
-              className="border-gray-300 text-gray-700"
+              variant="outline"
+              className="border-outline text-on-surface-variant hover:text-primary"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Cancel
@@ -139,17 +150,17 @@ const ReportBuilderPage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          <Card className="p-5 md:p-6 bg-white border border-gray-200 rounded-lg shadow">
+          <Card className="p-5 md:p-6 bg-surface-high border border-outline rounded-lg shadow">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
               <div>
-                <h2 className="text-lg md:text-xl font-bold text-gray-900">Select Findings</h2>
-                <p className="text-sm text-gray-600 mt-1">Choose which approved findings should be included in preview, PDF, and DOCX exports.</p>
+                <h2 className="text-lg md:text-xl font-bold text-on-surface">Select Findings</h2>
+                <p className="text-sm text-on-surface-variant mt-1">Choose which approved findings should be included in preview, PDF, and DOCX exports.</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={handleSelectAllApproved} variant="secondary" className="border-gray-300 text-gray-700">
+                <Button type="button" onClick={handleSelectAllApproved} variant="outline" className="border-outline text-on-surface-variant hover:text-primary">
                   Select All Approved
                 </Button>
-                <Button type="button" onClick={handleClearSelected} variant="secondary" className="border-gray-300 text-gray-700">
+                <Button type="button" onClick={handleClearSelected} variant="outline" className="border-outline text-on-surface-variant hover:text-primary">
                   Clear Selection
                 </Button>
               </div>
@@ -157,31 +168,38 @@ const ReportBuilderPage = () => {
 
             <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
               {approvedFindings.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-gray-300 p-6 text-sm text-gray-600">
+                <div className="rounded-lg border border-dashed border-outline p-6 text-sm text-on-surface-variant">
                   No approved findings available for this project.
                 </div>
               ) : (
                 approvedFindings.map((finding) => {
                   const isSelected = selectedFindings.includes(finding.id);
+                  const sevColors: Record<string, string> = {
+                    Critical: 'bg-red-500 text-surface',
+                    High: 'bg-orange-500 text-surface',
+                    Medium: 'bg-yellow-500 text-surface',
+                    Low: 'bg-blue-500 text-surface',
+                    Informational: 'bg-gray-500 text-surface',
+                  };
                   return (
                     <label
                       key={finding.id}
-                      className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${isSelected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                      className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${isSelected ? 'border-green-500 bg-green-500/10' : 'border-outline-variant bg-surface hover:bg-surface-variant'}`}
                     >
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => handleToggleFinding(finding.id)}
-                        className="mt-1 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        className="mt-1 h-4 w-4 rounded border-outline-variant accent-green-500"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                          <p className="font-semibold text-gray-900 break-words">{finding.title}</p>
-                          <span className="inline-flex w-fit rounded px-2.5 py-1 text-xs font-bold text-white bg-gray-700">
+                          <p className="font-semibold text-on-surface break-words">{finding.title}</p>
+                          <span className={`inline-flex w-fit rounded px-2.5 py-1 text-xs font-bold ${sevColors[finding.severity] || 'bg-gray-500 text-surface'}`}>
                             {finding.severity}
                           </span>
                         </div>
-                        <p className="mt-1 text-sm text-gray-600 break-all">{finding.affected_target || 'No affected asset provided'}</p>
+                        <p className="mt-1 text-sm text-on-surface-variant break-all">{finding.affected_target || 'No affected asset provided'}</p>
                       </div>
                     </label>
                   );
@@ -212,36 +230,36 @@ const ReportBuilderPage = () => {
           />
 
           {/* Quick Stats */}
-          <Card className="p-4 md:p-6 bg-white border border-gray-200 rounded-lg shadow">
-            <h3 className="text-sm font-semibold text-gray-900 mb-4">Report Statistics</h3>
+          <Card className="p-4 md:p-6 bg-surface-high border border-outline rounded-lg shadow">
+            <h3 className="text-sm font-semibold text-on-surface mb-4">Report Statistics</h3>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">Total Findings</span>
-                <span className="text-sm font-semibold text-gray-900">
+                <span className="text-xs text-on-surface-variant">Total Findings</span>
+                <span className="text-sm font-semibold text-on-surface">
                   {selectedFindings.length}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">Critical</span>
-                <span className="text-sm font-semibold text-red-600">
+                <span className="text-xs text-on-surface-variant">Critical</span>
+                <span className="text-sm font-semibold text-red-400">
                   {findings.filter((f) => f.severity === 'Critical' && selectedFindings.includes(f.id)).length}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">High</span>
-                <span className="text-sm font-semibold text-orange-600">
+                <span className="text-xs text-on-surface-variant">High</span>
+                <span className="text-sm font-semibold text-orange-400">
                   {findings.filter((f) => f.severity === 'High' && selectedFindings.includes(f.id)).length}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">Medium</span>
-                <span className="text-sm font-semibold text-yellow-600">
+                <span className="text-xs text-on-surface-variant">Medium</span>
+                <span className="text-sm font-semibold text-yellow-400">
                   {findings.filter((f) => f.severity === 'Medium' && selectedFindings.includes(f.id)).length}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">Low</span>
-                <span className="text-sm font-semibold text-blue-600">
+                <span className="text-xs text-on-surface-variant">Low</span>
+                <span className="text-sm font-semibold text-blue-400">
                   {findings.filter((f) => f.severity === 'Low' && selectedFindings.includes(f.id)).length}
                 </span>
               </div>

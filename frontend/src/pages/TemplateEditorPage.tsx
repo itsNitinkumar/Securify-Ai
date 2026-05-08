@@ -23,6 +23,7 @@ const sectionOrder: Array<{ key: SectionKey; label: string }> = [
   { key: 'approach', label: 'Approach' },
   { key: 'runtime_assessment', label: 'Runtime Assessment' },
   { key: 'scope', label: 'Scope' },
+  { key: 'out_of_scope', label: 'Out of Scope' },
   { key: 'assessment_limitation', label: 'Assessment Limitation' },
   { key: 'findings_recommendation', label: 'Findings & Recommendation' },
   { key: 'risk_classification', label: 'Risk Classification' },
