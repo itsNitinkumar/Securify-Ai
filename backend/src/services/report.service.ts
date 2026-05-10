@@ -58,7 +58,8 @@ class ReportService {
     green: '40D31D',
     greenDark: '39B829',
     text: '121212',
-    gray: '6B6B6B',
+    // Use requested italic subheader color: 60% gray
+    gray: '666666',
     logoUrl: 'https://securifyai.co/wp-content/uploads/2024/09/securify-logo-light.png',
   };
 
@@ -291,6 +292,40 @@ class ReportService {
 
       // Optional placeholder if/when templates adopt it.
       html = html.replace(/{{LOGO_SRC}}/g, logoSrc);
+
+      // Inline risk matrix image if available in public/templates
+      const riskImageCandidates: string[] = [
+        path.join(process.cwd(), 'public', 'images', 'risk-matrix.png'),
+        path.join(process.cwd(), 'public', 'images', 'risk_matrix.png'),
+        path.join(process.cwd(), 'public', 'images', 'riskmatrix.png'),
+        // JPEG variants — user may have uploaded a JPEG
+        path.join(process.cwd(), 'public', 'images', 'risk-matrix.jpeg'),
+        path.join(process.cwd(), 'public', 'images', 'risk_matrix.jpeg'),
+        path.join(process.cwd(), 'public', 'images', 'riskmatrix.jpeg'),
+        path.join(process.cwd(), 'public', 'images', 'risk-matrix.jpg'),
+        path.join(process.cwd(), 'public', 'images', 'risk_matrix.jpg'),
+        path.join(process.cwd(), 'public', 'images', 'riskmatrix.jpg'),
+        // Also check root public folder
+        path.join(process.cwd(), 'public', 'risk-matrix.png'),
+        path.join(process.cwd(), 'public', 'risk_matrix.png'),
+        path.join(process.cwd(), 'public', 'riskmatrix.png'),
+        path.join(process.cwd(), 'public', 'risk-matrix.jpeg'),
+        path.join(process.cwd(), 'public', 'risk_matrix.jpeg'),
+        path.join(process.cwd(), 'public', 'riskmatrix.jpeg'),
+        path.join(process.cwd(), 'public', 'risk-matrix.jpg'),
+        path.join(process.cwd(), 'public', 'risk_matrix.jpg'),
+        path.join(process.cwd(), 'public', 'riskmatrix.jpg'),
+        path.join(this.templatesDir, 'risk-matrix.png'),
+      ];
+      let inlinedRisk: string | null = null;
+      for (const c of riskImageCandidates) {
+        const dataUri = toDataUri(c);
+        if (dataUri) { inlinedRisk = dataUri; break; }
+      }
+      const riskSrc = inlinedRisk || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X8Xc8AAAAASUVORK5CYII=';
+      html = html.replace(/{{RISK_MATRIX_SRC}}/g, riskSrc);
+      // Replace common risk-matrix image URLs if present
+      html = html.replace(/(risk-?matrix\.png)/g, (m) => riskSrc);
     }
 
     return html;
@@ -1081,7 +1116,7 @@ class ReportService {
                 new Paragraph({
                   alignment: AlignmentType.CENTER,
                   spacing: { before: 520, after: 120 },
-                  children: [new TextRun({ text: client, bold: true, color: this.brand.greenDark, size: 44 })],
+                  children: [new TextRun({ text: client, bold: false, color: this.brand.greenDark, size: 44 })],
                 }),
                 new Paragraph({
                   alignment: AlignmentType.CENTER,
@@ -1231,6 +1266,31 @@ class ReportService {
     };
 
     const logoPath = this.resolveLogoPath(data.template);
+    // Try to locate a risk matrix image in public/templates dir for use in DOCX/PDF
+    const riskImageCandidates = [
+      path.join(process.cwd(), 'public', 'images', 'risk-matrix.png'),
+      path.join(process.cwd(), 'public', 'images', 'risk_matrix.png'),
+      path.join(process.cwd(), 'public', 'images', 'riskmatrix.png'),
+      // JPEG variants — user may have uploaded a JPEG
+      path.join(process.cwd(), 'public', 'images', 'risk-matrix.jpeg'),
+      path.join(process.cwd(), 'public', 'images', 'risk_matrix.jpeg'),
+      path.join(process.cwd(), 'public', 'images', 'riskmatrix.jpeg'),
+      path.join(process.cwd(), 'public', 'images', 'risk-matrix.jpg'),
+      path.join(process.cwd(), 'public', 'images', 'risk_matrix.jpg'),
+      path.join(process.cwd(), 'public', 'images', 'riskmatrix.jpg'),
+      // Also check root public folder
+      path.join(process.cwd(), 'public', 'risk-matrix.png'),
+      path.join(process.cwd(), 'public', 'risk_matrix.png'),
+      path.join(process.cwd(), 'public', 'riskmatrix.png'),
+      path.join(process.cwd(), 'public', 'risk-matrix.jpeg'),
+      path.join(process.cwd(), 'public', 'risk_matrix.jpeg'),
+      path.join(process.cwd(), 'public', 'riskmatrix.jpeg'),
+      path.join(process.cwd(), 'public', 'risk-matrix.jpg'),
+      path.join(process.cwd(), 'public', 'risk_matrix.jpg'),
+      path.join(process.cwd(), 'public', 'riskmatrix.jpg'),
+      path.join(this.templatesDir, 'risk-matrix.png'),
+    ];
+    const riskMatrixImagePath = riskImageCandidates.find((p) => fs.existsSync(p)) || null;
 
     // Keep both flat keys and nested objects so the template can use either style.
     return {
@@ -1249,6 +1309,8 @@ class ReportService {
       severity_counts: severityCounts,
       findings_by_severity: findingsBySeverity,
       risk_matrix: riskMatrix,
+      risk_matrix_image: riskMatrixImagePath ? riskMatrixImagePath : '',
+      risk_matrix_image_path: riskMatrixImagePath,
     };
   }
 
@@ -1767,14 +1829,13 @@ class ReportService {
         body: 'The conclusions and recommendations in this report represent the opinions of Securify.\n\nDeterminations of appropriate corrective action(s) are the responsibility of the entity receiving the report.\n\nThis report and/or any other materials furnished by Securify in connection with this engagement is confidential and may not be duplicated, modified, or otherwise reproduced and distributed without the express prior written consent of Securify or {{CLIENT_NAME}}. Because this work may contain copyrighted images or other material, permission from the copyright holder may also be necessary if you wish to reproduce.',
       },
       introduction: {
-        body: 'As part of an ongoing security program, **{{CLIENT_NAME}}** identified the need to conduct an application security assessment of its Web application & APIs.\n\nThis report presents the agreed scope, methodology, risk measurement model, summarized findings, and detailed technical observations for the selected assessment window.',
+        body: 'As part of an ongoing security program, {{CLIENT_NAME}} identified the need to conduct an application security assessment of its Web application & APIs.',
         items: [
           'Determine the overall security posture of the application',
           'Provide a list of key findings and recommendations for remediation',
-          'Document the assessment scope, risk evaluation, and final outcomes',
-          'Support remediation planning with actionable technical detail',
         ],
         fields: {
+          list_title: 'The following lists the objectives of this assessment:',
           closing_title: 'This report includes the following parameters and results of the assessment:',
         },
         closing_items: [
@@ -1791,12 +1852,12 @@ class ReportService {
       runtime_assessment: {
         body: 'The Runtime Application Vulnerability Assessment involved detecting security vulnerabilities through detailed examination and testing of the application in a runtime environment. This assessment emulates an attack by a skilled adversary in a controlled setting and allows {{CLIENT_NAME}} to ascertain the kinds of vulnerabilities that may be realistically exploited. A Runtime Application Vulnerability Assessment includes the following phases:',
         items: [
-          'Information Gathering \u2013 The application was reviewed as an anonymous, authenticated, and privileged user to understand differences in access and behavior. Technologies, frameworks, APIs, and third-party integrations were also identified to support targeted testing.',
-          'Authentication Testing \u2013 Authentication mechanisms were evaluated to determine the strength of login controls, password policies, and account recovery processes. Protections against brute-force attempts and session takeover scenarios were also reviewed to ensure users are securely authenticated.',
-          'Authorization Testing \u2013 Tests were conducted to identify weaknesses in access control, including attempts to access other users\' data or privileged functionality.',
-          'Session Management \u2013 Session handling was assessed to ensure secure creation, storage, and invalidation of session tokens.',
-          'Input Validation Attacks \u2013 User-controlled input fields were tested with malformed and malicious data to identify injection flaws and logic bypasses. This included attempts to exploit unexpected behavior, access unprotected functionality, or inject vulnerabilities such as XSS, SQL Injection, and Command Injection.',
-          'Business Logic Testing \u2013 The application workflows were reviewed to identify opportunities to misuse or bypass intended processes. This included testing for logic errors, insufficient validation, and scenarios where typical constraints could be circumvented.',
+          '**Information Gathering** \u2013 The application was reviewed as an anonymous, authenticated, and privileged user to understand differences in access and behavior. Technologies, frameworks, APIs, and third-party integrations were also identified to support targeted testing.',
+          '**Authentication Testing** \u2013 Authentication mechanisms were evaluated to determine the strength of login controls, password policies, and account recovery processes. Protections against brute-force attempts and session takeover scenarios were also reviewed to ensure users are securely authenticated.',
+          '**Authorization Testing** \u2013 Tests were conducted to identify weaknesses in access control, including attempts to access other users\' data or privileged functionality.',
+          '**Session Management** \u2013 Session handling was assessed to ensure secure creation, storage, and invalidation of session tokens.',
+          '**Input Validation Attacks** \u2013 User-controlled input fields were tested with malformed and malicious data to identify injection flaws and logic bypasses. This included attempts to exploit unexpected behavior, access unprotected functionality, or inject vulnerabilities such as XSS, SQL Injection, and Command Injection.',
+          '**Business Logic Testing** \u2013 The application workflows were reviewed to identify opportunities to misuse or bypass intended processes. This included testing for logic errors, insufficient validation, and scenarios where typical constraints could be circumvented.',
         ],
       },
       assessment_limitation: {
@@ -1815,21 +1876,21 @@ class ReportService {
       measurement_impact: {
         body: 'Impact is an estimation of the potential damage via a successful exploit of a vulnerability. We\'ll use the following factors to help qualitatively determine the impact of a vulnerability.',
         items: [
-          'Low Impact: When most/all factors indicate limited consequences (e.g., non-sensitive data, no ability to alter/delete key data, and low victim count).',
-          'Medium Impact: When about half of the factors suggest higher damage and half point to limited effects.',
-          'High Impact: When most/all factors highlight significant damage (e.g., sensitive data loss, wide data corruption, and a large number of victims).',
+          '**Low Impact**: When most/all factors indicate limited consequences (e.g., non-sensitive data, no ability to alter/delete key data, and low victim count).',
+          '**Medium Impact**: When about half of the factors suggest higher damage and half point to limited effects.',
+          '**High Impact**: When most/all factors highlight significant damage (e.g., sensitive data loss, wide data corruption, and a large number of victims).',
         ],
       },
       measurement_likelihood: {
         body: 'Likelihood is a qualitative estimation of the probability of an attacker exploiting the vulnerability in question. In order to determine the likelihood of exploitation, we can consider the following factors:',
         items: [
-          'Low Likelihood: Most/all factors suggest significant barriers to exploitation (e.g., complex skillset, limited attackers, high cost, or complex delivery).',
-          'Medium Likelihood: About half the factors indicate ease of exploitation, while the other half show barriers.',
-          'High Likelihood: Most/all factors point to easy and accessible exploitation (e.g., basic skills, low cost, and simple attack mechanisms).',
+          '**Low Likelihood**: Most/all factors suggest significant barriers to exploitation (e.g., complex skillset, limited attackers, high cost, or complex delivery).',
+          '**Medium Likelihood**: About half the factors indicate ease of exploitation, while the other half show barriers.',
+          '**High Likelihood**: Most/all factors point to easy and accessible exploitation (e.g., basic skills, low cost, and simple attack mechanisms).',
         ],
       },
       overall_risk: {
-        body: 'The following graph illustrates how Impact x Likelihood scores translate to overall Low, Medium, and High-risk ratings:\n\nOverall risk is derived from the intersection of impact and likelihood and is used to prioritize remediation efforts. Findings with the highest combined rating should be addressed first, especially where exploitability and business consequence are both significant.',
+        body: 'The following graph illustrates how Impact x Likelihood scores translate to overall Low, Medium, and High-risk ratings:',
         items: [
           'Low Impact + Low Likelihood = Low Risk',
           'High Impact + High Likelihood = Critical Risk',
@@ -1866,7 +1927,9 @@ class ReportService {
       return typeof raw === 'string' && raw.trim() ? resolvePlaceholders(raw.trim()) : fallback;
     };
     const sectionBody = (key: string, fallback = '') => {
-      const section = getSection(key);
+      // For these specific sections, always use default items to ensure ** markers are preserved
+      const useDefaultItems = ['runtime_assessment', 'measurement_impact', 'measurement_likelihood'].includes(key);
+      const section = useDefaultItems ? (defaultSectionConfig[key] || {}) : getSection(key);
       const parts: string[] = [];
       const body = typeof section?.body === 'string' && section.body.trim() ? section.body.trim() : fallback;
       if (body) parts.push(body);
@@ -1888,7 +1951,7 @@ class ReportService {
         
         const itemsToUse = section.items.slice(0, numFirstList);
         
-        if (key === 'runtime_assessment') {
+        if (key === 'runtime_assessment' || key === 'measurement_impact' || key === 'measurement_likelihood') {
           // Preserve ** markers for bold rendering
           parts.push(...itemsToUse.map((item: any) => {
             const text = String(item || '').trim();
@@ -1935,7 +1998,7 @@ class ReportService {
       let endIdx = children.findIndex((el: any, idx: number) => idx > startIdx && stopHeadings.includes(paraText(el)));
       if (endIdx === -1) endIdx = children.length;
 
-      const range = children.slice(startIdx + 1, endIdx);
+const range = children.slice(startIdx + 1, endIdx);
       const paragraphsInRange = range.filter((el: any) => el.tagName === 'w:p');
       const bulletParagraph = paragraphsInRange.find((p: any) => $(p).find('w\\:numPr').length > 0);
       const templateParagraph = paragraphsInRange.find((p: any) => paraText(p)) || paragraphsInRange[0];
@@ -1948,13 +2011,13 @@ class ReportService {
       parts.forEach((part) => {
         const isListLike = part.startsWith('- ');
         let text = isListLike ? part.replace(/^-\s*/, '') : part;
-        
+
         const paragraph = isListLike && bulletParagraph ? cloneNode(bulletParagraph) : cloneNode(templateParagraph);
-        
+
         // Check if this is an italic paragraph: _italic:text_ or _text_
         let isItalicPara = false;
         let displayText = text;
-        
+
         // Try format: _italic:text_
         const italicMatch = text.match(/^_italic:(.*)_$/);
         if (italicMatch) {
@@ -1965,11 +2028,11 @@ class ReportService {
           isItalicPara = true;
           displayText = text.slice(1, -1);
         }
-        
+
         // Parse **bold** markers using split
         const segments: Array<{ text: string; bold: boolean; italic: boolean }> = [];
         const parts2 = displayText.split('**');
-        
+
         for (let i = 0; i < parts2.length; i++) {
           if (!parts2[i]) continue;
           // Odd indices are bold (between ** pairs), even are normal
@@ -1980,7 +2043,7 @@ class ReportService {
             italic: isItalicPara
           });
         }
-        
+
         // If no ** markers found and it's a colon-separated list item, apply colon logic
         if (segments.length === 0 && isListLike) {
           const colonIndex = text.indexOf(': ');
@@ -1991,19 +2054,19 @@ class ReportService {
             );
           }
         }
-        
+
         // If still no segments, use the whole text
         if (segments.length === 0) {
           segments.push({ text: displayText, bold: false, italic: isItalicPara });
         }
-        
+
         // Render segments
         setParagraphSegments($, paragraph.get(0), segments.map(s => ({
           text: s.text,
           bold: s.bold,
-          color: '000000'
+          color: isItalicPara ? '666666' : '000000'
         })));
-        
+
         // Apply italic to all runs if needed
         if (isItalicPara) {
           $(paragraph.get(0)).find('w\\:r').each((_: number, r: any) => {
@@ -2012,7 +2075,7 @@ class ReportService {
             if (!rPr.children('w\\:i').length) { rPr.append('<w:i w:val="1"/><w:iCs w:val="1"/>'); }
           });
         }
-        
+
         if (insertNode) {
           $(insertNode).before($.xml(paragraph));
         } else {
@@ -2049,40 +2112,66 @@ class ReportService {
     replaceSectionParagraphBlock('Risk Classification', ['Measurement of Impact'], sectionBody('risk_classification', ''));
     replaceSectionParagraphBlock('Measurement of Impact', ['Measurement of Likelihood'], sectionBody('measurement_impact', ''));
 
-    // Ensure Impact table comes BEFORE paragraph content
+    // For Impact section, move table AFTER content
     {
-      const impactChildren = bodyChildren();
-      const impactIdx = impactChildren.findIndex((el: any) => paraText(el) === 'Measurement of Impact');
-      const likelihoodIdx = impactChildren.findIndex((el: any) => paraText(el) === 'Measurement of Likelihood');
+      const children = bodyChildren();
+      const impactIdx = children.findIndex((el: any) => paraText(el) === 'Measurement of Impact');
+      const likelihoodIdx = children.findIndex((el: any) => paraText(el) === 'Measurement of Likelihood');
+      
+      console.log(`[MoveTable] Impact: idx=${impactIdx}, likelihoodIdx=${likelihoodIdx}`);
+      
       if (impactIdx !== -1 && likelihoodIdx !== -1) {
-        const impactElements = impactChildren.slice(impactIdx + 1, likelihoodIdx);
-        const impactTable = impactElements.find((el: any) => el.tagName === 'w:tbl');
-        const impactParas = impactElements.filter((el: any) => el.tagName === 'w:p' && paraText(el));
-
-        if (impactTable && impactParas.length > 0) {
-          // Move table to be BEFORE all paragraphs (first after heading)
-          const firstPara = impactParas[0];
-          $(firstPara).before($.xml($(impactTable)));
+        const sectionRange = children.slice(impactIdx + 1, likelihoodIdx);
+        const tableEl = sectionRange.find((el: any) => el.tagName === 'w:tbl');
+        const contentParas = sectionRange.filter((el: any) => el.tagName === 'w:p');
+        const contentWithText = contentParas.filter((el: any) => paraText(el));
+        
+        console.log(`[MoveTable] Impact: table=${!!tableEl}, paras=${contentParas.length}, withText=${contentWithText.length}`);
+        
+        if (tableEl && contentWithText.length > 0) {
+          const lastContentPara = contentWithText[contentWithText.length - 1];
+          const tablePosition = sectionRange.indexOf(tableEl);
+          const lastParaPosition = sectionRange.indexOf(lastContentPara);
+          
+          console.log(`[MoveTable] Impact: tablePos=${tablePosition}, paraPos=${lastParaPosition}`);
+          
+          if (tablePosition !== -1 && lastParaPosition !== -1 && tablePosition < lastParaPosition) {
+            $(lastContentPara).after($.xml($(tableEl)));
+            console.log('[MoveTable] Impact: Moved table after content');
+          }
         }
       }
     }
 
     replaceSectionParagraphBlock('Measurement of Likelihood', ['Overall Risk'], sectionBody('measurement_likelihood', ''));
 
-    // Ensure Likelihood table comes BEFORE paragraph content
+    // For Likelihood section, move table AFTER content
     {
-      const likelihoodChildren = bodyChildren();
-      const likelihoodIdx = likelihoodChildren.findIndex((el: any) => paraText(el) === 'Measurement of Likelihood');
-      const overallIdx = likelihoodChildren.findIndex((el: any) => paraText(el) === 'Overall Risk');
+      const children = bodyChildren();
+      const likelihoodIdx = children.findIndex((el: any) => paraText(el) === 'Measurement of Likelihood');
+      const overallIdx = children.findIndex((el: any) => paraText(el) === 'Overall Risk');
+      
+      console.log(`[MoveTable] Likelihood: idx=${likelihoodIdx}, overallIdx=${overallIdx}`);
+      
       if (likelihoodIdx !== -1 && overallIdx !== -1) {
-        const likelihoodElements = likelihoodChildren.slice(likelihoodIdx + 1, overallIdx);
-        const likelihoodTable = likelihoodElements.find((el: any) => el.tagName === 'w:tbl');
-        const likelihoodParas = likelihoodElements.filter((el: any) => el.tagName === 'w:p' && paraText(el));
-
-        if (likelihoodTable && likelihoodParas.length > 0) {
-          // Move table to be BEFORE all paragraphs (first after heading)
-          const firstPara = likelihoodParas[0];
-          $(firstPara).before($.xml($(likelihoodTable)));
+        const sectionRange = children.slice(likelihoodIdx + 1, overallIdx);
+        const tableEl = sectionRange.find((el: any) => el.tagName === 'w:tbl');
+        const contentParas = sectionRange.filter((el: any) => el.tagName === 'w:p');
+        const contentWithText = contentParas.filter((el: any) => paraText(el));
+        
+        console.log(`[MoveTable] Likelihood: table=${!!tableEl}, paras=${contentParas.length}, withText=${contentWithText.length}`);
+        
+        if (tableEl && contentWithText.length > 0) {
+          const lastContentPara = contentWithText[contentWithText.length - 1];
+          const tablePosition = sectionRange.indexOf(tableEl);
+          const lastParaPosition = sectionRange.indexOf(lastContentPara);
+          
+          console.log(`[MoveTable] Likelihood: tablePos=${tablePosition}, paraPos=${lastParaPosition}`);
+          
+          if (tablePosition !== -1 && lastParaPosition !== -1 && tablePosition < lastParaPosition) {
+            $(lastContentPara).after($.xml($(tableEl)));
+            console.log('[MoveTable] Likelihood: Moved table after content');
+          }
         }
       }
     }
@@ -2115,6 +2204,18 @@ class ReportService {
       }
     }
     replaceSectionParagraphBlock('Zero-risk Issues', ['Vulnerabilities'], sectionBody('zero_risk_issues', ''));
+
+    // Add page break before Vulnerabilities section
+    {
+      const children = bodyChildren();
+      const vulnIdx = children.findIndex((el: any) => paraText(el) === 'Vulnerabilities');
+      if (vulnIdx !== -1) {
+        const vulnEl = children[vulnIdx];
+        const pageBreakP = $('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+        $(vulnEl).before($.xml(pageBreakP));
+      }
+    }
+
     replaceSectionParagraphBlock('Summary', ['Detailed Vulnerabilities'], sectionBody('summary', ''));
     replaceSectionParagraphBlock('Appendix A', [], sectionBody('appendix_a', normalizedTemplate.appendix_text || ''));
 
@@ -2360,15 +2461,45 @@ class ReportService {
     };
     let riskMatrixImageEmbedded = false;
     const riskMatrixImageCandidates = [
+      // Prefer a public asset if provided by the user
+      path.join(process.cwd(), 'public', 'images', 'risk-matrix.png'),
+      path.join(process.cwd(), 'public', 'images', 'risk_matrix.png'),
+      path.join(process.cwd(), 'public', 'images', 'riskmatrix.png'),
+      // JPEG variants — user may have uploaded a JPEG
+      path.join(process.cwd(), 'public', 'images', 'risk-matrix.jpeg'),
+      path.join(process.cwd(), 'public', 'images', 'risk_matrix.jpeg'),
+      path.join(process.cwd(), 'public', 'images', 'riskmatrix.jpeg'),
+      path.join(process.cwd(), 'public', 'images', 'risk-matrix.jpg'),
+      path.join(process.cwd(), 'public', 'images', 'risk_matrix.jpg'),
+      path.join(process.cwd(), 'public', 'images', 'riskmatrix.jpg'),
+      // Also check root public folder
+      path.join(process.cwd(), 'public', 'risk-matrix.png'),
+      path.join(process.cwd(), 'public', 'risk_matrix.png'),
+      path.join(process.cwd(), 'public', 'riskmatrix.png'),
+      // JPEG variants — user may have uploaded a JPEG
+      path.join(process.cwd(), 'public', 'risk-matrix.jpeg'),
+      path.join(process.cwd(), 'public', 'risk_matrix.jpeg'),
+      path.join(process.cwd(), 'public', 'riskmatrix.jpeg'),
+      path.join(process.cwd(), 'public', 'risk-matrix.jpg'),
+      path.join(process.cwd(), 'public', 'risk_matrix.jpg'),
+      path.join(process.cwd(), 'public', 'riskmatrix.jpg'),
       path.join(this.templatesDir, 'risk-matrix.png'),
       path.join(this.templatesDir, 'risk_matrix.png'),
       path.join(this.templatesDir, 'riskmatrix.png'),
     ];
-    const riskMatrixImagePath = riskMatrixImageCandidates.find((p) => fs.existsSync(p));
+    const riskMatrixImagePath = riskMatrixImageCandidates.find((p) => {
+        const exists = fs.existsSync(p);
+        console.log(`[RiskMatrix] checking "${p}" => ${exists ? 'FOUND' : 'not found'}`);
+        return exists;
+      });
     if (riskMatrixImagePath) {
+      console.log(`[RiskMatrix] Using image: ${riskMatrixImagePath}`);
       try {
         const imageBuffer = fs.readFileSync(riskMatrixImagePath);
         const imageName = path.basename(riskMatrixImagePath);
+        const ext = imageName.toLowerCase().replace(/^.*\./, '').split('?')[0];
+        const isJpeg = ['jpg', 'jpeg'].includes(ext);
+        const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
         const relId = 'rIdRiskMatrixImage';
         const mediaPath = `word/media/${imageName}`;
 
@@ -2376,7 +2507,9 @@ class ReportService {
 
         const contentTypesXml = zip.file('[Content_Types].xml')?.asText() || '';
         if (contentTypesXml && !contentTypesXml.includes(mediaPath)) {
-          const ctEntry = `<Override PartName="/${mediaPath}" ContentType="image/png"/>`;
+          const ctEntry = isJpeg
+            ? `<Override PartName="/${mediaPath}" ContentType="image/jpeg"/>`
+            : `<Override PartName="/${mediaPath}" ContentType="image/png"/>`;
           zip.file('[Content_Types].xml', contentTypesXml.replace('</Types>', `${ctEntry}\n</Types>`));
         }
 
@@ -2390,12 +2523,33 @@ class ReportService {
         const targetHeading = sectionTitle('zero_risk_issues', 'Zero-risk Issues');
         const headingEl = bodyChildren().find((el: any) => paraText(el) === targetHeading);
         if (headingEl) {
-          const drawingXml = `<w:p>
+        // Determine image extent (cx/cy) in EMUs using the actual image pixel dimensions when possible
+        let cxVal = 3810000;
+        let cyVal = 2222500;
+        try {
+          // Try to measure image dimensions using sharp if available
+          let sharpPkg: any = null;
+          try { sharpPkg = require('sharp'); } catch {}
+          if (sharpPkg) {
+            const meta = await sharpPkg(imageBuffer).metadata();
+            const w = Number(meta?.width || 0) || 0;
+            const h = Number(meta?.height || 0) || 0;
+            if (w > 0 && h > 0) {
+              const EMU_PER_PX = 9525; // EMU per pixel at 96 DPI
+              cxVal = Math.round(w * EMU_PER_PX);
+              cyVal = Math.round(h * EMU_PER_PX);
+            }
+          }
+        } catch (e) {
+          // Fallback to previously used fixed size
+        }
+
+        const drawingXml = `<w:p>
             <w:pPr><w:jc w:val="center"/></w:pPr>
             <w:r>
               <w:drawing>
                 <wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">
-                  <wp:extent cx="3810000" cy="2222500"/>
+                  <wp:extent cx="${cxVal}" cy="${cyVal}"/>
                   <wp:effectExtent l="0" t="0" r="0" b="0"/>
                   <wp:docPr id="999" name="Risk Matrix"/>
                   <wp:cNvGraphicFramePr>
@@ -2415,7 +2569,7 @@ class ReportService {
                         <pic:spPr>
                           <a:xfrm>
                             <a:off x="0" y="0"/>
-                            <a:ext cx="3810000" cy="2222500"/>
+                            <a:ext cx="${cxVal}" cy="${cyVal}"/>
                           </a:xfrm>
                           <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
                         </pic:spPr>
@@ -2434,35 +2588,18 @@ class ReportService {
       }
     }
 
+    // If we could not embed an image, remove any existing static matrix table placeholder
+    // The report must use the provided image asset for the risk matrix; do not generate a textual 3x3 matrix.
     if (!riskMatrixImageEmbedded && tables[0]) {
       const childrenForMatrix = bodyChildren();
       const measurementImpactHeading = childrenForMatrix.find((el: any) => paraText(el) === sectionTitle('zero_risk_issues', 'Zero-risk Issues'));
       if (measurementImpactHeading) {
-        const matrixTable = cloneNode(tables[0]);
-        const existingRows = matrixTable.find('> w\\:tr').toArray();
-        const rowTemplate = existingRows[1] || existingRows[0];
-        existingRows.forEach((row: any) => matrixTable.find(`> w\\:tr`).eq(0).remove());
-
-        matrixRows.forEach((matrixRow: any) => {
-          const row = cloneNode(rowTemplate);
-          while (row.find('w\\:tc').toArray().length < 3) {
-            const currentCells = row.find('w\\:tc').toArray();
-            const cloneCell = cloneNode(currentCells[currentCells.length - 1]);
-            row.append($.xml(cloneCell));
-          }
-          const cells = row.find('w\\:tc').toArray();
-          const values = [matrixRow.low, matrixRow.medium, matrixRow.high].map((value: any) => String(value || ''));
-          values.forEach((value, idx) => {
-            if (!cells[idx]) return;
-            setParaText(cells[idx], value);
-            const fill = riskFillForValue(value);
-            ensureShading(cells[idx], fill.fill);
-            ensureTextColor(cells[idx], fill.text);
-          });
-          matrixTable.append($.xml(row));
-        });
-
-        $(measurementImpactHeading).before($.xml(matrixTable));
+        // Remove the first following table (assumed to be the matrix placeholder)
+        const nextEl = $(measurementImpactHeading).next();
+        if (nextEl && nextEl.length && nextEl.get(0).tagName === 'w:tbl') {
+          $(nextEl).remove();
+          console.log('ℹ️ Removed fallback risk matrix table; no image was embedded.');
+        }
       }
     }
 
