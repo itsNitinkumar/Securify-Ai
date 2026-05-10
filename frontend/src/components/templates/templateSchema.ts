@@ -91,22 +91,24 @@ export const defaultTemplateContent = (): ReportTemplateContent => ({
     },
     introduction: {
       title: 'Introduction',
-      body: 'As part of an ongoing security program, {{CLIENT_NAME}} identified the need to conduct an application security assessment of its Web application & APIs.\n\nThis report presents the agreed scope, methodology, risk measurement model, summarized findings, and detailed technical observations for the selected assessment window.',
+      body: 'As part of an ongoing security program, **{{CLIENT_NAME}}** identified the need to conduct an application security assessment of its Web application & APIs.\n\nThis report presents the agreed scope, methodology, risk measurement model, summarized findings, and detailed technical observations for the selected assessment window.',
       fields: {
-        list_title: 'The following lists the objectives of this assessment:',
-        closing_title: 'This report includes the following parameters and results of the assessment:',
+        list_title: '_The following lists the objectives of this assessment:_',
+        closing_title: '_This report includes the following parameters and results of the assessment:_',
       },
-      items: [
-        'Determine the overall security posture of the application',
-        'Provide a list of key findings and recommendations for remediation',
-        'Document the assessment scope, risk evaluation, and final outcomes',
-        'Support remediation planning with actionable technical detail',
-        "Securify's approach to the assessment",
-        'Assessment scope',
-        'Key findings listed with their qualitative risk assessment',
-        'Detailed recommendations for each finding',
-        'A remediation plan',
-      ],
+items: [
+          'Determine the overall security posture of the application',
+          'Provide a list of key findings and recommendations for remediation',
+          'Document the assessment scope, risk evaluation, and final outcomes',
+          'Support remediation planning with actionable technical detail',
+        ],
+closing_items: [
+          "Securify's approach to the assessment",
+          'Assessment scope',
+          'Key findings listed with their qualitative risk assessment',
+          'Detailed recommendations for each finding',
+          'A remediation plan',
+        ],
     },
     approach: {
       title: 'Approach',
@@ -116,12 +118,12 @@ export const defaultTemplateContent = (): ReportTemplateContent => ({
       title: 'Runtime Application Vulnerability Assessment',
       body: 'The Runtime Application Vulnerability Assessment involved detecting security vulnerabilities through detailed examination and testing of the application in a runtime environment. This assessment emulates an attack by a skilled adversary in a controlled setting and allows {{CLIENT_NAME}} to ascertain the kinds of vulnerabilities that may be realistically exploited. A Runtime Application Vulnerability Assessment includes the following phases:',
       items: [
-        'Information Gathering \u2013 The application was reviewed as an anonymous, authenticated, and privileged user to understand differences in access and behavior. Technologies, frameworks, APIs, and third-party integrations were also identified to support targeted testing.',
-        'Authentication Testing \u2013 Authentication mechanisms were evaluated to determine the strength of login controls, password policies, and account recovery processes. Protections against brute-force attempts and session takeover scenarios were also reviewed to ensure users are securely authenticated.',
-        'Authorization Testing \u2013 Tests were conducted to identify weaknesses in access control, including attempts to access other users\' data or privileged functionality.',
-        'Session Management \u2013 Session handling was assessed to ensure secure creation, storage, and invalidation of session tokens.',
-        'Input Validation Attacks \u2013 User-controlled input fields were tested with malformed and malicious data to identify injection flaws and logic bypasses. This included attempts to exploit unexpected behavior, access unprotected functionality, or inject vulnerabilities such as XSS, SQL Injection, and Command Injection.',
-        'Business Logic Testing \u2013 The application workflows were reviewed to identify opportunities to misuse or bypass intended processes. This included testing for logic errors, insufficient validation, and scenarios where typical constraints could be circumvented.',
+        '**Information Gathering** – The application was reviewed as an anonymous, authenticated, and privileged user to understand differences in access and behavior. Technologies, frameworks, APIs, and third-party integrations were also identified to support targeted testing.',
+        '**Authentication Testing** – Authentication mechanisms were evaluated to determine the strength of login controls, password policies, and account recovery processes. Protections against brute-force attempts and session takeover scenarios were also reviewed to ensure users are securely authenticated.',
+        '**Authorization Testing** – Tests were conducted to identify weaknesses in access control, including attempts to access other users\' data or privileged functionality.',
+        '**Session Management** – Session handling was assessed to ensure secure creation, storage, and invalidation of session tokens.',
+        '**Input Validation Attacks** – User-controlled input fields were tested with malformed and malicious data to identify injection flaws and logic bypasses. This included attempts to exploit unexpected behavior, access unprotected functionality, or inject vulnerabilities such as XSS, SQL Injection, and Command Injection.',
+        '**Business Logic Testing** – The application workflows were reviewed to identify opportunities to misuse or bypass intended processes. This included testing for logic errors, insufficient validation, and scenarios where typical constraints could be circumvented.',
       ],
     },
     scope: {
@@ -358,8 +360,8 @@ export const buildTemplatePayload = (template: ReportTemplateRecord, content: Re
       scope_user_roles: mergeRows((content.sections.scope as any).user_role_rows, []),
       scope_tools: mergeRows((content.sections.scope as any).tool_rows, []),
       sections: content.sections,
-      template_file: template.template_data?.template_file || 'professional-report-template.html',
-      docx_template_file: template.template_data?.docx_template_file || 'professional-report-template.docx',
+      template_file: template.template_data?.template_file || '',
+      docx_template_file: template.template_data?.docx_template_file || '',
     },
   };
 };

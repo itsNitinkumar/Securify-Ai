@@ -52,7 +52,6 @@ interface PreviewResult {
 class ReportService {
   private static reportsDir = path.join(__dirname, '../../reports');
   private static templatesDir = path.join(__dirname, '../templates');
-  private static defaultTemplateFile = 'professional-report-template.html';
   private static execFileAsync = promisify(execFile);
 
   private static brand = {
@@ -85,28 +84,23 @@ class ReportService {
     return template;
   }
 
-  // Load HTML template (selected template -> file; fallback -> default)
+  // Load HTML template from template_data configuration
   private static loadTemplate(template: ReportTemplate): string {
     const normalized = this.normalizeTemplateData(template);
 
     const templateFileRaw = (normalized as any)?.template_data?.template_file;
-    const templateFile = typeof templateFileRaw === 'string' && templateFileRaw.trim()
-      ? path.basename(templateFileRaw.trim())
-      : this.defaultTemplateFile;
+    if (!templateFileRaw || typeof templateFileRaw !== 'string' || !templateFileRaw.trim()) {
+      throw new ApiError(400, 'Template file not specified in template configuration');
+    }
 
+    const templateFile = path.basename(templateFileRaw.trim());
     const selectedPath = path.join(this.templatesDir, templateFile);
-    if (fs.existsSync(selectedPath)) {
-      return fs.readFileSync(selectedPath, 'utf-8');
+
+    if (!fs.existsSync(selectedPath)) {
+      throw new ApiError(404, `Template file not found: ${templateFile}`);
     }
 
-    const defaultPath = path.join(this.templatesDir, this.defaultTemplateFile);
-    if (fs.existsSync(defaultPath)) {
-      return fs.readFileSync(defaultPath, 'utf-8');
-    }
-
-    // Last-resort fallback
-    const fallbackPath = path.join(this.templatesDir, 'comprehensive-report-template.html');
-    return fs.readFileSync(fallbackPath, 'utf-8');
+    return fs.readFileSync(selectedPath, 'utf-8');
   }
 
   private static async buildReportData(
@@ -415,7 +409,7 @@ class ReportService {
       const rows: TableRow[] = [];
       const $table = $(tableEl);
 
-    const countColumns = (tr: any): number => {
+      const countColumns = (tr: any): number => {
         const cells = $(tr).children('th,td').toArray();
         return cells.reduce((total: number, cell: any) => {
           const colspanRaw = $(cell).attr('colspan');
@@ -658,15 +652,18 @@ class ReportService {
         if (tag === 'ul') {
           const items = $(el).children('li').toArray();
           for (const li of items) {
-            const clean = $(li).text().replace(/\s+/g, ' ').trim();
-            if (!clean) continue;
+            // Extract runs from the <li>, preserving b/i tags, color, size
+            const runs = textRunsFromChildren(li, { color: this.brand.text, size: 22 });
+            // Render using Word's bullet point with correct color/indent
             blocks.push(
               new Paragraph({
+                bullet: {
+                  level: 0,
+                  bulletChar: '•',
+                  color: this.brand.green,
+                },
                 spacing: { after: 70 },
-                children: [
-                  new TextRun({ text: '● ', color: this.brand.green, size: 32 }),
-                  new TextRun({ text: clean, color: this.brand.text, size: 22 })
-                ],
+                children: runs,
               })
             );
           }
@@ -735,7 +732,7 @@ class ReportService {
         if (stdout && !stdout.toLowerCase().includes('roboto')) {
           console.warn(
             `⚠️ Font substitution likely during DOCX→PDF: fc-match Roboto resolved to: ${stdout.trim()}. ` +
-              'Install Roboto fonts on the server/host to improve layout fidelity.'
+            'Install Roboto fonts on the server/host to improve layout fidelity.'
           );
         }
       } catch {
@@ -825,14 +822,14 @@ class ReportService {
     const reportData = await this.buildReportData(projectId, templateId, findingIds);
     const safeProjectName = reportData.project.name.replace(/[^a-z0-9]/gi, '_');
 
-      if (format === 'docx') {
-       const buffer = await this.generateDOCXBuffer(reportData);
-       return {
-         buffer,
-         contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-         fileName: `${safeProjectName}_preview.docx`,
-       };
-      }
+    if (format === 'docx') {
+      const buffer = await this.generateDOCXBuffer(reportData);
+      return {
+        buffer,
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        fileName: `${safeProjectName}_preview.docx`,
+      };
+    }
 
     let buffer: Buffer;
     try {
@@ -1287,13 +1284,20 @@ class ReportService {
     const body = $('w\\:body').first();
     const bodyChildren = () => body.children().toArray().filter((el: any) => ['w:p', 'w:tbl'].includes(el.tagName));
     const paraText = (el: any): string => $(el).find('w\\:t').toArray().map((n: any) => $(n).text()).join('').trim();
-    const escapeXmlText = (text: string): string => String(text)
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    const escapeXmlText = (text: string): string => {
+      // Decode existing common entities first (avoid double-encoding)
+      let decoded = String(text)
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'");
+      // Now encode as XML only if not already
+      return decoded
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    };
     const setParaText = (el: any, text: string) => {
       const runs = $(el).find('w\\:t').toArray();
       if (!runs.length) return;
@@ -1763,16 +1767,17 @@ class ReportService {
         body: 'The conclusions and recommendations in this report represent the opinions of Securify.\n\nDeterminations of appropriate corrective action(s) are the responsibility of the entity receiving the report.\n\nThis report and/or any other materials furnished by Securify in connection with this engagement is confidential and may not be duplicated, modified, or otherwise reproduced and distributed without the express prior written consent of Securify or {{CLIENT_NAME}}. Because this work may contain copyrighted images or other material, permission from the copyright holder may also be necessary if you wish to reproduce.',
       },
       introduction: {
-        body: 'As part of an ongoing security program, {{CLIENT_NAME}} identified the need to conduct an application security assessment of its Web application & APIs.\n\nThis report presents the agreed scope, methodology, risk measurement model, summarized findings, and detailed technical observations for the selected assessment window.',
-        fields: {
-          list_title: 'The following lists the objectives of this assessment:',
-          closing_title: 'This report includes the following parameters and results of the assessment:',
-        },
+        body: 'As part of an ongoing security program, **{{CLIENT_NAME}}** identified the need to conduct an application security assessment of its Web application & APIs.\n\nThis report presents the agreed scope, methodology, risk measurement model, summarized findings, and detailed technical observations for the selected assessment window.',
         items: [
           'Determine the overall security posture of the application',
           'Provide a list of key findings and recommendations for remediation',
           'Document the assessment scope, risk evaluation, and final outcomes',
           'Support remediation planning with actionable technical detail',
+        ],
+        fields: {
+          closing_title: 'This report includes the following parameters and results of the assessment:',
+        },
+        closing_items: [
           'Securify\'s approach to the assessment',
           'Assessment scope',
           'Key findings listed with their qualitative risk assessment',
@@ -1807,6 +1812,22 @@ class ReportService {
           matrix_subtitle: 'Impact x Likelihood',
         },
       },
+      measurement_impact: {
+        body: 'Impact is an estimation of the potential damage via a successful exploit of a vulnerability. We\'ll use the following factors to help qualitatively determine the impact of a vulnerability.',
+        items: [
+          'Low Impact: When most/all factors indicate limited consequences (e.g., non-sensitive data, no ability to alter/delete key data, and low victim count).',
+          'Medium Impact: When about half of the factors suggest higher damage and half point to limited effects.',
+          'High Impact: When most/all factors highlight significant damage (e.g., sensitive data loss, wide data corruption, and a large number of victims).',
+        ],
+      },
+      measurement_likelihood: {
+        body: 'Likelihood is a qualitative estimation of the probability of an attacker exploiting the vulnerability in question. In order to determine the likelihood of exploitation, we can consider the following factors:',
+        items: [
+          'Low Likelihood: Most/all factors suggest significant barriers to exploitation (e.g., complex skillset, limited attackers, high cost, or complex delivery).',
+          'Medium Likelihood: About half the factors indicate ease of exploitation, while the other half show barriers.',
+          'High Likelihood: Most/all factors point to easy and accessible exploitation (e.g., basic skills, low cost, and simple attack mechanisms).',
+        ],
+      },
       overall_risk: {
         body: 'The following graph illustrates how Impact x Likelihood scores translate to overall Low, Medium, and High-risk ratings:\n\nOverall risk is derived from the intersection of impact and likelihood and is used to prioritize remediation efforts. Findings with the highest combined rating should be addressed first, especially where exploitability and business consequence are both significant.',
         items: [
@@ -1815,9 +1836,7 @@ class ReportService {
         ],
       },
       out_of_scope: {
-        fields: {
-          title: 'The following components and tests were out of scope for this review:',
-        },
+        body: 'The following components and tests were out of scope for this review:',
         items: [
           'Any applications and infrastructure external to the {{CLIENT_NAME}}\'s Web Application & API.',
           'In cases where the {{CLIENT_NAME}}\'s Web Application & API had inbound and/or outbound interfaces with:',
@@ -1852,24 +1871,59 @@ class ReportService {
       const body = typeof section?.body === 'string' && section.body.trim() ? section.body.trim() : fallback;
       if (body) parts.push(body);
 
+      // Add list_title (italic) if present
       if (typeof section?.fields?.list_title === 'string' && section.fields.list_title.trim()) {
-        parts.push(section.fields.list_title.trim());
+        parts.push(`_italic:${section.fields.list_title.trim()}_`);
       }
 
+      // Add items - handle old DB structure where items includes closing_items
       if (Array.isArray(section?.items) && section.items.length) {
-        parts.push(...section.items.map((item: any) => `- ${String(item || '').trim()}`).filter((item: string) => item !== '-'));
+        const closingItemsCount = Array.isArray(section?.closing_items) ? section.closing_items.length : 0;
+        
+        // If closing_items exists and items.length > closingItemsCount, assume old structure
+        // and only use the first (items.length - closingItemsCount) items
+        const numFirstList = closingItemsCount > 0 && section.items.length > closingItemsCount
+          ? section.items.length - closingItemsCount
+          : section.items.length;
+        
+        const itemsToUse = section.items.slice(0, numFirstList);
+        
+        if (key === 'runtime_assessment') {
+          // Preserve ** markers for bold rendering
+          parts.push(...itemsToUse.map((item: any) => {
+            const text = String(item || '').trim();
+            return text ? `- ${text}` : '';
+          }).filter((item: string) => item !== '-'));
+        } else {
+          parts.push(...itemsToUse.map((item: any) => `- ${String(item || '').trim()}`).filter((item: string) => item !== '-'));
+        }
       }
 
+      // Add closing_title (italic) if present
       if (typeof section?.fields?.closing_title === 'string' && section.fields.closing_title.trim()) {
-        parts.push(section.fields.closing_title.trim());
+        parts.push(`_italic:${section.fields.closing_title.trim()}_`);
+      }
+
+      // Add closing items if present
+      if (Array.isArray(section?.closing_items) && section.closing_items.length) {
+        parts.push(...section.closing_items.map((item: any) => `- ${String(item || '').trim()}`).filter((item: string) => item !== '-'));
       }
 
       return resolvePlaceholders(parts.filter(Boolean).join('\n\n'));
     };
-    const splitBodyParagraphs = (text: string): string[] => String(text || '')
-      .split(/\n{2,}/)
-      .map((part) => part.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim())
-      .filter(Boolean);
+    const splitBodyParagraphs = (text: string): string[] => {
+      const parts: string[] = [];
+      const regex = /\n{2,}/;
+      const segments = String(text || '').split(regex);
+      for (const segment of segments) {
+        const trimmed = segment.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ');
+        if (trimmed) parts.push(trimmed);
+      }
+      return parts;
+    };
+    // Removed parseTextSegments - using inline logic in replaceSectionParagraphBlock
+
+
     const replaceSectionParagraphBlock = (headingText: string, stopHeadings: string[], replacementText: string) => {
       const parts = splitBodyParagraphs(replacementText);
       if (!parts.length) return;
@@ -1893,31 +1947,72 @@ class ReportService {
       const insertNode = insertBeforeNode || null;
       parts.forEach((part) => {
         const isListLike = part.startsWith('- ');
+        let text = isListLike ? part.replace(/^-\s*/, '') : part;
+        
         const paragraph = isListLike && bulletParagraph ? cloneNode(bulletParagraph) : cloneNode(templateParagraph);
-        const finalText = isListLike ? part.replace(/^-\s*/, '') : part;
-        if (isListLike) {
-          const emDashIndex = finalText.indexOf(' \u2013 ');
-          const hyphenIndex = finalText.indexOf(' - ');
-          const colonIndex = finalText.indexOf(': ');
-          const splitIndex = emDashIndex !== -1 ? emDashIndex : hyphenIndex !== -1 ? hyphenIndex : colonIndex;
-          const separator = emDashIndex !== -1 ? ' \u2013 ' : hyphenIndex !== -1 ? ' - ' : colonIndex !== -1 ? ': ' : '';
-
-          if (splitIndex !== -1 && separator) {
-            const lead = finalText.slice(0, splitIndex + (separator === ': ' ? 1 : 0));
-            const tail = finalText.slice(splitIndex + separator.length);
-            setParagraphSegments($, paragraph.get(0), [
-              { text: lead, bold: true, color: '000000' },
-              { text: separator === ': ' ? ' ' : separator, color: '000000' },
-              { text: tail, color: '000000' },
-            ]);
-          } else {
-            setParagraphSegments($, paragraph.get(0), [
-              { text: finalText, color: '000000' },
-            ]);
-          }
-        } else {
-          setParaText(paragraph.get(0), finalText);
+        
+        // Check if this is an italic paragraph: _italic:text_ or _text_
+        let isItalicPara = false;
+        let displayText = text;
+        
+        // Try format: _italic:text_
+        const italicMatch = text.match(/^_italic:(.*)_$/);
+        if (italicMatch) {
+          isItalicPara = true;
+          displayText = italicMatch[1];
+        } else if (text.startsWith('_') && text.endsWith('_')) {
+          // Try format: _text_
+          isItalicPara = true;
+          displayText = text.slice(1, -1);
         }
+        
+        // Parse **bold** markers using split
+        const segments: Array<{ text: string; bold: boolean; italic: boolean }> = [];
+        const parts2 = displayText.split('**');
+        
+        for (let i = 0; i < parts2.length; i++) {
+          if (!parts2[i]) continue;
+          // Odd indices are bold (between ** pairs), even are normal
+          const isBold = i % 2 === 1;
+          segments.push({
+            text: parts2[i],
+            bold: isBold,
+            italic: isItalicPara
+          });
+        }
+        
+        // If no ** markers found and it's a colon-separated list item, apply colon logic
+        if (segments.length === 0 && isListLike) {
+          const colonIndex = text.indexOf(': ');
+          if (colonIndex !== -1) {
+            segments.push(
+              { text: text.slice(0, colonIndex + 1), bold: true, italic: false },
+              { text: text.slice(colonIndex + 1).trim(), bold: false, italic: false }
+            );
+          }
+        }
+        
+        // If still no segments, use the whole text
+        if (segments.length === 0) {
+          segments.push({ text: displayText, bold: false, italic: isItalicPara });
+        }
+        
+        // Render segments
+        setParagraphSegments($, paragraph.get(0), segments.map(s => ({
+          text: s.text,
+          bold: s.bold,
+          color: '000000'
+        })));
+        
+        // Apply italic to all runs if needed
+        if (isItalicPara) {
+          $(paragraph.get(0)).find('w\\:r').each((_: number, r: any) => {
+            let rPr = $(r).children('w\\:rPr').first();
+            if (!rPr.length) { $(r).prepend('<w:rPr/>'); rPr = $(r).children('w\\:rPr').first(); }
+            if (!rPr.children('w\\:i').length) { rPr.append('<w:i w:val="1"/><w:iCs w:val="1"/>'); }
+          });
+        }
+        
         if (insertNode) {
           $(insertNode).before($.xml(paragraph));
         } else {
@@ -1928,14 +2023,97 @@ class ReportService {
 
     replaceSectionParagraphBlock('Confidentiality and Distribution Restrictions', ['Table of Contents'], sectionBody('confidentiality', normalizedTemplate.confidentiality_text || ''));
     replaceSectionParagraphBlock('Introduction', ['Approach'], sectionBody('introduction', normalizedTemplate.introduction_text || ''));
+
     replaceSectionParagraphBlock('Approach', ['Runtime Application Vulnerability Assessment'], sectionBody('approach', normalizedTemplate.approach_text || ''));
     replaceSectionParagraphBlock('Runtime Application Vulnerability Assessment', ['Scope'], sectionBody('runtime_assessment', ''));
     replaceSectionParagraphBlock('Scope', ['Assessment Limitation'], sectionBody('scope', normalizedTemplate.scope_text || ''));
+
+    // Add spacing after Scope tables
+    {
+      const scopeChildren = bodyChildren();
+      const scopeIdx = scopeChildren.findIndex((el: any) => paraText(el) === 'Scope');
+      const assessmentIdx = scopeChildren.findIndex((el: any) => paraText(el) === 'Assessment Limitation');
+      if (scopeIdx !== -1 && assessmentIdx !== -1) {
+        const scopeElements = scopeChildren.slice(scopeIdx + 1, assessmentIdx);
+        scopeElements.forEach((el: any) => {
+          if (el.tagName === 'w:tbl') {
+            // Add spacing paragraph after each table
+            const spacingPara = $('<w:p><w:pPr><w:spacing w:after="240"/></w:pPr></w:p>');
+            $(el).after($.xml(spacingPara));
+          }
+        });
+      }
+    }
+
     replaceSectionParagraphBlock('Assessment Limitation', ['Findings and Recommendation'], sectionBody('assessment_limitation', ''));
     replaceSectionParagraphBlock('Risk Classification', ['Measurement of Impact'], sectionBody('risk_classification', ''));
     replaceSectionParagraphBlock('Measurement of Impact', ['Measurement of Likelihood'], sectionBody('measurement_impact', ''));
+
+    // Ensure Impact table comes BEFORE paragraph content
+    {
+      const impactChildren = bodyChildren();
+      const impactIdx = impactChildren.findIndex((el: any) => paraText(el) === 'Measurement of Impact');
+      const likelihoodIdx = impactChildren.findIndex((el: any) => paraText(el) === 'Measurement of Likelihood');
+      if (impactIdx !== -1 && likelihoodIdx !== -1) {
+        const impactElements = impactChildren.slice(impactIdx + 1, likelihoodIdx);
+        const impactTable = impactElements.find((el: any) => el.tagName === 'w:tbl');
+        const impactParas = impactElements.filter((el: any) => el.tagName === 'w:p' && paraText(el));
+
+        if (impactTable && impactParas.length > 0) {
+          // Move table to be BEFORE all paragraphs (first after heading)
+          const firstPara = impactParas[0];
+          $(firstPara).before($.xml($(impactTable)));
+        }
+      }
+    }
+
     replaceSectionParagraphBlock('Measurement of Likelihood', ['Overall Risk'], sectionBody('measurement_likelihood', ''));
+
+    // Ensure Likelihood table comes BEFORE paragraph content
+    {
+      const likelihoodChildren = bodyChildren();
+      const likelihoodIdx = likelihoodChildren.findIndex((el: any) => paraText(el) === 'Measurement of Likelihood');
+      const overallIdx = likelihoodChildren.findIndex((el: any) => paraText(el) === 'Overall Risk');
+      if (likelihoodIdx !== -1 && overallIdx !== -1) {
+        const likelihoodElements = likelihoodChildren.slice(likelihoodIdx + 1, overallIdx);
+        const likelihoodTable = likelihoodElements.find((el: any) => el.tagName === 'w:tbl');
+        const likelihoodParas = likelihoodElements.filter((el: any) => el.tagName === 'w:p' && paraText(el));
+
+        if (likelihoodTable && likelihoodParas.length > 0) {
+          // Move table to be BEFORE all paragraphs (first after heading)
+          const firstPara = likelihoodParas[0];
+          $(firstPara).before($.xml($(likelihoodTable)));
+        }
+      }
+    }
+
     replaceSectionParagraphBlock('Overall Risk', ['Zero-risk Issues'], sectionBody('overall_risk', ''));
+
+    // Make only "Low Impact + Low Likelihood" and "High Impact + High Likelihood" bold, not the risk level
+    {
+      const overallChildren = bodyChildren();
+      const overallIdx = overallChildren.findIndex((el: any) => paraText(el) === 'Overall Risk');
+      const zeroRiskIdx = overallChildren.findIndex((el: any) => paraText(el) === 'Zero-risk Issues');
+      if (overallIdx !== -1 && zeroRiskIdx !== -1) {
+        const overallParas = overallChildren.slice(overallIdx + 1, zeroRiskIdx).filter((el: any) => el.tagName === 'w:p');
+        overallParas.forEach((p: any) => {
+          const txt = paraText(p);
+          if (txt.includes('Low Impact + Low Likelihood') && txt.includes('= Low Risk')) {
+            // Bold only "Low Impact + Low Likelihood", not "Low Risk"
+            setParagraphSegments($, p, [
+              { text: 'Low Impact + Low Likelihood', bold: true, color: '000000' },
+              { text: ' = Low Risk', bold: false, color: '000000' },
+            ]);
+          } else if (txt.includes('High Impact + High Likelihood') && txt.includes('= Critical Risk')) {
+            // Bold only "High Impact + High Likelihood", not "Critical Risk"
+            setParagraphSegments($, p, [
+              { text: 'High Impact + High Likelihood', bold: true, color: '000000' },
+              { text: ' = Critical Risk', bold: false, color: '000000' },
+            ]);
+          }
+        });
+      }
+    }
     replaceSectionParagraphBlock('Zero-risk Issues', ['Vulnerabilities'], sectionBody('zero_risk_issues', ''));
     replaceSectionParagraphBlock('Summary', ['Detailed Vulnerabilities'], sectionBody('summary', ''));
     replaceSectionParagraphBlock('Appendix A', [], sectionBody('appendix_a', normalizedTemplate.appendix_text || ''));
@@ -1997,7 +2175,7 @@ class ReportService {
         ? getSection('scope').application_rows
         : Array.isArray(normalizedTemplate.scope_applications) && normalizedTemplate.scope_applications.length
           ? normalizedTemplate.scope_applications
-        : [
+          : [
             { name: 'Application Name 1', url: 'http://test.com' },
             { name: 'Application Name 2', url: 'http://admin.test.com' },
           ];
@@ -2007,7 +2185,7 @@ class ReportService {
         ? getSection('scope').user_role_rows
         : Array.isArray(normalizedTemplate.scope_user_roles) && normalizedTemplate.scope_user_roles.length
           ? normalizedTemplate.scope_user_roles
-        : [
+          : [
             { role: 'Customer', username: 'user1', description: 'Authenticated customer user' },
             { role: 'Admin', username: 'admin1', description: 'Privileged administrative user' },
           ];
@@ -2015,7 +2193,7 @@ class ReportService {
       ? getSection('scope').tool_rows
       : Array.isArray(normalizedTemplate.scope_tools) && normalizedTemplate.scope_tools.length
         ? normalizedTemplate.scope_tools
-      : [
+        : [
           { name: 'Burp Professional Pro', description: 'An advanced proxy for testing web security.' },
           { name: 'OpenSSL', description: 'An open-source package to assess security in transit.' },
           { name: 'Nmap', description: 'A tool used to discover hosts and services on a network.' },
@@ -2064,44 +2242,101 @@ class ReportService {
     if (tables[1]) applySimpleTableTheme(tables[1]);
     if (tables[2]) applySimpleTableTheme(tables[2]);
 
+    // Insert standalone heading paragraphs before each scope table
+    const tableHeadings = [
+      { tblIdx: 0, heading: String(getSection('scope')?.fields?.application_details_title || 'Application Details') },
+      { tblIdx: 1, heading: String(getSection('scope')?.fields?.user_roles_title || 'User Roles (Web application & API)') },
+      { tblIdx: 2, heading: String(getSection('scope')?.fields?.tools_title || 'Tools') },
+    ];
+
+    for (const { tblIdx, heading } of tableHeadings) {
+      if (tables[tblIdx]) {
+        const tbl = tables[tblIdx];
+        const headingPara = $('<w:p/>');
+        const pPr = $('<w:pPr/>');
+        const spacing = $('<w:spacing/>');
+        spacing.attr('w:before', '240');
+        spacing.attr('w:after', '120');
+        pPr.append(spacing);
+        const rPr = $('<w:rPr/>');
+        const bold = $('<w:b w:val="1"/><w:bCs w:val="1"/>');
+        const color = $(`<w:color w:val="${this.brand.green || '00d639'}"/>`);
+        const sz = $('<w:sz w:val="24"/><w:szCs w:val="24"/>');
+        rPr.append(bold);
+        rPr.append(color);
+        rPr.append(sz);
+        pPr.append(rPr);
+        headingPara.append(pPr);
+        const run = $('<w:r/>');
+        run.append(rPr.clone());
+        run.append(`<w:t xml:space="preserve">${escapeXmlText(heading)}</w:t>`);
+        headingPara.append(run);
+        $(tbl).before($.xml(headingPara));
+      }
+    }
+
     // Insert out-of-scope content after tables but before Assessment Limitation
     {
       const outOfScopeSection = getSection('out_of_scope');
-      const oosTitle = typeof outOfScopeSection?.fields?.title === 'string' ? resolvePlaceholders(outOfScopeSection.fields.title) : '';
+      const oosBody = typeof outOfScopeSection?.body === 'string' ? resolvePlaceholders(outOfScopeSection.body) : '';
       const oosItems = Array.isArray(outOfScopeSection?.items) ? outOfScopeSection.items.map((item: any) => resolvePlaceholders(String(item || ''))) : [];
-      if (oosTitle || oosItems.length) {
+      
+      if (oosBody || oosItems.length) {
         const allKids = bodyChildren();
         const assessmentLimitationIdx = allKids.findIndex((el: any) => paraText(el) === 'Assessment Limitation');
         if (assessmentLimitationIdx !== -1) {
-          // Find a template paragraph before Assessment Limitation for cloning
-          let templateP = null;
-          for (let i = assessmentLimitationIdx - 1; i >= 0; i--) {
-            if (allKids[i].tagName === 'w:p' && paraText(allKids[i])) {
-              templateP = allKids[i];
+          // Find a template paragraph with bullet formatting
+          let bulletTemplateP = null;
+          for (let i = 0; i < allKids.length; i++) {
+            if (allKids[i].tagName === 'w:p' && $(allKids[i]).find('w\\:numPr').length > 0) {
+              bulletTemplateP = allKids[i];
               break;
             }
           }
+          
+          // Fallback to any paragraph
+          let templateP = bulletTemplateP;
           if (!templateP) {
-            for (let i = 0; i < allKids.length && i < assessmentLimitationIdx; i++) {
+            for (let i = assessmentLimitationIdx - 1; i >= 0; i--) {
               if (allKids[i].tagName === 'w:p' && paraText(allKids[i])) {
                 templateP = allKids[i];
                 break;
               }
             }
           }
+          
           if (templateP) {
             const insertBefore = allKids[assessmentLimitationIdx];
             const emptyP = cloneNode(templateP);
             setParaText(emptyP.get(0), '');
+            // Remove bullet formatting from empty paragraph
+            emptyP.find('w\\:numPr').remove();
             $(insertBefore).before($.xml(emptyP));
-            if (oosTitle) {
-              const titleP = cloneNode(templateP);
-              setParaText(titleP.get(0), oosTitle);
-              $(insertBefore).before($.xml(titleP));
+            
+            if (oosBody) {
+              const bodyP = cloneNode(templateP);
+              setParaText(bodyP.get(0), oosBody);
+              // Remove bullet formatting and bold from body text
+              bodyP.find('w\\:numPr').remove();
+              clearRunFormatting($, bodyP.get(0), { color: '000000' });
+              $(insertBefore).before($.xml(bodyP));
             }
+            
             for (const item of oosItems) {
-              const itemP = cloneNode(templateP);
+              const itemP = bulletTemplateP ? cloneNode(bulletTemplateP) : cloneNode(templateP);
               setParaText(itemP.get(0), item);
+              // Ensure bullet formatting is present
+              if (!itemP.find('w\\:numPr').length && bulletTemplateP) {
+                const numPr = $(bulletTemplateP).find('w\\:numPr').first();
+                if (numPr.length) {
+                  let pPr = itemP.find('w\\:pPr').first();
+                  if (!pPr.length) {
+                    itemP.prepend('<w:pPr/>');
+                    pPr = itemP.find('w\\:pPr').first();
+                  }
+                  pPr.append($.xml(numPr));
+                }
+              }
               $(insertBefore).before($.xml(itemP));
             }
           }
@@ -2112,10 +2347,10 @@ class ReportService {
     const matrixRows = Array.isArray(getSection('risk_classification')?.matrix_rows) && getSection('risk_classification').matrix_rows.length
       ? getSection('risk_classification').matrix_rows
       : [
-          { low: 'Medium', medium: 'High', high: 'Critical' },
-          { low: 'Low', medium: 'Medium', high: 'High' },
-          { low: 'Low', medium: 'Low', high: 'Medium' },
-        ];
+        { low: 'Medium', medium: 'High', high: 'Critical' },
+        { low: 'Low', medium: 'Medium', high: 'High' },
+        { low: 'Low', medium: 'Low', high: 'Medium' },
+      ];
     const riskFillForValue = (value: string) => {
       const normalized = String(value || '').toLowerCase();
       if (normalized === 'critical') return { fill: 'C00000', text: 'FFFFFF' };
@@ -2160,7 +2395,7 @@ class ReportService {
             <w:r>
               <w:drawing>
                 <wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">
-                  <wp:extent cx="5486400" cy="3200400"/>
+                  <wp:extent cx="3810000" cy="2222500"/>
                   <wp:effectExtent l="0" t="0" r="0" b="0"/>
                   <wp:docPr id="999" name="Risk Matrix"/>
                   <wp:cNvGraphicFramePr>
@@ -2180,7 +2415,7 @@ class ReportService {
                         <pic:spPr>
                           <a:xfrm>
                             <a:off x="0" y="0"/>
-                            <a:ext cx="5486400" cy="3200400"/>
+                            <a:ext cx="3810000" cy="2222500"/>
                           </a:xfrm>
                           <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
                         </pic:spPr>
@@ -2379,7 +2614,7 @@ class ReportService {
 
           const paras = sectionRoot.children('w\\:p').toArray();
           const paraByText = (label: string) => paras.find((p: any) => sectionParaText(p) === label);
-          
+
           // Find the title paragraph - it's the first substantial paragraph that's not a label
           // We need to find it BEFORE any label paragraphs
           let titlePara = null;
@@ -2396,7 +2631,7 @@ class ReportService {
             }
           }
           if (!titlePara) titlePara = paras[0];
-          
+
           const riskPara = paras.find((p: any) => sectionParaText(p).startsWith('Risk:'));
           const descLabel = paraByText('Description:');
           const urlLabel = paraByText('Affected URL:');
@@ -2419,7 +2654,7 @@ class ReportService {
             if (severity === 'low') return '70AD47';
             return '2F80ED';
           })();
-          
+
           if (titlePara) {
             const oldTitle = sectionParaText(titlePara);
             sectionSetParaText(titlePara, String(finding.title || 'Untitled Finding'));
@@ -2481,21 +2716,59 @@ class ReportService {
           const affected = String(finding.affected_target || '').trim();
           console.log(`   - Affected target: "${affected}"`);
           if (urlLabel && affected) {
-            // Check if it's a URL and format as hyperlink with bullet point prefix
-            if (affected.startsWith('http://') || affected.startsWith('https://')) {
-              const p = cloneSectionNode(urlLabel);
-              setParagraphSegments(sectionDoc, p.get(0), [
-                { text: '\u2022 ', color: '000000' },
-                { text: affected, color: '1155CC', underline: 'single' },
-              ]);
+            // Find a bullet paragraph template from the document
+            let bulletTemplate = null;
+            for (const p of paras) {
+              if (sectionDoc(p).find('w\\:numPr').length > 0) {
+                bulletTemplate = p;
+                break;
+              }
+            }
+            
+            // Check if it's a URL and format as hyperlink with green bullet point
+            if (bulletTemplate) {
+              const p = cloneSectionNode(bulletTemplate);
+              
+              // Ensure green bullet color
+              let pPr = sectionDoc(p).find('w\\:pPr').first();
+              if (!pPr.length) {
+                sectionDoc(p).prepend('<w:pPr/>');
+                pPr = sectionDoc(p).find('w\\:pPr').first();
+              }
+              
+              // Add or update numPr for green bullet
+              let numPr = pPr.find('w\\:numPr').first();
+              if (!numPr.length) {
+                pPr.append('<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>');
+              }
+              
+              if (affected.startsWith('http://') || affected.startsWith('https://')) {
+                setParagraphSegments(sectionDoc, p.get(0), [
+                  { text: affected, color: '1155CC', underline: 'single' },
+                ]);
+              } else {
+                setParagraphSegments(sectionDoc, p.get(0), [
+                  { text: affected, color: '000000' },
+                ]);
+              }
               sectionDoc(impactLikelihoodHeading || impactLabel || backPara || titlePara).before(sectionDoc.xml(p));
             } else {
-              const p = cloneSectionNode(urlLabel);
-              setParagraphSegments(sectionDoc, p.get(0), [
-                { text: '\u2022 ', color: '000000' },
-                { text: affected, color: '000000' },
-              ]);
-              sectionDoc(impactLikelihoodHeading || impactLabel || backPara || titlePara).before(sectionDoc.xml(p));
+              // Fallback: use green dot character
+              if (affected.startsWith('http://') || affected.startsWith('https://')) {
+                const p = cloneSectionNode(urlLabel);
+                setParagraphSegments(sectionDoc, p.get(0), [
+                  { text: '● ', color: '4CC51F', size: 32 },
+                  { text: affected, color: '1155CC', underline: 'single' },
+                ]);
+                sectionDoc(impactLikelihoodHeading || impactLabel || backPara || titlePara).before(sectionDoc.xml(p));
+              } else {
+                const p = cloneSectionNode(urlLabel);
+                setParagraphSegments(sectionDoc, p.get(0), [
+                  { text: '● ', color: '4CC51F', size: 32 },
+                  { text: affected, color: '000000' },
+                ]);
+                sectionDoc(impactLikelihoodHeading || impactLabel || backPara || titlePara).before(sectionDoc.xml(p));
+              }
             }
           }
 
@@ -2512,7 +2785,7 @@ class ReportService {
           if (impactLabel && impactText) {
             appendSectionParagraph(likelihoodLabel || backPara || titlePara, neutralParagraphTemplate, impactText, { color: '000000' });
           }
-          
+
           // Extract likelihood - handle both object and string formats
           let likelihoodText = '';
           if (finding.likelihood) {
@@ -2546,25 +2819,63 @@ class ReportService {
 
           const recs = toLines(finding.recommendation);
           console.log(`   - Inserting ${recs.length} recommendations`);
+          
+          // Find a bullet paragraph template from the document
+          let bulletTemplate = null;
+          for (const p of paras) {
+            if (sectionDoc(p).find('w\\:numPr').length > 0) {
+              bulletTemplate = p;
+              break;
+            }
+          }
+          
           for (let ri = 0; ri < recs.length; ri++) {
             const cleaned = stripMarkdownEmphasis(recs[ri]);
             const colonIndex = cleaned.indexOf(':');
-            if (colonIndex !== -1) {
-              // Create paragraph with larger green bullet point
-              const p = cloneSectionNode(recTemplate);
-              setParagraphSegments(sectionDoc, p.get(0), [
-                { text: '● ', color: '4CC51F', size: 32 },
-                { text: cleaned.slice(0, colonIndex + 1), bold: true, color: '000000' },
-                { text: ' ' + cleaned.slice(colonIndex + 1).trim(), color: '000000' },
-              ]);
+            
+            // Use bullet template if available, otherwise create custom bullet
+            if (bulletTemplate) {
+              const p = cloneSectionNode(bulletTemplate);
+              
+              // Ensure green bullet color
+              let pPr = sectionDoc(p).find('w\\:pPr').first();
+              if (!pPr.length) {
+                sectionDoc(p).prepend('<w:pPr/>');
+                pPr = sectionDoc(p).find('w\\:pPr').first();
+              }
+              
+              // Add or update numPr for green bullet
+              let numPr = pPr.find('w\\:numPr').first();
+              if (!numPr.length) {
+                pPr.append('<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>');
+              }
+              
+              if (colonIndex !== -1) {
+                setParagraphSegments(sectionDoc, p.get(0), [
+                  { text: cleaned.slice(0, colonIndex + 1), bold: true, color: '000000' },
+                  { text: ' ' + cleaned.slice(colonIndex + 1).trim(), color: '000000' },
+                ]);
+              } else {
+                setParagraphSegments(sectionDoc, p.get(0), [
+                  { text: cleaned, bold: true, color: '000000' },
+                ]);
+              }
               sectionDoc(refLabel || backPara || titlePara).before(sectionDoc.xml(p));
             } else {
-              // Create paragraph with larger green bullet point
+              // Fallback: use green dot character
               const p = cloneSectionNode(recTemplate);
-              setParagraphSegments(sectionDoc, p.get(0), [
-                { text: '● ', color: '4CC51F', size: 32 },
-                { text: cleaned, bold: true, color: '000000' },
-              ]);
+              if (colonIndex !== -1) {
+                setParagraphSegments(sectionDoc, p.get(0), [
+                  { text: '● ', color: '4CC51F', size: 32 },
+                  { text: cleaned.slice(0, colonIndex + 1), bold: true, color: '000000' },
+                  { text: ' ' + cleaned.slice(colonIndex + 1).trim(), color: '000000' },
+                ]);
+              } else {
+                setParagraphSegments(sectionDoc, p.get(0), [
+                  { text: '● ', color: '4CC51F', size: 32 },
+                  { text: cleaned, bold: true, color: '000000' },
+                ]);
+              }
               sectionDoc(refLabel || backPara || titlePara).before(sectionDoc.xml(p));
             }
           }
@@ -2621,21 +2932,21 @@ class ReportService {
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X8Xc8AAAAASUVORK5CYII=';
       const imageModule = ImageModule
         ? new ImageModule({
-            getImage: (tagValue: any) => {
-              if (!tagValue) return Buffer.from(transparentPngB64, 'base64');
-              const v = String(tagValue);
-              if (v.startsWith('data:image/') && v.includes('base64,')) {
-                const b64 = v.split('base64,')[1] || '';
-                return Buffer.from(b64, 'base64');
-              }
-              try {
-                return fs.readFileSync(v);
-              } catch {
-                return Buffer.from(transparentPngB64, 'base64');
-              }
-            },
-            getSize: () => [220, 44],
-          })
+          getImage: (tagValue: any) => {
+            if (!tagValue) return Buffer.from(transparentPngB64, 'base64');
+            const v = String(tagValue);
+            if (v.startsWith('data:image/') && v.includes('base64,')) {
+              const b64 = v.split('base64,')[1] || '';
+              return Buffer.from(b64, 'base64');
+            }
+            try {
+              return fs.readFileSync(v);
+            } catch {
+              return Buffer.from(transparentPngB64, 'base64');
+            }
+          },
+          getSize: () => [220, 44],
+        })
         : null;
 
       const doc = new Docxtemplater(zip, {

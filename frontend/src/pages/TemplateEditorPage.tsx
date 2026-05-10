@@ -207,59 +207,13 @@ const TemplateEditorPage = () => {
         <div className="space-y-6">
           {renderFieldTable([
             { label: 'Section Title', value: scope.title, onChange: (value) => updateSection('scope', (section) => ({ ...section, title: value })) },
-            { label: 'Scope Description', value: scope.body || '', onChange: (value) => updateSection('scope', (section) => ({ ...section, body: value })), multiline: true },
-            { label: 'Application Details Title', value: scope.fields?.application_details_title || '', onChange: (value) => updateSection('scope', (section) => ({ ...section, fields: { ...(section.fields || {}), application_details_title: value } })) },
-            { label: 'User Roles Title', value: scope.fields?.user_roles_title || '', onChange: (value) => updateSection('scope', (section) => ({ ...section, fields: { ...(section.fields || {}), user_roles_title: value } })) },
-            { label: 'Tools Title', value: scope.fields?.tools_title || '', onChange: (value) => updateSection('scope', (section) => ({ ...section, fields: { ...(section.fields || {}), tools_title: value } })) },
+            { label: 'Body Content', value: scope.body || '', onChange: (value) => updateSection('scope', (section) => ({ ...section, body: value })), multiline: true },
           ])}
-
-          {renderRowGrid(
-            scope.fields?.application_details_title || 'Application Details',
-            scope.application_rows || [],
-            [
-              { key: 'name', label: 'Name' },
-              { key: 'url', label: 'URL' },
-            ],
-            (rowIndex, key, value) => updateSection('scope', (section) => {
-              const next = [...(section.application_rows || [])];
-              next[rowIndex] = { ...next[rowIndex], [key]: value };
-              return { ...section, application_rows: next };
-            }),
-            () => updateSection('scope', (section) => ({ ...section, application_rows: [...(section.application_rows || []), { name: '', url: '' }] })),
-            (rowIndex) => updateSection('scope', (section) => ({ ...section, application_rows: (section.application_rows || []).filter((_, idx) => idx !== rowIndex) })),
-          )}
-
-          {renderRowGrid(
-            scope.fields?.user_roles_title || 'User Roles (Web application & API)',
-            scope.user_role_rows || [],
-            [
-              { key: 'role', label: 'Role' },
-              { key: 'description', label: 'Description' },
-            ],
-            (rowIndex, key, value) => updateSection('scope', (section) => {
-              const next = [...(section.user_role_rows || [])];
-              next[rowIndex] = { ...next[rowIndex], [key]: value };
-              return { ...section, user_role_rows: next };
-            }),
-            () => updateSection('scope', (section) => ({ ...section, user_role_rows: [...(section.user_role_rows || []), { role: '', description: '' }] })),
-            (rowIndex) => updateSection('scope', (section) => ({ ...section, user_role_rows: (section.user_role_rows || []).filter((_, idx) => idx !== rowIndex) })),
-          )}
-
-          {renderRowGrid(
-            scope.fields?.tools_title || 'Tools',
-            scope.tool_rows || [],
-            [
-              { key: 'name', label: 'Tool Name' },
-              { key: 'description', label: 'Description' },
-            ],
-            (rowIndex, key, value) => updateSection('scope', (section) => {
-              const next = [...(section.tool_rows || [])];
-              next[rowIndex] = { ...next[rowIndex], [key]: value };
-              return { ...section, tool_rows: next };
-            }),
-            () => updateSection('scope', (section) => ({ ...section, tool_rows: [...(section.tool_rows || []), { name: '', description: '' }] })),
-            (rowIndex) => updateSection('scope', (section) => ({ ...section, tool_rows: (section.tool_rows || []).filter((_, idx) => idx !== rowIndex) })),
-          )}
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+            <p className="text-sm text-yellow-800">
+              <strong>Note:</strong> Application details, user roles, and tools are managed per-project in the Project Details dialog. The template only controls the section title and description text.
+            </p>
+          </div>
         </div>
       );
     }
@@ -270,18 +224,11 @@ const TemplateEditorPage = () => {
           {renderFieldTable([
             { label: 'Section Title', value: currentSection.title, onChange: (value) => updateSection('table_of_contents', (section) => ({ ...section, title: value })) },
           ])}
-          {renderRowGrid(
-            'Static Section Outline',
-            (currentSection.items || []).map((item) => ({ item })),
-            [{ key: 'item', label: 'Section / Subsection' }],
-            (rowIndex, _key, value) => updateSection('table_of_contents', (section) => {
-              const next = [...(section.items || [])];
-              next[rowIndex] = value;
-              return { ...section, items: next };
-            }),
-            () => updateSection('table_of_contents', (section) => ({ ...section, items: [...(section.items || []), 'New Section'] })),
-            (rowIndex) => updateSection('table_of_contents', (section) => ({ ...section, items: (section.items || []).filter((_, idx) => idx !== rowIndex) })),
-          )}
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Note:</strong> The table of contents is automatically generated from the document structure. This field only controls the section heading.
+            </p>
+          </div>
         </div>
       );
     }
@@ -293,25 +240,12 @@ const TemplateEditorPage = () => {
           {renderFieldTable([
             { label: 'Section Title', value: risk.title, onChange: (value) => updateSection('risk_classification', (section) => ({ ...section, title: value })) },
             { label: 'Body Content', value: risk.body || '', onChange: (value) => updateSection('risk_classification', (section) => ({ ...section, body: value })), multiline: true },
-            { label: 'Matrix Title', value: risk.fields?.matrix_title || '', onChange: (value) => updateSection('risk_classification', (section) => ({ ...section, fields: { ...(section.fields || {}), matrix_title: value } })) },
-            { label: 'Matrix Subtitle', value: risk.fields?.matrix_subtitle || '', onChange: (value) => updateSection('risk_classification', (section) => ({ ...section, fields: { ...(section.fields || {}), matrix_subtitle: value } })) },
           ])}
-          {renderRowGrid(
-            'Risk Matrix',
-            risk.matrix_rows || [],
-            [
-              { key: 'low', label: 'Low Likelihood' },
-              { key: 'medium', label: 'Medium Likelihood' },
-              { key: 'high', label: 'High Likelihood' },
-            ],
-            (rowIndex, key, value) => updateSection('risk_classification', (section) => {
-              const next = [...(section.matrix_rows || [])];
-              next[rowIndex] = { ...next[rowIndex], [key]: value };
-              return { ...section, matrix_rows: next };
-            }),
-            () => updateSection('risk_classification', (section) => ({ ...section, matrix_rows: [...(section.matrix_rows || []), { low: '', medium: '', high: '' }] })),
-            (rowIndex) => updateSection('risk_classification', (section) => ({ ...section, matrix_rows: (section.matrix_rows || []).filter((_, idx) => idx !== rowIndex) })),
-          )}
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Note:</strong> The risk matrix is a standard 3x3 grid showing Impact vs Likelihood. The matrix values are fixed and cannot be customized.
+            </p>
+          </div>
         </div>
       );
     }
@@ -322,81 +256,40 @@ const TemplateEditorPage = () => {
         <div className="space-y-6">
           {renderFieldTable([
             { label: 'Section Title', value: appendix.title, onChange: (value) => updateSection('appendix_a', (section) => ({ ...section, title: value })) },
-            { label: 'Introductory Text', value: appendix.body || '', onChange: (value) => updateSection('appendix_a', (section) => ({ ...section, body: value })), multiline: true },
+            { label: 'Body Content', value: appendix.body || '', onChange: (value) => updateSection('appendix_a', (section) => ({ ...section, body: value })), multiline: true },
           ])}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-green-700">Appendix Entries</h3>
-              {!readOnly ? (
-                <Button
-                  type="button"
-                  onClick={() => updateSection('appendix_a', (section) => ({ ...section, appendix_entries: [...(section.appendix_entries || []), { title: 'Appendix', body: '' }] }))}
-                  className="bg-green-600 text-white hover:bg-green-700"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Appendix
-                </Button>
-              ) : null}
-            </div>
-            {(appendix.appendix_entries || []).map((entry, rowIndex) => (
-              <div key={`appendix-${rowIndex}`} className="rounded-xl border border-green-100 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-700">Appendix {rowIndex + 1}</span>
-                  {!readOnly ? (
-                    <button
-                      type="button"
-                      onClick={() => updateSection('appendix_a', (section) => ({ ...section, appendix_entries: (section.appendix_entries || []).filter((_, idx) => idx !== rowIndex) }))}
-                      className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  ) : null}
-                </div>
-                <div className="space-y-3">
-                  <input
-                    value={entry.title || ''}
-                    onChange={(event) => updateSection('appendix_a', (section) => {
-                      const next = [...(section.appendix_entries || [])];
-                      next[rowIndex] = { ...next[rowIndex], title: event.target.value };
-                      return { ...section, appendix_entries: next };
-                    })}
-                    readOnly={readOnly}
-                    className={`w-full rounded-lg border px-3 py-2 text-sm outline-none ${readOnly ? 'border-transparent bg-transparent text-gray-800' : 'border-gray-300 bg-white text-gray-900 focus:border-green-500'}`}
-                  />
-                  <textarea
-                    value={entry.body || ''}
-                    onChange={(event) => updateSection('appendix_a', (section) => {
-                      const next = [...(section.appendix_entries || [])];
-                      next[rowIndex] = { ...next[rowIndex], body: event.target.value };
-                      return { ...section, appendix_entries: next };
-                    })}
-                    rows={4}
-                    readOnly={readOnly}
-                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-gray-200 bg-gray-50 text-gray-700' : 'border-gray-300 bg-white text-gray-900 focus:border-green-500'}`}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       );
     }
 
-    return renderFieldTable([
+    // For most sections, just show title and body
+    const fields = [
       { label: 'Section Title', value: currentSection.title, onChange: (value) => updateSection(activeSection, (section) => ({ ...section, title: value })) },
       { label: 'Body Content', value: currentSection.body || '', onChange: (value) => updateSection(activeSection, (section) => ({ ...section, body: value })), multiline: true },
-      ...(currentSection.fields ? Object.entries(currentSection.fields).map(([fieldKey, fieldValue]) => ({
-        label: fieldKey.replace(/_/g, ' '),
-        value: fieldValue,
-        onChange: (value: string) => updateSection(activeSection, (section) => ({ ...section, fields: { ...(section.fields || {}), [fieldKey]: value } })),
-      })) : []),
-      ...(Array.isArray(currentSection.items) ? [{
-        label: 'List Items',
+    ];
+
+    // Add list items field only if the section has items
+    if (Array.isArray(currentSection.items) && currentSection.items.length > 0) {
+      fields.push({
+        label: 'List Items (one per line)',
         value: currentSection.items.join('\n'),
         onChange: (value: string) => updateSection(activeSection, (section) => ({ ...section, items: value.split('\n').map((item) => item.trim()).filter(Boolean) })),
         multiline: true,
-      }] : []),
-    ]);
+      });
+    }
+
+    return (
+      <div className="space-y-6">
+        {renderFieldTable(fields)}
+        {activeSection === 'out_of_scope' && (
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+            <p className="text-sm text-yellow-800">
+              <strong>Tip:</strong> Use the "List Items" field to define what's out of scope. Each line becomes a bullet point in the report.
+            </p>
+          </div>
+        )}
+      </div>
+    );
   }, [activeSection, currentSection, readOnly]);
 
   if (loading) {
@@ -470,58 +363,27 @@ const TemplateEditorPage = () => {
 
         <div className="space-y-6">
           <Card className="border border-[#2a2a2a] bg-[#1a1a1a] p-6 text-white">
-            <div className="mb-6 grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-gray-200">Template Name</label>
-                <input
-                  value={template.name}
-                  onChange={(event) => updateTemplateField('name', event.target.value)}
-                  readOnly={readOnly}
-                  className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-gray-200">Company Name</label>
-                <input
-                  value={content.company_name}
-                  onChange={(event) => updateContent((current) => ({ ...current, company_name: event.target.value }))}
-                  readOnly={readOnly}
-                  className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
-                />
-              </div>
+            <div className="mb-6">
+              <label className="mb-2 block text-sm font-semibold text-gray-200">Template Name</label>
+              <input
+                value={template.name}
+                onChange={(event) => updateTemplateField('name', event.target.value)}
+                readOnly={readOnly}
+                placeholder="e.g., Standard Penetration Test Report"
+                className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
+              />
             </div>
 
-            <div className="mb-6 grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-gray-200">Description</label>
-                <textarea
-                  value={template.description || ''}
-                  onChange={(event) => updateTemplateField('description', event.target.value)}
-                  rows={3}
-                  readOnly={readOnly}
-                  className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
-                />
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-gray-200">Logo URL</label>
-                  <input
-                    value={content.logo_path}
-                    onChange={(event) => updateContent((current) => ({ ...current, logo_path: event.target.value }))}
-                    readOnly={readOnly}
-                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-gray-200">Cover Subtitle</label>
-                  <input
-                    value={content.cover_subtitle}
-                    onChange={(event) => updateContent((current) => ({ ...current, cover_subtitle: event.target.value }))}
-                    readOnly={readOnly}
-                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
-                  />
-                </div>
-              </div>
+            <div className="mb-6">
+              <label className="mb-2 block text-sm font-semibold text-gray-200">Description</label>
+              <textarea
+                value={template.description || ''}
+                onChange={(event) => updateTemplateField('description', event.target.value)}
+                rows={2}
+                readOnly={readOnly}
+                placeholder="Brief description of this template"
+                className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ${readOnly ? 'border-[#2f2f2f] bg-[#202020] text-gray-300' : 'border-[#3a3a3a] bg-[#202020] text-white focus:border-green-500'}`}
+              />
             </div>
 
             {sectionEditor}
