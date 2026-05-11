@@ -264,8 +264,8 @@ const TemplateEditorPage = () => {
 
     // For most sections, just show title and body
     const fields = [
-      { label: 'Section Title', value: currentSection.title, onChange: (value) => updateSection(activeSection, (section) => ({ ...section, title: value })) },
-      { label: 'Body Content', value: currentSection.body || '', onChange: (value) => updateSection(activeSection, (section) => ({ ...section, body: value })), multiline: true },
+      { label: 'Section Title', value: currentSection.title, onChange: (value: string) => updateSection(activeSection, (section) => ({ ...section, title: value })) },
+      { label: 'Body Content', value: currentSection.body || '', onChange: (value: string) => updateSection(activeSection, (section) => ({ ...section, body: value })), multiline: true },
     ];
 
     // Add list items field only if the section has items
