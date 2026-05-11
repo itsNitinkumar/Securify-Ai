@@ -2004,6 +2004,8 @@ const range = children.slice(startIdx + 1, endIdx);
       const templateParagraph = paragraphsInRange.find((p: any) => paraText(p)) || paragraphsInRange[0];
       if (!templateParagraph) return;
 
+      
+
       const insertBeforeNode = range.find((el: any) => el.tagName !== 'w:p') || children[endIdx];
       paragraphsInRange.forEach((p: any) => $(p).remove());
 
@@ -2111,70 +2113,7 @@ const range = children.slice(startIdx + 1, endIdx);
     replaceSectionParagraphBlock('Assessment Limitation', ['Findings and Recommendation'], sectionBody('assessment_limitation', ''));
     replaceSectionParagraphBlock('Risk Classification', ['Measurement of Impact'], sectionBody('risk_classification', ''));
     replaceSectionParagraphBlock('Measurement of Impact', ['Measurement of Likelihood'], sectionBody('measurement_impact', ''));
-
-    // For Impact section, move table AFTER content
-    {
-      const children = bodyChildren();
-      const impactIdx = children.findIndex((el: any) => paraText(el) === 'Measurement of Impact');
-      const likelihoodIdx = children.findIndex((el: any) => paraText(el) === 'Measurement of Likelihood');
-      
-      console.log(`[MoveTable] Impact: idx=${impactIdx}, likelihoodIdx=${likelihoodIdx}`);
-      
-      if (impactIdx !== -1 && likelihoodIdx !== -1) {
-        const sectionRange = children.slice(impactIdx + 1, likelihoodIdx);
-        const tableEl = sectionRange.find((el: any) => el.tagName === 'w:tbl');
-        const contentParas = sectionRange.filter((el: any) => el.tagName === 'w:p');
-        const contentWithText = contentParas.filter((el: any) => paraText(el));
-        
-        console.log(`[MoveTable] Impact: table=${!!tableEl}, paras=${contentParas.length}, withText=${contentWithText.length}`);
-        
-        if (tableEl && contentWithText.length > 0) {
-          const lastContentPara = contentWithText[contentWithText.length - 1];
-          const tablePosition = sectionRange.indexOf(tableEl);
-          const lastParaPosition = sectionRange.indexOf(lastContentPara);
-          
-          console.log(`[MoveTable] Impact: tablePos=${tablePosition}, paraPos=${lastParaPosition}`);
-          
-          if (tablePosition !== -1 && lastParaPosition !== -1 && tablePosition < lastParaPosition) {
-            $(lastContentPara).after($.xml($(tableEl)));
-            console.log('[MoveTable] Impact: Moved table after content');
-          }
-        }
-      }
-    }
-
     replaceSectionParagraphBlock('Measurement of Likelihood', ['Overall Risk'], sectionBody('measurement_likelihood', ''));
-
-    // For Likelihood section, move table AFTER content
-    {
-      const children = bodyChildren();
-      const likelihoodIdx = children.findIndex((el: any) => paraText(el) === 'Measurement of Likelihood');
-      const overallIdx = children.findIndex((el: any) => paraText(el) === 'Overall Risk');
-      
-      console.log(`[MoveTable] Likelihood: idx=${likelihoodIdx}, overallIdx=${overallIdx}`);
-      
-      if (likelihoodIdx !== -1 && overallIdx !== -1) {
-        const sectionRange = children.slice(likelihoodIdx + 1, overallIdx);
-        const tableEl = sectionRange.find((el: any) => el.tagName === 'w:tbl');
-        const contentParas = sectionRange.filter((el: any) => el.tagName === 'w:p');
-        const contentWithText = contentParas.filter((el: any) => paraText(el));
-        
-        console.log(`[MoveTable] Likelihood: table=${!!tableEl}, paras=${contentParas.length}, withText=${contentWithText.length}`);
-        
-        if (tableEl && contentWithText.length > 0) {
-          const lastContentPara = contentWithText[contentWithText.length - 1];
-          const tablePosition = sectionRange.indexOf(tableEl);
-          const lastParaPosition = sectionRange.indexOf(lastContentPara);
-          
-          console.log(`[MoveTable] Likelihood: tablePos=${tablePosition}, paraPos=${lastParaPosition}`);
-          
-          if (tablePosition !== -1 && lastParaPosition !== -1 && tablePosition < lastParaPosition) {
-            $(lastContentPara).after($.xml($(tableEl)));
-            console.log('[MoveTable] Likelihood: Moved table after content');
-          }
-        }
-      }
-    }
 
     replaceSectionParagraphBlock('Overall Risk', ['Zero-risk Issues'], sectionBody('overall_risk', ''));
 
