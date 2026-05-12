@@ -10,6 +10,10 @@ export interface Project {
   end_date?: string;
   application_details?: Array<{ name: string; url: string }>;
   user_roles?: Array<{ role: string; username: string }>;
+  template_id?: number;
+  template_name?: string;
+  out_of_scope_endpoints?: Array<{ name: string; url: string }>;
+  include_out_of_scope_endpoints?: boolean;
   created_by: number;
   created_at: string;
   updated_at: string;
@@ -28,6 +32,10 @@ export interface CreateProjectData {
   end_date?: string;
   application_details?: Array<{ name: string; url: string }>;
   user_roles?: Array<{ role: string; username: string }>;
+  template_id?: number;
+  template_name?: string;
+  out_of_scope_endpoints?: Array<{ name: string; url: string }>;
+  include_out_of_scope_endpoints?: boolean;
 }
 
 export const projectApi = {

@@ -130,6 +130,31 @@ class ReportController {
     }
   }
 
+  // Get HTML Preview
+  static async getHTMLPreview(req: Request, res: Response) {
+    try {
+      const { project_id, template_id, finding_ids } = req.body;
+
+      if (!project_id) {
+        throw new ApiError(400, 'Project ID is required');
+      }
+
+      const html = await ReportService.getHTMLPreview(
+        project_id,
+        template_id || null,
+        Array.isArray(finding_ids) ? finding_ids : undefined
+      );
+
+      res.setHeader('Content-Type', 'text/html');
+      res.send(html);
+    } catch (error: any) {
+      console.error('❌ Get HTML preview error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to get HTML preview',
+      });
+    }
+  }
+
   // Delete Report
   static async deleteReport(req: Request, res: Response) {
     try {

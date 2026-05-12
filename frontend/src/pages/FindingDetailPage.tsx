@@ -122,13 +122,21 @@ const FindingDetailPage = () => {
     rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
   };
 
+  const handleBack = () => {
+    if (finding?.project_id) {
+      navigate(`/projects/${finding.project_id}`);
+    } else {
+      navigate('/finding-library');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface p-4 md:p-6 lg:p-8">
       {/* Header */}
       <div className="mb-6 md:mb-8">
         <Button
           variant="ghost"
-          onClick={() => navigate(-1)}
+          onClick={handleBack}
           className="mb-4 text-on-surface-variant hover:text-primary"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />

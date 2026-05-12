@@ -33,6 +33,7 @@ class ProjectController {
       end_date,
       application_details,
       user_roles,
+      include_out_of_scope_endpoints,
     } = req.body;
     const user = (req as any).user;
 
@@ -85,6 +86,7 @@ class ProjectController {
         if (!r && !u) return null;
         return { role: r, username: u };
       }) ?? undefined,
+      include_out_of_scope_endpoints: Boolean(include_out_of_scope_endpoints),
       created_by: user.id,
     });
 
@@ -159,6 +161,9 @@ class ProjectController {
       end_date,
       application_details,
       user_roles,
+      out_of_scope_endpoints,
+      include_out_of_scope_endpoints,
+      template_id,
     } = req.body;
     const user = (req as any).user;
 
@@ -221,6 +226,15 @@ class ProjectController {
       })
       : undefined;
 
+    const normalizedOutOfScope = out_of_scope_endpoints !== undefined
+      ? normalizeRows(out_of_scope_endpoints, (row) => {
+        const n = String(row?.name || '').trim();
+        const u = String(row?.url || '').trim();
+        if (!n && !u) return null;
+        return { name: n, url: u };
+      })
+      : undefined;
+
     const updatePayload: Record<string, any> = {
       name,
       description,
@@ -231,6 +245,9 @@ class ProjectController {
     if (end_date !== undefined) updatePayload.end_date = toDateOnly(end_date);
     if (normalizedApps !== undefined) updatePayload.application_details = normalizedApps;
     if (normalizedRoles !== undefined) updatePayload.user_roles = normalizedRoles;
+    if (normalizedOutOfScope !== undefined) updatePayload.out_of_scope_endpoints = normalizedOutOfScope;
+    if (include_out_of_scope_endpoints !== undefined) updatePayload.include_out_of_scope_endpoints = Boolean(include_out_of_scope_endpoints);
+    if (template_id !== undefined) updatePayload.template_id = template_id;
 
     const updated = await ProjectModel.update(parseInt(id), updatePayload);
 

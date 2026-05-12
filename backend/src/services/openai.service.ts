@@ -344,10 +344,10 @@ Impact:
 - Focus on security/business risk
 
 Steps to Reproduce:
-- Clear step-by-step exploitation process
-- Must be reproducible
-- Do NOT include numbers in the array items (they will be numbered automatically)
-- Each item should start with the action directly (e.g., "Log in to the portal" not "1. Log in to the portal")
+- Provide clear step-by-step exploitation process
+- Each step must be an object with stepNumber, description, image (empty string), and caption (empty string)
+- Steps will be numbered automatically
+- Format: [{"stepNumber": 1, "description": "Log in to the portal", "image": "", "caption": ""}, ...]
 
 Recommendation:
 - Provide actionable remediation steps as an array of strings
@@ -377,7 +377,20 @@ OUTPUT FORMAT:
     "severity": "High|Medium|Low",
     "detail": "string (one paragraph)"
   },
-  "steps_to_reproduce": ["Log in to the portal", "Navigate to the endpoint", "Observe the response"],
+  "steps_to_reproduce": [
+    {
+      "stepNumber": 1,
+      "description": "Log in to the portal",
+      "image": "",
+      "caption": ""
+    },
+    {
+      "stepNumber": 2,
+      "description": "Navigate to the endpoint",
+      "image": "",
+      "caption": ""
+    }
+  ],
   "recommendation": ["**Category:** description", "**Another Category:** description"],
   "references": ["url"]
 }`;
@@ -401,7 +414,12 @@ interface FindingOutput {
     severity: string;
     detail: string;
   };
-  steps_to_reproduce: string[];
+  steps_to_reproduce: Array<{
+    stepNumber: number;
+    description: string;
+    image: string;
+    caption: string;
+  }>;
   recommendation: string[];
   references: string[];
 }
@@ -448,7 +466,14 @@ OUTPUT FORMAT (STRICT JSON):
     "severity": "High|Medium|Low",
     "detail": ""
   },
-  "steps_to_reproduce": [],
+  "steps_to_reproduce": [
+    {
+      "stepNumber": 1,
+      "description": "Step description here",
+      "image": "",
+      "caption": ""
+    }
+  ],
   "recommendation": [],
   "references": []
 }
@@ -460,7 +485,7 @@ INSTRUCTIONS:
 - Affected target should identify endpoint, IP, or system if present
 - Likelihood must include both severity rating (High/Medium/Low) and detailed explanation
 - Impact must include both severity rating (High/Medium/Low) and detailed explanation
-- Steps to reproduce: provide clear descriptions WITHOUT numbering (e.g., "Log in to the portal", NOT "1. Log in to the portal")
+- Steps to reproduce: provide clear step objects with stepNumber, description, empty image, and empty caption
 - Recommendation must be an array of actionable bullet points with bold category headers (e.g., "**Restrict Access:** Description")
 - References should include relevant standards (e.g., OWASP, CWE) if applicable
 - Do NOT assume missing details
@@ -570,10 +595,10 @@ INSTRUCTIONS:
         detail: `${severity} impact - Could lead to unauthorized access, data breach, or system compromise.`
       },
       steps_to_reproduce: [
-        'Review the provided evidence',
-        'Attempt to reproduce the vulnerability in a controlled environment',
-        'Document the exact steps and payloads used',
-        'Verify the impact and scope of the vulnerability'
+        { stepNumber: 1, description: 'Review the provided evidence', image: '', caption: '' },
+        { stepNumber: 2, description: 'Attempt to reproduce the vulnerability in a controlled environment', image: '', caption: '' },
+        { stepNumber: 3, description: 'Document the exact steps and payloads used', image: '', caption: '' },
+        { stepNumber: 4, description: 'Verify the impact and scope of the vulnerability', image: '', caption: '' }
       ],
       recommendation,
       references,

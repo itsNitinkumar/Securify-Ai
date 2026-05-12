@@ -6,11 +6,11 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false,
   },
-  max: 20, // Increased pool size
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000, // 10 seconds to acquire connection
-  query_timeout: 45000, // 45 second query timeout
-  statement_timeout: 45000, // 45 second statement timeout
+  max: 30, // Increased pool size for report generation
+  idleTimeoutMillis: 60000,
+  connectionTimeoutMillis: 30000, // 30 seconds to acquire connection
+  query_timeout: 300000, // 5 minute query timeout for report generation with large images
+  statement_timeout: 300000, // 5 minute statement timeout
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
 });

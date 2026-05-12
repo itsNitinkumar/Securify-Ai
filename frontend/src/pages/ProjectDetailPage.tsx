@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, CheckCircle, ExternalLink, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle, ExternalLink, Plus, Sparkles, Trash2, FileText, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { authApi } from '@/api/authApi';
 import { projectApi, CreateProjectData } from '@/api/projectApi';
+import { findingApi } from '@/api/findingApi';
 import { clientApi, Client } from '@/api/clientApi';
+import { templateApi, Template } from '@/api/templateApi';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import InlineConfirm from '@/components/ui/inline-confirm';
+import ImportFindingsDialog from '@/components/findings/ImportFindingsDialog';
 
 type ProjectWithFindings = {
   id: number;
@@ -21,6 +24,10 @@ type ProjectWithFindings = {
   end_date?: string;
   application_details?: Array<{ name: string; url: string }>;
   user_roles?: Array<{ role: string; username: string }>;
+  out_of_scope_endpoints?: Array<{ name: string; url: string }>;
+  include_out_of_scope_endpoints?: boolean;
+  template_id?: number;
+  template_name?: string;
   status?: string;
   created_at: string;
   updated_at: string;
@@ -37,11 +44,13 @@ const ProjectDetailPage = () => {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [clientQuery, setClientQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [pendingClientId, setPendingClientId] = useState<number | null>(null);
   const [pendingClientName, setPendingClientName] = useState<string>('');
   const [confirmClientChange, setConfirmClientChange] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState<CreateProjectData>({
     name: '',
     description: '',
@@ -49,6 +58,9 @@ const ProjectDetailPage = () => {
     end_date: undefined,
     application_details: [{ name: '', url: '' }],
     user_roles: [{ role: '', username: '' }],
+    out_of_scope_endpoints: [{ name: '', url: '' }],
+    include_out_of_scope_endpoints: false,
+    template_id: undefined,
   });
 
   useEffect(() => {
@@ -65,6 +77,23 @@ const ProjectDetailPage = () => {
       } catch (error) {
         console.error('Failed to load clients:', error);
         if (!cancelled) setClients([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await templateApi.getAllTemplates();
+        const list = (res as any)?.data?.templates || (res as any)?.data || [];
+        if (!cancelled) setTemplates(Array.isArray(list) ? list : []);
+      } catch (error) {
+        console.error('Failed to load templates:', error);
+        if (!cancelled) setTemplates([]);
       }
     })();
     return () => {
@@ -95,14 +124,20 @@ const ProjectDetailPage = () => {
       setEditForm({
         name: normalized.name,
         description: normalized.description || '',
-        start_date: normalized.start_date || undefined,
-        end_date: normalized.end_date || undefined,
+        start_date: normalized.start_date ? normalized.start_date.split('T')[0] : undefined,
+        end_date: normalized.end_date ? normalized.end_date.split('T')[0] : undefined,
         application_details: Array.isArray(normalized.application_details) && normalized.application_details.length
           ? normalized.application_details.map((r) => ({ name: r.name || '', url: r.url || '' }))
           : [{ name: '', url: '' }],
         user_roles: Array.isArray(normalized.user_roles) && normalized.user_roles.length
           ? normalized.user_roles.map((r) => ({ role: r.role || '', username: r.username || '' }))
           : [{ role: '', username: '' }],
+        out_of_scope_endpoints: Array.isArray(normalized.out_of_scope_endpoints) && normalized.out_of_scope_endpoints.length
+          ? normalized.out_of_scope_endpoints.map((r) => ({ name: r.name || '', url: r.url || '' }))
+          : [{ name: '', url: '' }],
+        include_out_of_scope_endpoints: Boolean((normalized as any).include_out_of_scope_endpoints),
+        template_id: (normalized as any).template_id || undefined,
+        template_name: (normalized as any).template_name || undefined,
       });
     } catch (error) {
       console.error('Failed to load project:', error);
@@ -126,6 +161,18 @@ const ProjectDetailPage = () => {
       toast.error('Failed to delete project');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDeleteFinding = async (findingId: number) => {
+    if (!project) return;
+    try {
+      await findingApi.deleteFinding(findingId);
+      toast.success('Finding deleted');
+      await load();
+    } catch (error) {
+      console.error('Failed to delete finding:', error);
+      toast.error('Failed to delete finding');
     }
   };
 
@@ -183,6 +230,30 @@ const ProjectDetailPage = () => {
     });
   };
 
+  const updateOutOfScopeRow = (idx: number, patch: Partial<{ name: string; url: string }>) => {
+    setEditForm((current) => {
+      const rows = (current.out_of_scope_endpoints || []).slice();
+      const prev = rows[idx] || { name: '', url: '' };
+      rows[idx] = { ...prev, ...patch };
+      return { ...current, out_of_scope_endpoints: rows };
+    });
+  };
+
+  const addOutOfScopeRow = () => {
+    setEditForm((current) => ({
+      ...current,
+      out_of_scope_endpoints: [...(current.out_of_scope_endpoints || []), { name: '', url: '' }],
+    }));
+  };
+
+  const removeOutOfScopeRow = (idx: number) => {
+    setEditForm((current) => {
+      const rows = (current.out_of_scope_endpoints || []).slice();
+      rows.splice(idx, 1);
+      return { ...current, out_of_scope_endpoints: rows.length ? rows : [{ name: '', url: '' }] };
+    });
+  };
+
   const requestClientChange = (next: { client_id: number | null; client_name: string }) => {
     if (!project) return;
     const currentId = project.client_id ?? null;
@@ -218,6 +289,11 @@ const ProjectDetailPage = () => {
         end_date: editForm.end_date || undefined,
         application_details: (editForm.application_details || []).filter((r) => (r.name || '').trim() || (r.url || '').trim()),
         user_roles: (editForm.user_roles || []).filter((r) => (r.role || '').trim() || (r.username || '').trim()),
+        out_of_scope_endpoints: editForm.include_out_of_scope_endpoints
+          ? (editForm.out_of_scope_endpoints || []).filter((r) => (r.name || '').trim() || (r.url || '').trim())
+          : [],
+        include_out_of_scope_endpoints: Boolean(editForm.include_out_of_scope_endpoints),
+        template_id: editForm.template_id || undefined,
         client_id: selectedClientId || undefined,
         client_name: !selectedClientId && clientQuery.trim() ? clientQuery.trim() : undefined,
       };
@@ -329,14 +405,26 @@ const ProjectDetailPage = () => {
             </>
           ) : null}
           {(currentUserRole === 'manager' || currentUserRole === 'client') ? (
-            <Button
-              onClick={() => navigate(`/projects/${project.id}/report`)}
-              className="bg-primary text-surface hover:bg-primary/90"
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              {currentUserRole === 'client' ? 'Download Report' : 'View Full Report'}
-            </Button>
+            <>
+              <Button
+                onClick={() => navigate(`/projects/${project.id}/report`)}
+                className="bg-primary text-surface hover:bg-primary/90"
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                {currentUserRole === 'client' ? 'Download Report' : 'View Full Report'}
+              </Button>
+            </>
           ) : null}
+          {(currentUserRole === 'analyst' || currentUserRole === 'manager') && (
+            <Button
+              variant="outline"
+              onClick={() => setIsImportDialogOpen(true)}
+              className="border-outline text-on-surface-variant hover:text-primary"
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Import Findings
+            </Button>
+          )}
         </div>
       </div>
 
@@ -362,14 +450,19 @@ const ProjectDetailPage = () => {
                         setEditForm({
                           name: project.name,
                           description: project.description || '',
-                          start_date: project.start_date || undefined,
-                          end_date: project.end_date || undefined,
+                          start_date: project.start_date ? project.start_date.split('T')[0] : undefined,
+                          end_date: project.end_date ? project.end_date.split('T')[0] : undefined,
                           application_details: Array.isArray(project.application_details) && project.application_details.length
                             ? project.application_details.map((r) => ({ name: r.name || '', url: r.url || '' }))
                             : [{ name: '', url: '' }],
                           user_roles: Array.isArray(project.user_roles) && project.user_roles.length
                             ? project.user_roles.map((r) => ({ role: r.role || '', username: r.username || '' }))
                             : [{ role: '', username: '' }],
+                          out_of_scope_endpoints: Array.isArray(project.out_of_scope_endpoints) && project.out_of_scope_endpoints.length
+                            ? project.out_of_scope_endpoints.map((r) => ({ name: r.name || '', url: r.url || '' }))
+                            : [{ name: '', url: '' }],
+                          include_out_of_scope_endpoints: Boolean((project as any).include_out_of_scope_endpoints),
+                          template_id: (project as any).template_id || undefined,
                         });
                       }
                     }}
@@ -387,19 +480,29 @@ const ProjectDetailPage = () => {
                   </Button>
                 </>
               ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setEditing(true)}
-                  className="border-outline text-on-surface-variant hover:text-primary"
-                >
-                  Edit
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditing(true)}
+                    className="border-outline text-on-surface-variant hover:text-primary"
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleSaveProject}
+                    disabled={saving}
+                    className="bg-primary text-surface hover:bg-primary/90"
+                  >
+                    {saving ? 'Saving...' : 'Save Details'}
+                  </Button>
+                </>
               )}
             </div>
           </div>
 
-          {editing ? (
+          {editing || (!project.description && !project.start_date && (!project.application_details || project.application_details.length === 0) && (!project.user_roles || project.user_roles.length === 0)) ? (
             <div className="mt-4 space-y-4">
               <div>
                 <label className="text-sm font-medium text-on-surface mb-2 block">Project Name</label>
@@ -521,6 +624,23 @@ const ProjectDetailPage = () => {
               </div>
 
               <div>
+                  <label className="text-sm font-medium text-on-surface mb-2 block">Report Template</label>
+                  <select
+                    value={editForm.template_id || ''}
+                    onChange={(e) => editing && setEditForm((c) => ({ ...c, template_id: e.target.value ? parseInt(e.target.value) : undefined }))}
+                    disabled={!editing}
+                    className={`w-full px-3 py-2 border rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary ${!editing ? 'bg-surface-high border-outline-variant cursor-not-allowed opacity-60' : 'bg-surface border-outline'}`}
+                  >
+                    <option value="">Select a template</option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+              <div>
                 <label className="text-sm font-medium text-on-surface mb-2 block">Application Details</label>
                 <div className="overflow-auto rounded-md border border-outline-variant">
                   <table className="w-full text-sm">
@@ -619,28 +739,168 @@ const ProjectDetailPage = () => {
                   </Button>
                 </div>
               </div>
+
+              <div>
+                <label className="text-sm font-medium text-on-surface mb-2 block">Out of Scope Endpoints</label>
+                <label className="flex items-center gap-2 text-sm text-on-surface-variant">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(editForm.include_out_of_scope_endpoints)}
+                    onChange={(e) => setEditForm((c) => ({ ...c, include_out_of_scope_endpoints: e.target.checked }))}
+                  />
+                  Include Out of Scope Endpoints
+                </label>
+
+                {editForm.include_out_of_scope_endpoints ? (
+                  <>
+                    <div className="mt-3 overflow-auto rounded-md border border-outline-variant">
+                      <table className="w-full text-sm">
+                        <thead className="bg-surface">
+                          <tr className="text-left">
+                            <th className="px-3 py-2 text-on-surface">Name</th>
+                            <th className="px-3 py-2 text-on-surface">URL</th>
+                            <th className="px-3 py-2" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-outline-variant bg-surface-high">
+                          {(editForm.out_of_scope_endpoints || []).map((row, idx) => (
+                            <tr key={idx}>
+                              <td className="px-3 py-2">
+                                <Input
+                                  value={row.name}
+                                  onChange={(e) => updateOutOfScopeRow(idx, { name: e.target.value })}
+                                  className="bg-surface border-outline text-on-surface"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  value={row.url}
+                                  onChange={(e) => updateOutOfScopeRow(idx, { url: e.target.value })}
+                                  className="bg-surface border-outline text-on-surface"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => removeOutOfScopeRow(idx)}
+                                  className="border-outline text-on-surface-variant"
+                                >
+                                  Remove
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="pt-2">
+                      <Button type="button" variant="outline" onClick={addOutOfScopeRow} className="border-outline text-on-surface-variant">
+                        Add Row
+                      </Button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
             </div>
           ) : (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div className="p-3 rounded-lg bg-surface border border-outline-variant">
-                <div className="text-xs text-on-surface-variant">Client</div>
-                <div className="mt-1 text-on-surface">{project.client_name || 'N/A'}</div>
-              </div>
-              <div className="p-3 rounded-lg bg-surface border border-outline-variant">
-                <div className="text-xs text-on-surface-variant">Assessment Window</div>
-                <div className="mt-1 text-on-surface">
-                  {(project.start_date || 'Start Date')} to {(project.end_date || 'End Date')}
+            <div className="mt-4 space-y-4">
+              {project.template_name && (
+                <div className="p-3 rounded-lg bg-surface border border-outline-variant">
+                  <div className="text-xs text-on-surface-variant mb-1">Report Template</div>
+                  <div className="text-sm text-on-surface">{project.template_name}</div>
                 </div>
-              </div>
+              )}
+
+              {project.description && (
+                <div className="p-3 rounded-lg bg-surface border border-outline-variant">
+                  <div className="text-xs text-on-surface-variant mb-1">Description</div>
+                  <div className="text-sm text-on-surface whitespace-pre-wrap">{project.description}</div>
+                </div>
+              )}
+
+              {project.application_details && project.application_details.length > 0 && (
+                <div className="p-3 rounded-lg bg-surface border border-outline-variant">
+                  <div className="text-xs text-on-surface-variant mb-2">Application Details</div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-surface-high">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-on-surface">Name</th>
+                          <th className="px-3 py-2 text-left text-on-surface">URL</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant">
+                        {project.application_details.map((app, idx) => (
+                          <tr key={idx}>
+                            <td className="px-3 py-2 text-on-surface">{app.name}</td>
+                            <td className="px-3 py-2 text-on-surface">{app.url}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {project.user_roles && project.user_roles.length > 0 && (
+                <div className="p-3 rounded-lg bg-surface border border-outline-variant">
+                  <div className="text-xs text-on-surface-variant mb-2">User Roles</div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-surface-high">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-on-surface">Role</th>
+                          <th className="px-3 py-2 text-left text-on-surface">Username/Email</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant">
+                        {project.user_roles.map((role, idx) => (
+                          <tr key={idx}>
+                            <td className="px-3 py-2 text-on-surface">{role.role}</td>
+                            <td className="px-3 py-2 text-on-surface">{role.username}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {(project.start_date || project.end_date) && (
+                <div className="p-3 rounded-lg bg-surface border border-outline-variant">
+                  <div className="text-xs text-on-surface-variant mb-1">Assessment Window</div>
+                  <div className="text-sm text-on-surface">
+                    {project.start_date ? new Date(project.start_date).toLocaleDateString('en-GB') : 'Not set'} to {project.end_date ? new Date(project.end_date).toLocaleDateString('en-GB') : 'Not set'}
+                  </div>
+                </div>
+              )}
+
+              {(project as any).include_out_of_scope_endpoints && project.out_of_scope_endpoints && project.out_of_scope_endpoints.length > 0 && (
+                <div className="p-3 rounded-lg bg-surface border border-outline-variant">
+                  <div className="text-xs text-on-surface-variant mb-2">Out of Scope Endpoints</div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-surface-high">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-on-surface">Name</th>
+                          <th className="px-3 py-2 text-left text-on-surface">URL</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant">
+                        {project.out_of_scope_endpoints.map((endpoint, idx) => (
+                          <tr key={idx}>
+                            <td className="px-3 py-2 text-on-surface">{endpoint.name}</td>
+                            <td className="px-3 py-2 text-on-surface">{endpoint.url}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
-        </Card>
-      ) : null}
-
-      {project.description ? (
-        <Card className="mb-6 p-4 bg-surface-high border-outline">
-          <h3 className="text-sm font-semibold text-on-surface mb-2">Description</h3>
-          <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">{project.description}</p>
         </Card>
       ) : null}
 
@@ -678,6 +938,21 @@ const ProjectDetailPage = () => {
                     >
                       <ExternalLink className="h-4 w-4" />
                     </Button>
+                    {(currentUserRole === 'manager' || currentUserRole === 'analyst') && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-shrink-0 text-error hover:text-error/80"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm('Are you sure you want to delete this finding?')) {
+                            handleDeleteFinding(finding.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </Card>
               ))}
@@ -731,6 +1006,13 @@ const ProjectDetailPage = () => {
           ) : null}
         </div>
       </div>
+
+      <ImportFindingsDialog
+        isOpen={isImportDialogOpen}
+        onClose={() => setIsImportDialogOpen(false)}
+        currentProjectId={project.id}
+        onImportComplete={() => load()}
+      />
     </div>
   );
 };

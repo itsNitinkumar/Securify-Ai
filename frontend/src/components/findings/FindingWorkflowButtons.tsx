@@ -73,10 +73,15 @@ const FindingWorkflowButtons = ({
     try {
       setLoading(true);
       await findingApi.approve(finding.id);
+      toast.success('Finding approved successfully');
+      setConfirmAction(null);
+      // Wait a moment before updating to ensure backend has processed
+      await new Promise(resolve => setTimeout(resolve, 100));
       onUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to approve finding:', error);
-      toast.error('Failed to approve finding');
+      const message = error?.response?.data?.message || 'Failed to approve finding';
+      toast.error(message);
     } finally {
       setLoading(false);
       setConfirmAction(null);

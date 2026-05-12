@@ -106,6 +106,11 @@ class ReportModel {
         id: number,
         data: Partial<ReportTemplate>
     ): Promise<ReportTemplate | null> {
+        // If setting is_default to true, first remove default from all other templates
+        if (data.is_default === true) {
+            await pool.query('UPDATE report_templates SET is_default = false WHERE id != $1', [id]);
+        }
+
         const updates: string[] = [];
         const values: any[] = [];
         let paramCount = 1;

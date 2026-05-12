@@ -99,16 +99,52 @@ export class ReportGeneratorService {
             .join('');
     }
 
-    private static normalizeSteps(steps?: string[] | string): string[] {
+    private static normalizeSteps(steps?: any[] | string): Array<{stepNumber: number; description: string; image?: string; caption?: string}> {
+        console.log('🔍 normalizeSteps input:', {
+            steps,
+            type: typeof steps,
+            isArray: Array.isArray(steps),
+            firstItem: Array.isArray(steps) && steps.length > 0 ? steps[0] : null,
+            firstItemType: Array.isArray(steps) && steps.length > 0 ? typeof steps[0] : null
+        });
+        
         if (!steps) return [];
+        
+        // New format: array of objects with stepNumber, description, image, caption
+        if (Array.isArray(steps) && steps.length > 0 && typeof steps[0] === 'object' && steps[0] !== null && 'stepNumber' in steps[0]) {
+            const normalized = steps.map((step) => ({
+                stepNumber: step.stepNumber || 0,
+                description: String(step.description || '').trim(),
+                image: step.image,
+                caption: step.caption
+            })).filter(s => s.description);
+            
+            console.log('✅ Normalized steps (new format):', normalized);
+            return normalized;
+        }
+        
+        // Legacy format: array of strings
         if (Array.isArray(steps)) {
-            return steps.map((step) => String(step).trim()).filter(Boolean);
+            const normalized = steps.map((step, index) => ({
+                stepNumber: index + 1,
+                description: String(step).trim(),
+            })).filter(s => s.description);
+            
+            console.log('✅ Normalized steps (legacy format):', normalized);
+            return normalized;
         }
 
-        return String(steps)
+        // Legacy format: string with newlines
+        const normalized = String(steps)
             .split(/\n+/)
-            .map((step) => step.replace(/^\d+[.)]\s*/, '').trim())
-            .filter(Boolean);
+            .map((step, index) => ({
+                stepNumber: index + 1,
+                description: step.replace(/^\d+[.)]\s*/, '').trim(),
+            }))
+            .filter(s => s.description);
+            
+        console.log('✅ Normalized steps (string format):', normalized);
+        return normalized;
     }
 
     private static normalizeReferences(references?: any[]): string[] {
@@ -234,7 +270,17 @@ export class ReportGeneratorService {
         const likelihood = this.extractValue(finding.likelihood);
 
         const stepsHtml = steps.length
-            ? steps.map((step, index) => `<p class="finding-step"><strong>Step ${index + 1}:</strong> ${this.escapeHtml(step)}</p>`).join('')
+            ? steps.map((step) => {
+                let html = `<p class="finding-step"><strong>Step ${step.stepNumber}:</strong> ${this.escapeHtml(step.description)}</p>`;
+                if (step.image) {
+                    html += `<div class="step-image-container"><img src="${this.escapeHtml(step.image)}" alt="Step ${step.stepNumber}" class="step-image" />`;
+                    if (step.caption) {
+                        html += `<p class="step-caption"><em>${this.escapeHtml(step.caption)}</em></p>`;
+                    }
+                    html += `</div>`;
+                }
+                return html;
+            }).join('')
             : '<p class="finding-step">No steps to reproduce were provided.</p>';
 
         const referencesHtml = references.length

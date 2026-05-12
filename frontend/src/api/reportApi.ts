@@ -57,6 +57,13 @@ export const reportApi = {
     return response.data;
   },
 
+  getHTMLPreview: async (data: GenerateReportData) => {
+    const response = await axios.post('/reports/preview/html', data, {
+      timeout: 120000,
+    });
+    return response.data;
+  },
+
   downloadReport: async (id: number) => {
     const response = await axios.get(`/reports/${id}/download`, {
       responseType: 'blob',

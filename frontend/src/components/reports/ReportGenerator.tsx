@@ -14,44 +14,37 @@ interface ReportGeneratorProps {
   projectId: number;
   projectName: string;
   selectedFindingIds: number[];
+  projectTemplateId?: number;
+  onImportRefresh?: () => void;
 }
 
 export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
   projectId,
   projectName,
   selectedFindingIds,
+  projectTemplateId,
+  onImportRefresh,
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [format, setFormat] = useState<'docx' | 'pdf'>('pdf');
-  const [templates, setTemplates] = useState<ReportTemplate[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
+  const [selectedTemplate, setSelectedTemplate] = useState<number | null>(projectTemplateId || null);
 
-  // Load templates on mount
+  // Load default template
   useEffect(() => {
-    const loadTemplates = async () => {
+    const loadDefaultTemplate = async () => {
       try {
         const response = await reportApi.getAllTemplates();
         const templatesList = response.data || response;
-        setTemplates(Array.isArray(templatesList) ? templatesList : []);
-        
-        // Set default template as selected
-        const defaultTemplate = templatesList.find((t: ReportTemplate) => t.is_default);
-        if (defaultTemplate) {
-          setSelectedTemplate(defaultTemplate.id);
-        } else if (templatesList.length > 0) {
-          setSelectedTemplate(templatesList[0].id);
+        if (!selectedTemplate && templatesList.length > 0) {
+          const defaultTemplate = templatesList.find((t: ReportTemplate) => t.is_default);
+          setSelectedTemplate(defaultTemplate?.id || templatesList[0].id);
         }
       } catch (error) {
-        console.error('Error loading templates:', error);
-        toast.error('Failed to load report templates');
-      } finally {
-        setIsLoadingTemplates(false);
+        console.error('Failed to load templates:', error);
       }
     };
-
-    loadTemplates();
+    loadDefaultTemplate();
   }, []);
 
   const handleGenerateReport = async () => {
@@ -142,38 +135,6 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
 
       {/* Content */}
       <div className="p-8 space-y-6">
-        {/* Template Selection */}
-        <div>
-          <label className="block text-sm font-bold text-on-surface mb-4" style={{ color: '#00d639' }}>
-            SELECT REPORT TEMPLATE
-          </label>
-          {isLoadingTemplates ? (
-            <div className="flex items-center gap-2 p-4 text-on-surface-variant bg-surface rounded-lg">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Loading templates...</span>
-            </div>
-          ) : templates.length > 0 ? (
-            <select
-              value={selectedTemplate || ''}
-              onChange={(e) => setSelectedTemplate(parseInt(e.target.value))}
-              disabled={isGenerating}
-              className="w-full px-4 py-3 border-2 rounded-lg text-on-surface bg-surface focus:outline-none transition-all"
-              style={{ borderColor: '#e5e7eb' }}
-            >
-              <option value="">Select a template...</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name} {template.is_default ? '(Default)' : ''}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="p-4 bg-yellow-500/10 border-l-4 border-yellow-500 rounded text-yellow-400 text-sm">
-              No templates available. Please create a template first.
-            </div>
-          )}
-        </div>
-
         {/* Format Selection */}
         <div>
           <label className="block text-sm font-bold text-on-surface mb-4" style={{ color: '#00d639' }}>
@@ -220,31 +181,6 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
           </div>
         </div>
 
-        {/* Generate Button */}
-        <button
-          onClick={handlePreviewReport}
-          disabled={isGenerating || isPreviewing || selectedFindingIds.length === 0}
-          className="w-full flex items-center justify-center gap-2 px-6 py-4 rounded-lg font-bold transition-all text-sm border-2"
-          style={{
-            backgroundColor: 'transparent',
-            color: isGenerating || isPreviewing || selectedFindingIds.length === 0 ? '#9ca3af' : '#00b82e',
-            borderColor: isGenerating || isPreviewing || selectedFindingIds.length === 0 ? '#374151' : '#00d639',
-            cursor: isGenerating || isPreviewing || selectedFindingIds.length === 0 ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {isPreviewing ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Opening Styled Preview...
-            </>
-          ) : (
-            <>
-              <FileText className="w-5 h-5" />
-              Preview Styled Report
-            </>
-          )}
-        </button>
-
         <button
           onClick={handleGenerateReport}
           disabled={isGenerating || selectedFindingIds.length === 0}
@@ -266,20 +202,6 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
             </>
           )}
         </button>
-
-        {/* Info Box */}
-        <div className="bg-surface border-l-4 rounded p-4" style={{ borderLeftColor: '#00d639' }}>
-          <p className="text-xs text-on-surface-variant leading-relaxed">
-            <span className="font-bold text-on-surface">Report Contents:</span> The report will include <strong>{selectedFindingIds.length}</strong> selected approved findings for this project with:
-          </p>
-          <ul className="text-xs text-on-surface-variant mt-2 ml-4 space-y-1">
-            <li>✓ Cover page with project details</li>
-            <li>✓ Executive summary with severity breakdown</li>
-            <li>✓ Vulnerability summary table</li>
-            <li>✓ Detailed findings with remediation</li>
-            <li>✓ Professional Securify branding</li>
-          </ul>
-        </div>
       </div>
 
       {/* Footer */}

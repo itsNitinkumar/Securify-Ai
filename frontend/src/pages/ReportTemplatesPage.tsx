@@ -54,6 +54,10 @@ const ReportTemplatesPage = () => {
 
   const handleSetDefault = async (template: ReportTemplate) => {
     try {
+      const currentDefault = templates.find(t => t.is_default);
+      if (currentDefault && currentDefault.id !== template.id) {
+        await reportApi.updateTemplate(currentDefault.id, { is_default: false } as any);
+      }
       await reportApi.updateTemplate(template.id, { is_default: true } as any);
       toast.success('Default template updated');
       await loadTemplates();
@@ -171,16 +175,14 @@ const ReportTemplatesPage = () => {
                           Set Default
                         </button>
                       ) : null}
-                      {!template.is_default ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(template)}
-                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(template)}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </button>
                     </div>
                   ) : null}
                 </div>

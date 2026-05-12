@@ -339,13 +339,13 @@ const TemplateEditorPage = () => {
             <h2 className="text-lg font-semibold text-white">Document Tabs</h2>
           </div>
           <div className="max-h-[calc(100vh-220px)] overflow-y-auto p-3">
-              <button
-                type="button"
-                onClick={() => setActiveSection('table_of_contents')}
-                className={`mb-3 flex w-full items-center rounded-2xl px-4 py-3 text-left text-sm font-medium ${activeSection === 'table_of_contents' ? 'bg-[#1b3a2a] text-[#9cff93]' : 'text-gray-300 hover:bg-[#202020]'}`}
-              >
-                Tab 1
-              </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('table_of_contents')}
+              className={`mb-3 flex w-full items-center rounded-2xl px-4 py-3 text-left text-sm font-medium ${activeSection === 'table_of_contents' ? 'bg-[#1b3a2a] text-[#9cff93]' : 'text-gray-300 hover:bg-[#202020]'}`}
+            >
+              Tab 1
+            </button>
             <div className="space-y-1 border-l border-[#2f2f2f] pl-4">
               {sectionOrder.map((section) => (
                 <button

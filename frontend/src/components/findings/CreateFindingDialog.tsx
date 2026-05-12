@@ -95,7 +95,7 @@ const CreateFindingDialog = ({ projectId, open, onOpenChange, onSuccess }: Creat
   };
 
   const removeStep = (index: number) => {
-    const steps = formData.steps_to_reproduce?.filter((_, i) => i !== index);
+    const steps = formData.steps_to_reproduce?.filter((_: string, i: number) => i !== index);
     setFormData({ ...formData, steps_to_reproduce: steps });
   };
 
@@ -181,7 +181,7 @@ const CreateFindingDialog = ({ projectId, open, onOpenChange, onSuccess }: Creat
               </Button>
             </div>
             <div className="space-y-2">
-              {formData.steps_to_reproduce?.map((step, index) => (
+              {formData.steps_to_reproduce?.map((step: string, index: number) => (
                 <div key={index} className="flex gap-2">
                   <span className="text-on-surface-variant mt-2">{index + 1}.</span>
                   <Input
@@ -227,7 +227,6 @@ const CreateFindingDialog = ({ projectId, open, onOpenChange, onSuccess }: Creat
                 <Upload className="w-4 h-4" />
                 Upload Evidence
               </label>
-              <EvidenceUploader findingId={createdFindingId} />
             </div>
           )}
 

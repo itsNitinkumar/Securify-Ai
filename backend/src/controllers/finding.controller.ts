@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import OpenAIService from '../services/openai.service';
+import { AuthRequest } from '../types';
 
 import FindingModel from '../models/finding.model';
 import VersionService from '../services/version.service';
@@ -89,35 +90,76 @@ class FindingController {
       description,
       severity,
       impact,
+      likelihood,
       remediation,
+      recommendation,
       steps_to_reproduce,
       references,
+      affected_target,
+      affected_component,
+      cvss_score,
+      cwe_id,
+      owasp_category,
+      proof_of_concept,
+      tags,
+      finding_references,
+      status,
       project_id,
     } = req.body;
     const user = (req as any).user;
+
+    console.log('📝 Creating finding:', {
+      title,
+      severity,
+      project_id,
+      steps_count: Array.isArray(steps_to_reproduce) ? steps_to_reproduce.length : 0,
+      has_likelihood: !!likelihood,
+      has_impact: !!impact,
+    });
 
     if (!title || !severity) {
       throw new ApiError(400, 'Title and severity are required');
     }
 
+    // Check for duplicate finding in the same project
+    if (project_id) {
+      console.log('🔍 Checking for duplicates in project:', project_id);
+      const existingFindings = await FindingModel.findAll({ project_id });
+      const duplicate = existingFindings.find(f =>
+        f.title.toLowerCase().trim() === title.toLowerCase().trim()
+      );
+      if (duplicate) {
+        throw new ApiError(400, `Finding with title "${title}" already exists in this project`);
+      }
+    }
+
+    console.log('💾 Saving finding to database...');
     // Save to database
     const finding = await FindingModel.create({
       title,
       description: description || '',
       severity,
-      impact: impact || '',
-      recommendation: remediation || '',
+      impact: impact || null,
+      likelihood: likelihood || null,
+      recommendation: recommendation || null,
       steps_to_reproduce: steps_to_reproduce || [],
       references: references || [],
+      finding_references: finding_references || [],
+      tags: tags || [],
+      affected_target: affected_target || null,
       project_id: project_id,
       created_by: user.id,
-      status: 'draft',
+      status: status || 'draft',
     });
 
+    console.log('✅ Finding created with ID:', finding.id);
+
     // Create initial version
+    console.log('📦 Creating version...');
     await VersionService.createVersion(finding.id, finding, user.id);
 
     // Log activity
+    console.log('📝 Logging activity...');
     await ActivityLogService.log({
       user_id: user.id,
       action: 'CREATE_FINDING',
@@ -128,6 +170,7 @@ class FindingController {
       user_agent: req.get('user-agent'),
     });
 
+    console.log('✅ Finding creation complete, sending response');
     res.status(201).json({
       success: true,
       data: finding,
@@ -301,21 +344,64 @@ class FindingController {
       throw new ApiError(403, 'Only reviewers and managers can approve findings');
     }
 
-    const finding = await FindingModel.findById(parseInt(id));
+    let finding;
+    try {
+      finding = await FindingModel.findById(parseInt(id));
+    } catch (error: any) {
+      console.error('❌ Database error when fetching finding:', error);
+      if (error.message?.includes('timeout')) {
+        throw new ApiError(504, 'Database query timeout. Please try again.');
+      }
+      throw new ApiError(500, 'Failed to fetch finding from database');
+    }
 
     if (!finding) {
       throw new ApiError(404, 'Finding not found');
     }
 
-    if (finding.status !== 'pending_review') {
-      throw new ApiError(400, 'Only findings pending review can be approved');
+    console.log('🔍 Approval check:', {
+      findingId: finding.id,
+      status: finding.status,
+      statusType: typeof finding.status,
+      statusTrimmed: finding.status?.trim(),
+      isPendingReview: finding.status === 'pending_review',
+      isPendingReviewTrimmed: finding.status?.trim() === 'pending_review',
+    });
+
+    // Normalize status by trimming whitespace
+    const normalizedStatus = finding.status?.trim();
+
+    // Provide helpful error messages based on current status
+    if (normalizedStatus === 'approved') {
+      throw new ApiError(400, 'This finding has already been approved');
     }
 
-    const updatedFinding = await FindingModel.update(parseInt(id), {
-      status: 'approved',
-      approved_by: user.id,
-      reviewed_by: user.id,
-    });
+    if (normalizedStatus === 'draft') {
+      throw new ApiError(400, 'This finding must be submitted for review before it can be approved');
+    }
+
+    if (normalizedStatus === 'changes_requested') {
+      throw new ApiError(400, 'This finding has changes requested. It must be resubmitted for review before approval');
+    }
+
+    if (normalizedStatus !== 'pending_review') {
+      throw new ApiError(400, `Only findings pending review can be approved. Current status: "${normalizedStatus}"`);
+    }
+
+    let updatedFinding;
+    try {
+      updatedFinding = await FindingModel.update(parseInt(id), {
+        status: 'approved',
+        approved_by: user.id,
+        reviewed_by: user.id,
+      });
+    } catch (error: any) {
+      console.error('❌ Database error when updating finding:', error);
+      if (error.message?.includes('timeout')) {
+        throw new ApiError(504, 'Database update timeout. Please try again.');
+      }
+      throw new ApiError(500, 'Failed to update finding in database');
+    }
 
     // Log activity
     await ActivityLogService.log({
@@ -530,6 +616,68 @@ class FindingController {
     res.json({
       success: true,
       data: versionData,
+    });
+  });
+
+  // Import findings from another project
+  static importFromProject = asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { source_project_id, finding_ids, target_project_id } = req.body;
+    const userId = req.user?.id;
+
+    if (!source_project_id || !target_project_id || !finding_ids || !Array.isArray(finding_ids)) {
+      throw new ApiError(400, 'Source project ID, target project ID, and finding IDs are required');
+    }
+
+    if (source_project_id === target_project_id) {
+      throw new ApiError(400, 'Source and target projects cannot be the same');
+    }
+
+    // Get findings from source project
+    const sourceFindings = await FindingModel.findAll({ project_id: source_project_id, status: 'approved' });
+    const findingsToImport = sourceFindings.filter(f => finding_ids.includes(f.id));
+
+    if (findingsToImport.length === 0) {
+      throw new ApiError(400, 'No approved findings found to import');
+    }
+
+    // Create copies in target project
+    const importedFindings = [];
+    for (const finding of findingsToImport) {
+      console.log('📥 Importing finding:', {
+        sourceId: finding.id,
+        title: finding.title,
+        status: finding.status,
+        hasLikelihood: !!finding.likelihood,
+        hasImpact: !!finding.impact,
+        hasRecommendation: !!finding.recommendation,
+        hasReferences: !!finding.references,
+        hasSteps: !!finding.steps_to_reproduce,
+        likelihood: finding.likelihood,
+        recommendation: finding.recommendation,
+      });
+      const newFinding = await FindingModel.create({
+        project_id: target_project_id,
+        title: finding.title,
+        severity: finding.severity,
+        description: finding.description,
+        affected_target: finding.affected_target,
+        likelihood: finding.likelihood,
+        impact: finding.impact,
+        steps_to_reproduce: finding.steps_to_reproduce,
+        recommendation: finding.recommendation,
+        references: finding.references,
+        finding_references: finding.finding_references,
+        tags: finding.tags,
+        status: finding.status || 'draft',
+        created_by: userId,
+      });
+      importedFindings.push(newFinding);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `Successfully imported ${importedFindings.length} findings`,
+      data: { imported_count: importedFindings.length, findings: importedFindings },
     });
   });
 }

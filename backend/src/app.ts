@@ -47,6 +47,9 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Serve static files (uploaded images)
+app.use('/images', express.static('public/images'));
+
 // Session timeout check (after authentication)
 app.use('/api/v1', (req, res, next) => checkSessionTimeout(req as any, res, next));
 

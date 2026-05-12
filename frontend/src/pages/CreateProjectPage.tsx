@@ -4,6 +4,7 @@ import { ArrowLeft, FolderPlus, Loader2 } from 'lucide-react';
 import { projectApi, CreateProjectData } from '@/api/projectApi';
 import { authApi } from '@/api/authApi';
 import { clientApi, Client } from '@/api/clientApi';
+import { templateApi, Template } from '@/api/templateApi';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,20 +14,41 @@ const CreateProjectPage = () => {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [loadingClients, setLoadingClients] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [clientQuery, setClientQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
-  const [formData, setFormData] = useState<CreateProjectData>({
-    name: '',
-    client_name: undefined,
-    client_id: undefined,
-    description: '',
-    start_date: undefined,
-    end_date: undefined,
-    application_details: [{ name: '', url: '' }],
-    user_roles: [{ role: '', username: '' }],
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [formData, setFormData] = useState<CreateProjectData>(() => {
+    const saved = localStorage.getItem('createProjectForm');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return {
+          name: '',
+          client_name: undefined,
+          client_id: undefined,
+          template_id: undefined,
+          template_name: undefined,
+        };
+      }
+    }
+    return {
+      name: '',
+      client_name: undefined,
+      client_id: undefined,
+      template_id: undefined,
+      template_name: undefined,
+    };
   });
+
+  // Save form data to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('createProjectForm', JSON.stringify(formData));
+  }, [formData]);
 
   // Lightweight role check to avoid a dead-end for non-managers.
   useEffect(() => {
@@ -58,6 +80,40 @@ const CreateProjectPage = () => {
         if (!cancelled) setClients([]);
       } finally {
         if (!cancelled) setLoadingClients(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Load templates
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        setLoadingTemplates(true);
+        const res = await templateApi.getAllTemplates();
+        const responseData = (res as any);
+        // Handle both formats: { data: { templates } } or { data: { templates: [] } }
+        const list = responseData?.data?.templates || responseData?.data || [];
+        if (!cancelled) {
+          setTemplates(Array.isArray(list) ? list : []);
+          // Auto-select saved template or default template
+          const savedTemplateId = formData.template_id;
+          if (savedTemplateId) {
+            const savedTmpl = list?.find((t: Template) => t.id === savedTemplateId);
+            if (savedTmpl) setSelectedTemplate(savedTmpl);
+          } else {
+            const defaultTmpl = list?.find((t: Template) => t.is_default);
+            if (defaultTmpl) setSelectedTemplate(defaultTmpl);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load templates:', error);
+        if (!cancelled) setTemplates([]);
+      } finally {
+        if (!cancelled) setLoadingTemplates(false);
       }
     })();
     return () => {
@@ -161,23 +217,25 @@ const CreateProjectPage = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!selectedTemplate) {
+      toast.error('Please select a template');
+      return;
+    }
     try {
       setSubmitting(true);
 
       const payload: CreateProjectData = {
         name: formData.name,
-        description: formData.description || undefined,
         client_id: selectedClientId || undefined,
         client_name: !selectedClientId && clientQuery.trim() ? clientQuery.trim() : undefined,
-        start_date: formData.start_date || undefined,
-        end_date: formData.end_date || undefined,
-        application_details: (formData.application_details || []).filter((r) => (r.name || '').trim() || (r.url || '').trim()),
-        user_roles: (formData.user_roles || []).filter((r) => (r.role || '').trim() || (r.username || '').trim()),
+        template_id: selectedTemplate.id,
+        template_name: selectedTemplate.name,
       };
 
       const response = await projectApi.createProject(payload);
       const created = (response as any)?.data || response;
       toast.success('Project created');
+      localStorage.removeItem('createProjectForm');
       navigate(`/projects/${created.id}`);
     } catch (error) {
       console.error('Failed to create project:', error);
@@ -225,7 +283,7 @@ const CreateProjectPage = () => {
             </div>
             <h1 className="text-2xl md:text-3xl font-bold text-on-surface">Create New Project</h1>
           </div>
-          <p className="text-sm md:text-base text-on-surface-variant">Fill in the details to create a new security assessment project.</p>
+          <p className="text-sm md:text-base text-on-surface-variant">Select a template and client to create a new security assessment project. You can add project details after creation.</p>
         </div>
       </div>
 
@@ -313,139 +371,39 @@ const CreateProjectPage = () => {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-on-surface mb-2 block">Description</label>
-            <textarea
-              value={formData.description || ''}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Comprehensive security assessment of network perimeter, cloud assets, and identity access management..."
-              rows={5}
-              className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-on-surface mb-2 block">Application Details</label>
-            <div className="overflow-auto rounded-md border border-outline-variant">
-              <table className="w-full text-sm">
-                <thead className="bg-surface">
-                  <tr className="text-left">
-                    <th className="px-3 py-2 text-on-surface">Name</th>
-                    <th className="px-3 py-2 text-on-surface">URL</th>
-                    <th className="px-3 py-2" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant bg-surface-high">
-                  {(formData.application_details || []).map((row, idx) => (
-                    <tr key={idx}>
-                      <td className="px-3 py-2">
-                        <Input
-                          value={row.name}
-                          onChange={(e) => updateApplicationRow(idx, { name: e.target.value })}
-                          placeholder="App name"
-                          className="bg-surface border-outline text-on-surface"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          value={row.url}
-                          onChange={(e) => updateApplicationRow(idx, { url: e.target.value })}
-                          placeholder="https://..."
-                          className="bg-surface border-outline text-on-surface"
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => removeApplicationRow(idx)}
-                          className="border-outline text-on-surface-variant"
-                        >
-                          Remove
-                        </Button>
-                      </td>
-                    </tr>
+            <label className="text-sm font-medium text-on-surface mb-2 block">
+              Report Template <span className="text-error">*</span>
+            </label>
+            {loadingTemplates ? (
+              <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading templates...
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <select
+                  value={selectedTemplate?.id || ''}
+                  onChange={(e) => {
+                    const tmpl = templates.find(t => t.id === Number(e.target.value));
+                    setSelectedTemplate(tmpl || null);
+                  }}
+                  className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                  required
+                >
+                  <option value="">Select a template</option>
+                  {templates.map((tmpl) => (
+                    <option key={tmpl.id} value={tmpl.id}>
+                      {tmpl.name} {tmpl.is_default ? '(Default)' : ''}
+                    </option>
                   ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="pt-2">
-              <Button type="button" variant="outline" onClick={addApplicationRow} className="border-outline text-on-surface-variant">
-                Add Row
-              </Button>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-on-surface mb-2 block">User Role</label>
-            <div className="overflow-auto rounded-md border border-outline-variant">
-              <table className="w-full text-sm">
-                <thead className="bg-surface">
-                  <tr className="text-left">
-                    <th className="px-3 py-2 text-on-surface">Role</th>
-                    <th className="px-3 py-2 text-on-surface">Username/Email</th>
-                    <th className="px-3 py-2" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant bg-surface-high">
-                  {(formData.user_roles || []).map((row, idx) => (
-                    <tr key={idx}>
-                      <td className="px-3 py-2">
-                        <Input
-                          value={row.role}
-                          onChange={(e) => updateUserRoleRow(idx, { role: e.target.value })}
-                          placeholder="e.g., Admin"
-                          className="bg-surface border-outline text-on-surface"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          value={row.username}
-                          onChange={(e) => updateUserRoleRow(idx, { username: e.target.value })}
-                          placeholder="user@client.com"
-                          className="bg-surface border-outline text-on-surface"
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => removeUserRoleRow(idx)}
-                          className="border-outline text-on-surface-variant"
-                        >
-                          Remove
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="pt-2">
-              <Button type="button" variant="outline" onClick={addUserRoleRow} className="border-outline text-on-surface-variant">
-                Add Row
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-on-surface mb-2 block">Start Date</label>
-              <Input
-                type="date"
-                value={formData.start_date || ''}
-                onChange={(e) => setFormData((current) => ({ ...current, start_date: e.target.value }))}
-                className="bg-surface border-outline text-on-surface"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-on-surface mb-2 block">End Date</label>
-              <Input
-                type="date"
-                value={formData.end_date || ''}
-                onChange={(e) => setFormData((current) => ({ ...current, end_date: e.target.value }))}
-                className="bg-surface border-outline text-on-surface"
-              />
-            </div>
+                </select>
+                {selectedTemplate && (
+                  <p className="text-xs text-on-surface-variant">
+                    {selectedTemplate.description || 'Selected template will be used for all reports'}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2">

@@ -20,7 +20,12 @@ export interface Finding {
     severity: string;
     detail: string;
   };
-  steps_to_reproduce?: string[];
+  steps_to_reproduce?: Array<{
+    stepNumber: number;
+    description: string;
+    image?: string;
+    caption?: string;
+  }> | string[];
   recommendation?: string[];
   remediation?: string;
   proof_of_concept?: string;
@@ -40,13 +45,16 @@ export interface CreateFindingData {
   severity: string;
   description?: string;
   affected_target?: string;
+  affected_component?: string;
   likelihood?: any;
   impact?: any;
-  steps_to_reproduce?: string[];
-  recommendation?: string[];
+  steps_to_reproduce?: any;
+  recommendation?: any;
   remediation?: string;
   proof_of_concept?: string;
-  references?: string[];
+  references?: any;
+  tags?: any;
+  status?: string;
   project_id?: number;
   cvss_score?: number;
   cwe_id?: string;
@@ -131,4 +139,8 @@ export const findingApi = {
 
   queryFindings: (query: string) =>
     axiosInstance.post<ApiResponse<Finding[]>>('/findings/query', { query }),
+
+  // Import findings from another project
+  importFromProject: (data: { source_project_id: number; target_project_id: number; finding_ids: number[] }) =>
+    axiosInstance.post<ApiResponse<{ imported_count: number; findings: Finding[] }>>('/findings/import', data),
 };

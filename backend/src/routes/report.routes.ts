@@ -23,6 +23,13 @@ router.post(
   ReportController.previewReport
 );
 
+// HTML Preview - All authenticated users can view
+router.post(
+  '/preview/html',
+  apiLimiter,
+  ReportController.getHTMLPreview
+);
+
 // Download Report - All authenticated users
 router.get(
   '/:id/download',

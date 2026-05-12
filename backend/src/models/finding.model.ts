@@ -9,7 +9,12 @@ interface Finding {
   affected_target?: string;
   likelihood?: { severity: string; detail: string }; // JSONB: {severity: string, detail: string}
   impact?: { severity: string; detail: string }; // JSONB: {severity: string, detail: string}
-  steps_to_reproduce?: string[]; // JSONB array
+  steps_to_reproduce?: Array<{
+    stepNumber: number;
+    description: string;
+    image?: string;
+    caption?: string;
+  }>; // JSONB array - new structure with image support
   recommendation?: string[]; // JSONB array - AI-generated recommendations
   remediation?: string; // TEXT - deprecated, kept for backward compatibility
   references?: string[]; // JSONB array - AI-generated references
@@ -29,8 +34,8 @@ class FindingModel {
       `INSERT INTO findings (
         project_id, title, severity, description, affected_target,
         likelihood, impact, steps_to_reproduce,
-        recommendation, "references", finding_references, tags, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        recommendation, "references", finding_references, tags, created_by, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *`,
       [
         data.project_id,
@@ -46,6 +51,7 @@ class FindingModel {
         data.references ? JSON.stringify(data.references) : null, // Also save to finding_references for backward compatibility
         data.tags ? JSON.stringify(data.tags) : null,
         data.created_by,
+        data.status || 'draft', // fallback to draft if missing
       ]
     );
     return result.rows[0];
@@ -61,6 +67,10 @@ class FindingModel {
     if (finding) {
       console.log('🔍 Raw finding from DB:', {
         id: finding.id,
+        status: finding.status,
+        statusType: typeof finding.status,
+        statusLength: finding.status?.length,
+        statusTrimmed: finding.status?.trim(),
         likelihood: finding.likelihood,
         likelihoodType: typeof finding.likelihood,
         impact: finding.impact,
@@ -78,6 +88,7 @@ class FindingModel {
   }
 
   static async findAll(filters: any = {}): Promise<Finding[]> {
+    console.log('🔍 FindingModel.findAll called with filters:', filters);
     let query = 'SELECT id, project_id, title, severity, description, affected_target, likelihood, impact, steps_to_reproduce, recommendation, "references", finding_references, tags, status, created_by, approved_by, reviewed_by, created_at, updated_at FROM findings WHERE 1=1';
     const params: any[] = [];
     let paramIndex = 1;
@@ -107,8 +118,12 @@ class FindingModel {
     }
 
     query += ' ORDER BY created_at DESC';
+    console.log('🔍 Query:', query);
+    console.log('🔍 Params:', params);
 
+    const start = Date.now();
     const result = await pool.query(query, params);
+    console.log(`✅ Query completed in ${Date.now() - start}ms, returned ${result.rows.length} rows`);
     return result.rows;
   }
 

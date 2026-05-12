@@ -10,6 +10,7 @@ import templateRoutes from './template.routes';
 import commentRoutes from './comment.routes';
 import roleRequestRoutes from './role-request.routes';
 import clientRoutes from './client.routes';
+import uploadRoutes from './upload.routes';
 
 const router = Router();
 
@@ -45,6 +46,9 @@ router.use('/reports', reportRoutes);
 
 // Template routes
 router.use('/templates', templateRoutes);
+
+// Upload routes
+router.use('/upload', uploadRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

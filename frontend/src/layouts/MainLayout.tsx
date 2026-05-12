@@ -1,9 +1,52 @@
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Activity, Settings, Bell, HelpCircle, FolderOpen, Search, FileText } from 'lucide-react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Users, Activity, Settings, Bell, HelpCircle, FolderOpen, Search, FileText, LogOut } from 'lucide-react';
 import Logo from '@/components/common/Logo';
+import { useEffect, useState } from 'react';
+import { authApi } from '@/api/authApi';
+import { toast } from 'react-hot-toast';
 
 const MainLayout = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [profile, setProfile] = useState<{ name?: string; email?: string; avatar?: string } | null>(null);
+
+  const getInitials = (name?: string) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  };
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const res = await authApi.getProfile();
+        const userData = (res as any)?.data?.data || (res as any)?.data?.user || (res as any)?.data;
+        setProfile(userData);
+      } catch (error) {
+        console.error('Failed to load profile:', error);
+      }
+    };
+    loadProfile();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await authApi.signout();
+      localStorage.clear();
+      sessionStorage.clear();
+      document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/'));
+      toast.success('Logged out successfully');
+      navigate('/signin');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      localStorage.clear();
+      sessionStorage.clear();
+      navigate('/signin');
+    }
+  };
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -64,8 +107,12 @@ const MainLayout = () => {
             <HelpCircle className="w-5 h-5" />
             <span className="text-sm">Support</span>
           </button>
-          <button className="w-full bg-primary text-surface hover:bg-primary/90 px-4 py-3 rounded-lg font-medium text-sm transition-all">
-            🚀 INIT_SCAN
+          <button 
+            onClick={handleLogout}
+            className="w-full bg-error/10 text-error hover:bg-error/20 px-4 py-3 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            Logout
           </button>
         </div>
       </aside>
@@ -88,9 +135,22 @@ const MainLayout = () => {
               <HelpCircle className="w-5 h-5 text-on-surface-variant" />
             </button>
             <div className="flex items-center gap-3 pl-4 border-l border-outline">
-              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                <span className="text-sm font-semibold text-primary">A</span>
-              </div>
+              <button
+                onClick={() => navigate('/profile')}
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              >
+                {profile?.avatar ? (
+                  <img
+                    src={profile.avatar}
+                    alt="Profile"
+                    className="w-8 h-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                    <span className="text-sm font-semibold text-primary">{getInitials(profile?.name)}</span>
+                  </div>
+                )}
+              </button>
             </div>
           </div>
         </header>

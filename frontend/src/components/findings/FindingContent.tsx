@@ -278,7 +278,7 @@ const FindingContent = ({
           {isEditing ? (
             <textarea
               value={Array.isArray(editData.steps_to_reproduce)
-                ? editData.steps_to_reproduce.join('\n')
+                ? editData.steps_to_reproduce.map((s: any) => typeof s === 'object' ? s.description : s).join('\n')
                 : editData.steps_to_reproduce}
               onChange={(e) =>
                 setEditData({ ...editData, steps_to_reproduce: e.target.value.split('\n') })
@@ -287,14 +287,35 @@ const FindingContent = ({
               className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none font-mono text-sm"
             />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {Array.isArray(finding.steps_to_reproduce) ? (
-                finding.steps_to_reproduce.map((step, index) => (
-                  <p key={index} className="text-sm text-on-surface-variant leading-relaxed">
-                    <span className="font-semibold text-on-surface">Step {index + 1}:</span>{' '}
-                    {step}
-                  </p>
-                ))
+                finding.steps_to_reproduce.map((step: any, index: number) => {
+                  const isNewFormat = typeof step === 'object' && step !== null;
+                  return (
+                    <div key={index} className="bg-surface-low p-3 rounded-lg border border-outline-variant">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded">
+                          Step {isNewFormat ? step.stepNumber : index + 1}
+                        </span>
+                      </div>
+                      <p className="text-sm text-on-surface-variant mb-2">
+                        {isNewFormat ? step.description : step}
+                      </p>
+                      {isNewFormat && step.image && (
+                        <div className="mt-2">
+                          <img 
+                            src={step.image} 
+                            alt={`Step ${isNewFormat ? step.stepNumber : index + 1}`} 
+                            className="max-h-48 rounded border border-outline-variant" 
+                          />
+                          {step.caption && (
+                            <p className="text-xs text-on-surface-variant mt-1 italic">{step.caption}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
                 <p className="text-sm text-on-surface-variant whitespace-pre-wrap">
                   {finding.steps_to_reproduce}

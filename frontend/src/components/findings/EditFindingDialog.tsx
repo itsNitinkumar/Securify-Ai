@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Save, Loader2, Plus, X } from 'lucide-react';
 import { findingApi, Finding } from '@/api/findingApi';
 import EvidenceUploader from './EvidenceUploader';
+import StepEditor from './StepEditor';
 import {
   Dialog,
   DialogContent,
@@ -31,7 +32,12 @@ const EditFindingDialog = ({ findingId, open, onOpenChange, onSuccess }: EditFin
     affected_target: '',
     likelihood: '',
     impact: '',
-    steps_to_reproduce: [''],
+    steps_to_reproduce: [] as Array<{
+      stepNumber: number;
+      description: string;
+      image?: string;
+      caption?: string;
+    }>,
     proof_of_concept: '',
     remediation: '',
     references: [''],
@@ -56,6 +62,25 @@ const EditFindingDialog = ({ findingId, open, onOpenChange, onSuccess }: EditFin
           if (typeof val === 'object' && val.detail) return val.detail;
           return String(val);
         };
+        
+        // Normalize steps to new format
+        const normalizeSteps = (steps: any): Array<{stepNumber: number; description: string; image?: string; caption?: string}> => {
+          if (!steps || !Array.isArray(steps)) return [];
+          
+          // Check if already in new format
+          if (steps.length > 0 && typeof steps[0] === 'object' && 'stepNumber' in steps[0]) {
+            return steps;
+          }
+          
+          // Convert from old format (array of strings)
+          return steps.map((step, index) => ({
+            stepNumber: index + 1,
+            description: typeof step === 'string' ? step : String(step),
+            image: '',
+            caption: '',
+          }));
+        };
+        
         setFormData({
           title: data.title || '',
           severity: data.severity || 'Medium',
@@ -63,7 +88,7 @@ const EditFindingDialog = ({ findingId, open, onOpenChange, onSuccess }: EditFin
           affected_target: data.affected_target || '',
           likelihood: extractValue(data.likelihood),
           impact: extractValue(data.impact),
-          steps_to_reproduce: data.steps_to_reproduce || [''],
+          steps_to_reproduce: normalizeSteps(data.steps_to_reproduce),
           proof_of_concept: data.proof_of_concept || '',
           remediation: data.remediation || '',
           references: data.references || [''],
@@ -100,24 +125,6 @@ const EditFindingDialog = ({ findingId, open, onOpenChange, onSuccess }: EditFin
     { value: 'Low', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
     { value: 'Informational', color: 'bg-gray-500/10 text-gray-400 border-gray-500/20' },
   ];
-
-  const addStep = () => {
-    setFormData({
-      ...formData,
-      steps_to_reproduce: [...formData.steps_to_reproduce, ''],
-    });
-  };
-
-  const updateStep = (index: number, value: string) => {
-    const steps = [...formData.steps_to_reproduce];
-    steps[index] = value;
-    setFormData({ ...formData, steps_to_reproduce: steps });
-  };
-
-  const removeStep = (index: number) => {
-    const steps = formData.steps_to_reproduce.filter((_, i) => i !== index);
-    setFormData({ ...formData, steps_to_reproduce: steps });
-  };
 
   const addReference = () => {
     setFormData({
@@ -249,41 +256,10 @@ const EditFindingDialog = ({ findingId, open, onOpenChange, onSuccess }: EditFin
           </div>
 
           {/* Steps to Reproduce */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-on-surface">
-                Steps to Reproduce
-              </label>
-              <Button type="button" size="sm" variant="ghost" onClick={addStep}>
-                <Plus className="w-4 h-4 mr-1" />
-                Add Step
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {formData.steps_to_reproduce.map((step, index) => (
-                <div key={index} className="flex gap-2">
-                  <span className="text-on-surface-variant mt-2">{index + 1}.</span>
-                  <Input
-                    value={step}
-                    onChange={(e) => updateStep(index, e.target.value)}
-                    placeholder="Enter step..."
-                    className="flex-1 bg-surface border-outline text-on-surface"
-                  />
-                  {formData.steps_to_reproduce.length > 1 && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeStep(index)}
-                      className="text-error"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <StepEditor
+            steps={formData.steps_to_reproduce}
+            onChange={(steps) => setFormData({ ...formData, steps_to_reproduce: steps })}
+          />
 
           {/* Proof of Concept */}
           <div>

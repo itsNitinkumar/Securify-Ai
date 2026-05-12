@@ -18,6 +18,7 @@ import AuthCallbackPage from '../pages/AuthCallbackPage';
 import TemplateManagementPage from '../pages/TemplateManagementPage';
 import TemplateEditorPage from '../pages/TemplateEditorPage';
 import ReportTemplatesPage from '../pages/ReportTemplatesPage';
+import ImportFindingsPage from '../pages/ImportFindingsPage';
 import ProjectDetailPage from '../pages/ProjectDetailPage';
 import CreateProjectPage from '../pages/CreateProjectPage';
 import CreateFindingPage from '../pages/CreateFindingPage';
@@ -54,6 +55,7 @@ const AppRoutes = () => {
         <Route path="projects/:projectId/findings/new" element={<CreateFindingPage />} />
         <Route path="projects/:projectId/findings/generate" element={<GenerateFindingAIPage />} />
         <Route path="projects/:projectId/report" element={<ReportBuilderPage />} />
+        <Route path="projects/:projectId/report/import" element={<ImportFindingsPage />} />
         <Route path="reports/:projectId/view" element={<ReportViewPage />} />
         <Route path="templates" element={<ReportTemplatesPage />} />
         <Route path="templates/:templateId" element={<TemplateEditorPage />} />

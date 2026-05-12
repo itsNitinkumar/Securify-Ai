@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, Plus, Upload } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Upload, Save } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { findingApi, CreateFindingData } from '@/api/findingApi';
 import EvidenceUploader from '@/components/findings/EvidenceUploader';
@@ -16,6 +16,10 @@ const CreateFindingPage = () => {
 
   const [loading, setLoading] = useState(false);
   const [createdFindingId, setCreatedFindingId] = useState<number | null>(null);
+  const [draftId, setDraftId] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [formData, setFormData] = useState<CreateFindingData>({
     title: '',
     severity: 'Medium',
@@ -38,6 +42,49 @@ const CreateFindingPage = () => {
     { value: 'Informational', color: 'bg-gray-500/10 text-gray-400 border-gray-500/20' },
   ];
 
+  const saveDraft = async (data: CreateFindingData) => {
+    if (!parsedProjectId) return;
+    try {
+      setIsSaving(true);
+      if (draftId) {
+        await findingApi.updateFinding(draftId, { ...data, project_id: parsedProjectId });
+      } else {
+        const response = await findingApi.create({ ...data, project_id: parsedProjectId, status: 'draft' });
+        const newId = response.data.data?.id;
+        if (newId) {
+          setDraftId(newId);
+        }
+      }
+      setLastSaved(new Date());
+    } catch (error) {
+      console.error('Failed to save draft:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (parsedProjectId && !draftId && !createdFindingId) {
+      saveDraft({ ...formData, status: 'draft' });
+    }
+  }, [parsedProjectId]);
+
+  useEffect(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    if (draftId && !createdFindingId) {
+      saveTimeoutRef.current = setTimeout(() => {
+        saveDraft(formData);
+      }, 2000);
+    }
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [formData, draftId]);
+
   const addStep = () => {
     setFormData((current) => ({
       ...current,
@@ -52,7 +99,7 @@ const CreateFindingPage = () => {
   };
 
   const removeStep = (index: number) => {
-    const next = (formData.steps_to_reproduce || []).filter((_, i) => i !== index);
+    const next = (formData.steps_to_reproduce || []).filter((_: string, i: number) => i !== index);
     setFormData((current) => ({ ...current, steps_to_reproduce: next.length ? next : [''] }));
   };
 
@@ -63,10 +110,19 @@ const CreateFindingPage = () => {
       return;
     }
 
+    const filteredSteps = (formData.steps_to_reproduce || []).filter((s: string) => s.trim());
+    const submitData = { ...formData, steps_to_reproduce: filteredSteps };
+
     try {
       setLoading(true);
-      const response = await findingApi.create({ ...formData, project_id: parsedProjectId });
-      const id = response.data.data?.id;
+      let id: number | undefined;
+      if (draftId) {
+        await findingApi.updateFinding(draftId, { ...submitData, project_id: parsedProjectId, status: 'pending_review' });
+        id = draftId;
+      } else {
+        const response = await findingApi.create({ ...submitData, project_id: parsedProjectId, status: 'pending_review' });
+        id = response.data.data?.id;
+      }
       setCreatedFindingId(id || null);
       toast.success('Finding created');
     } catch (error) {
@@ -87,6 +143,21 @@ const CreateFindingPage = () => {
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back to Project
       </Button>
+      {draftId && !createdFindingId && (
+        <div className="flex items-center gap-2 text-sm text-on-surface-variant mb-4">
+          {isSaving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Saving draft...</span>
+            </>
+          ) : lastSaved ? (
+            <>
+              <Save className="h-4 w-4 text-green-500" />
+              <span>Draft saved {lastSaved.toLocaleTimeString()}</span>
+            </>
+          ) : null}
+        </div>
+      )}
 
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-on-surface">Create New Finding</h1>
@@ -157,12 +228,18 @@ const CreateFindingPage = () => {
                   </Button>
                 </div>
                 <div className="space-y-2">
-                  {(formData.steps_to_reproduce || []).map((step, index) => (
+                  {(formData.steps_to_reproduce || []).map((step: string, index: number) => (
                     <div key={index} className="flex gap-2">
                       <span className="text-on-surface-variant mt-2">{index + 1}.</span>
                       <Input
                         value={step}
                         onChange={(e) => updateStep(index, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && index === (formData.steps_to_reproduce?.length ?? 0) - 1 && step.trim()) {
+                            e.preventDefault();
+                            addStep();
+                          }
+                        }}
                         placeholder="Enter step..."
                         className="flex-1 bg-surface border-outline text-on-surface"
                       />
@@ -215,7 +292,6 @@ const CreateFindingPage = () => {
             {createdFindingId ? (
               <div className="space-y-3">
                 <p className="text-xs text-on-surface-variant">Upload screenshots/logs to attach to the finding.</p>
-                <EvidenceUploader findingId={createdFindingId} />
                 <Button onClick={() => navigate(`/findings/${createdFindingId}`)} className="w-full bg-primary text-surface hover:bg-primary/90">
                   View Finding
                 </Button>

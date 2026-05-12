@@ -42,4 +42,7 @@ router.post('/:id/submit-review', requireRole('analyst', 'reviewer', 'manager'),
 router.get('/:id/versions', apiLimiter, FindingController.getVersionHistory);
 router.get('/:id/versions/:version', apiLimiter, FindingController.getVersion);
 
+// Import findings from another project - Analyst, Reviewer, Manager
+router.post('/import', requireRole('analyst', 'reviewer', 'manager'), apiLimiter, FindingController.importFromProject);
+
 export default router;

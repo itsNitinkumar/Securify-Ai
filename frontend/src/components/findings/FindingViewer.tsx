@@ -202,13 +202,41 @@ const FindingViewer = ({
             {finding.steps_to_reproduce && finding.steps_to_reproduce.length > 0 && (
               <Card className="p-4 bg-surface border-outline-variant">
                 <h3 className="text-sm font-semibold text-on-surface mb-3">Steps to Reproduce</h3>
-                <ol className="list-decimal list-inside space-y-2">
-                  {finding.steps_to_reproduce.map((step, index) => (
-                    <li key={index} className="text-sm text-on-surface-variant">
-                      {step}
-                    </li>
-                  ))}
-                </ol>
+                <div className="space-y-4">
+                  {finding.steps_to_reproduce.map((step: any, index: number) => {
+                    // Support both new format (object) and legacy format (string)
+                    const isNewFormat = typeof step === 'object' && step !== null && 'stepNumber' in step;
+                    const stepNumber = isNewFormat ? step.stepNumber : index + 1;
+                    const description = isNewFormat ? step.description : step;
+                    const image = isNewFormat ? step.image : null;
+                    const caption = isNewFormat ? step.caption : null;
+                    
+                    return (
+                      <div key={index} className="bg-surface-low p-3 rounded-lg border border-outline-variant">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded">
+                            Step {stepNumber}
+                          </span>
+                        </div>
+                        <p className="text-sm text-on-surface-variant mb-2">
+                          {description}
+                        </p>
+                        {image && (
+                          <div className="mt-3">
+                            <img 
+                              src={image} 
+                              alt={`Step ${stepNumber}`} 
+                              className="max-h-64 rounded border border-outline-variant" 
+                            />
+                            {caption && (
+                              <p className="text-xs text-on-surface-variant mt-2 italic">{caption}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </Card>
             )}
 

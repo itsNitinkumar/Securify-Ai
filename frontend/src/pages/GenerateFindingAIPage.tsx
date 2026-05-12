@@ -1,22 +1,31 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, RefreshCw, Sparkles, Upload, FileText, Shield, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Loader2, RefreshCw, Sparkles, Upload, FileText, Shield, AlertTriangle, Plus, Trash2, Image as ImageIcon, Save } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { findingApi } from '@/api/findingApi';
-import EvidenceUploader from '@/components/findings/EvidenceUploader';
+import { uploadApi } from '@/api/uploadApi';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+
+interface StepData {
+  stepNumber: number;
+  description: string;
+  image?: string;
+  caption?: string;
+}
 
 const GenerateFindingAIPage = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const parsedProjectId = projectId ? Number.parseInt(projectId, 10) : undefined;
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<'evidence' | 'generate' | 'review'>('evidence');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [step, setStep] = useState<'input' | 'review'>('input');
   const [draftFindingId, setDraftFindingId] = useState<number | null>(null);
   const [generatedFinding, setGeneratedFinding] = useState<any>(null);
+  const [editableSteps, setEditableSteps] = useState<StepData[]>([]);
   const [formData, setFormData] = useState({
     title: '',
     severity: 'Medium',
@@ -24,6 +33,51 @@ const GenerateFindingAIPage = () => {
     affectedEndpoint: '',
     evidence: '',
   });
+
+  // Load draft from localStorage on mount
+  useEffect(() => {
+    if (projectId) {
+      const draftKey = `finding-draft-${projectId}`;
+      const savedDraft = localStorage.getItem(draftKey);
+      if (savedDraft) {
+        try {
+          const draft = JSON.parse(savedDraft);
+          setFormData(draft.formData || formData);
+          setGeneratedFinding(draft.generatedFinding || null);
+          setEditableSteps(draft.editableSteps || []);
+          setStep(draft.step || 'input');
+          if (draft.generatedFinding) {
+            toast.success('Draft restored');
+          }
+        } catch (error) {
+          console.error('Failed to restore draft:', error);
+        }
+      }
+    }
+  }, [projectId]);
+
+  // Save draft to localStorage whenever state changes
+  useEffect(() => {
+    if (projectId && (formData.title || formData.evidence || generatedFinding)) {
+      const draftKey = `finding-draft-${projectId}`;
+      const draft = {
+        formData,
+        generatedFinding,
+        editableSteps,
+        step,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+    }
+  }, [projectId, formData, generatedFinding, editableSteps, step]);
+
+  // Clear draft from localStorage
+  const clearDraft = () => {
+    if (projectId) {
+      const draftKey = `finding-draft-${projectId}`;
+      localStorage.removeItem(draftKey);
+    }
+  };
 
   const severities = useMemo(
     () => [
@@ -38,7 +92,22 @@ const GenerateFindingAIPage = () => {
 
   const evidencePayload = `Vulnerability Type: ${formData.vulnerabilityType}\nAffected: ${formData.affectedEndpoint}\n\nEvidence:\n${formData.evidence}`;
 
-  const handleCreateDraft = async () => {
+  // Initialize editable steps when entering review with AI-generated steps
+  const initializeEditableSteps = (steps: any[]) => {
+    if (Array.isArray(steps) && steps.length > 0) {
+      const converted = steps.map((step, index) => ({
+        stepNumber: index + 1,
+        description: typeof step === 'string' ? step : step.description || '',
+        image: typeof step === 'object' ? step.image : undefined,
+        caption: typeof step === 'object' ? step.caption : undefined,
+      }));
+      setEditableSteps(converted);
+    } else {
+      setEditableSteps([{ stepNumber: 1, description: '', image: '', caption: '' }]);
+    }
+  };
+
+  const handleGenerate = async () => {
     if (!parsedProjectId) {
       toast.error('Missing project id');
       return;
@@ -50,35 +119,14 @@ const GenerateFindingAIPage = () => {
 
     try {
       setLoading(true);
-      const response = await findingApi.create({
-        title: formData.title,
-        severity: formData.severity,
-        description: evidencePayload,
-        affected_target: formData.affectedEndpoint,
-        project_id: parsedProjectId,
-      });
-      const id = response.data.data?.id || null;
-      setDraftFindingId(id);
-      setStep('generate');
-      toast.success('Draft created');
-    } catch (error) {
-      console.error('Failed to create draft finding:', error);
-      toast.error('Failed to create draft finding');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGenerate = async () => {
-    if (!draftFindingId) return;
-    try {
-      setLoading(true);
       const response = await findingApi.generateContent({
         evidence: evidencePayload,
         severity: formData.severity,
         project_id: parsedProjectId,
       });
-      setGeneratedFinding(response.data.data);
+      const generated = response.data.data;
+      setGeneratedFinding(generated);
+      initializeEditableSteps(generated?.steps_to_reproduce || []);
       setStep('review');
       toast.success('Generated');
     } catch (error: any) {
@@ -90,32 +138,108 @@ const GenerateFindingAIPage = () => {
   };
 
   const handleAccept = async () => {
-    if (!draftFindingId || !generatedFinding) return;
+    if (!parsedProjectId || !generatedFinding) return;
     try {
       setLoading(true);
-      await findingApi.update(draftFindingId, {
-        title: generatedFinding.title,
+      // Filter out empty steps
+      const validSteps = editableSteps.filter(s => s.description.trim() || s.image);
+      
+      console.log('Saving finding with steps:', validSteps);
+      
+      const response = await findingApi.create({
+        title: generatedFinding.title || formData.title,
+        severity: formData.severity,
         description: generatedFinding.description,
         affected_target: generatedFinding.affected_target,
         likelihood: generatedFinding.likelihood,
         impact: generatedFinding.impact,
-        steps_to_reproduce: generatedFinding.steps_to_reproduce,
+        steps_to_reproduce: validSteps,
         recommendation: generatedFinding.recommendation,
         references: generatedFinding.references,
+        project_id: parsedProjectId,
+        status: 'draft',
       });
-      toast.success('Saved');
-      navigate(`/findings/${draftFindingId}`);
-    } catch (error) {
+      const newId = response.data.data?.id;
+      clearDraft(); // Clear draft after successful save
+      toast.success('Finding saved successfully');
+      if (newId) {
+        navigate(`/findings/${newId}`);
+      } else {
+        navigate(`/projects/${projectId}`);
+      }
+    } catch (error: any) {
       console.error('Failed to save AI-generated finding:', error);
-      toast.error('Failed to save generated finding');
+      console.error('Error response:', error?.response?.data);
+      toast.error(error?.response?.data?.message || 'Failed to save finding. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleRegenerate = () => {
-    setStep('generate');
+    setStep('input');
     setGeneratedFinding(null);
+  };
+
+  const addStep = () => {
+    const newStepNumber = editableSteps.length + 1;
+    setEditableSteps([...editableSteps, { stepNumber: newStepNumber, description: '', image: '', caption: '' }]);
+  };
+
+  const removeStep = (index: number) => {
+    if (editableSteps.length <= 1) return;
+    const newSteps = editableSteps.filter((_, i) => i !== index).map((step, i) => ({ ...step, stepNumber: i + 1 }));
+    setEditableSteps(newSteps);
+  };
+
+  const updateStep = (index: number, field: keyof StepData, value: string) => {
+    const newSteps = [...editableSteps];
+    newSteps[index] = { ...newSteps[index], [field]: value };
+    setEditableSteps(newSteps);
+  };
+
+  const handleImageUpload = async (index: number, file: File) => {
+    try {
+      setUploadingImage(true);
+      const response = await uploadApi.uploadStepImage(file);
+      if (response.data) {
+        updateStep(index, 'image', response.data.url);
+        toast.success('Image uploaded');
+      }
+    } catch (error) {
+      console.error('Failed to upload image:', error);
+      toast.error('Failed to upload image');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleImagePaste = async (index: number, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            await handleImageUpload(index, file);
+            break;
+          }
+        }
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = async (index: number, e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files.length > 0 && files[0].type.startsWith('image/')) {
+      await handleImageUpload(index, files[0]);
+    }
   };
 
   return (
@@ -137,14 +261,13 @@ const GenerateFindingAIPage = () => {
           <h1 className="text-2xl md:text-3xl font-bold text-on-surface">Generate Finding with AI</h1>
         </div>
         <p className="text-sm md:text-base text-on-surface-variant">
-          {step === 'evidence' && 'Step 1: Add evidence and basic information'}
-          {step === 'generate' && 'Step 2: Upload screenshots and generate with AI'}
-          {step === 'review' && 'Step 3: Review and accept the generated finding'}
+          {step === 'input' && 'Step 1: Add details and generate finding'}
+          {step === 'review' && 'Step 2: Review and accept the generated finding'}
         </p>
       </div>
 
       <Card className="p-6 bg-surface-high border-outline">
-        {step === 'evidence' ? (
+        {step === 'input' ? (
           <div className="space-y-6">
             <div>
               <label className="text-sm font-medium text-on-surface mb-2 block">
@@ -217,47 +340,8 @@ const GenerateFindingAIPage = () => {
               </Button>
               <Button
                 type="button"
-                onClick={() => void handleCreateDraft()}
-                disabled={loading || !formData.title || !formData.evidence}
-                className="bg-primary text-surface hover:bg-primary/90"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating Draft...
-                  </>
-                ) : (
-                  'Next: Upload Evidence'
-                )}
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {step === 'generate' && draftFindingId ? (
-          <div className="space-y-6">
-            <Card className="p-4 bg-surface border-outline-variant">
-              <h4 className="text-sm font-semibold text-on-surface mb-2">Draft Finding Created</h4>
-              <p className="text-sm text-on-surface-variant mb-1">Title: {formData.title}</p>
-              <p className="text-sm text-on-surface-variant">Severity: {formData.severity}</p>
-            </Card>
-
-            <div>
-              <label className="text-sm font-medium text-on-surface mb-3 block flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                Upload Supporting Evidence (Screenshots, Logs, Scan Results)
-              </label>
-              <EvidenceUploader findingId={draftFindingId} />
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => navigate(`/projects/${projectId}`)} className="border-outline text-on-surface-variant">
-                Cancel
-              </Button>
-              <Button
-                type="button"
                 onClick={() => void handleGenerate()}
-                disabled={loading}
+                disabled={loading || !formData.title || !formData.evidence}
                 className="bg-primary text-surface hover:bg-primary/90"
               >
                 {loading ? (
@@ -349,16 +433,78 @@ const GenerateFindingAIPage = () => {
                 </div>
 
                 {/* Steps to Reproduce */}
-                {generatedFinding.steps_to_reproduce && generatedFinding.steps_to_reproduce.length > 0 && (
-                  <div className="pb-4 border-b border-outline-variant">
-                    <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3">Steps to Reproduce</h4>
-                    <ol className="list-decimal list-inside text-sm text-on-surface-variant space-y-2 ml-2">
-                      {generatedFinding.steps_to_reproduce.map((step: string, index: number) => (
-                        <li key={index} className="leading-relaxed">{step}</li>
-                      ))}
-                    </ol>
+                <div className="pb-4 border-b border-outline-variant">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Steps to Reproduce</h4>
+                    <Button type="button" variant="ghost" size="sm" onClick={addStep} className="text-primary hover:text-primary/80">
+                      <Plus className="w-4 h-4 mr-1" /> Add Step
+                    </Button>
                   </div>
-                )}
+                  <div className="space-y-4">
+                    {editableSteps.map((step, index) => (
+                      <div key={index} className="bg-surface-low p-4 rounded-lg border border-outline-variant">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-primary">Step {step.stepNumber}</span>
+                          {editableSteps.length > 1 && (
+                            <Button type="button" variant="ghost" size="sm" onClick={() => removeStep(index)} className="text-error hover:text-error/80">
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                        <textarea
+                          value={step.description}
+                          onChange={(e) => updateStep(index, 'description', e.target.value)}
+                          placeholder="Describe this step..."
+                          rows={2}
+                          className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface text-sm mb-3"
+                        />
+                        <div 
+                          className="border-2 border-dashed border-outline-variant rounded-lg p-4 text-center cursor-pointer hover:border-primary transition-colors"
+                          onDragOver={handleDragOver}
+                          onDrop={(e) => handleDrop(index, e)}
+                        >
+                          {step.image ? (
+                            <div className="relative">
+                              <img src={step.image} alt={`Step ${step.stepNumber}`} className="max-h-40 mx-auto rounded" />
+                              <button
+                                type="button"
+                                onClick={() => updateStep(index, 'image', '')}
+                                className="absolute top-0 right-0 bg-error text-white rounded-full p-1"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-on-surface-variant">
+                              <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                              <p className="text-xs">Drag & drop image, paste, or click to upload</p>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                id={`step-image-${index}`}
+                                onChange={(e) => e.target.files?.[0] && handleImageUpload(index, e.target.files[0])}
+                              />
+                              <label htmlFor={`step-image-${index}`} className="text-xs text-primary cursor-pointer hover:underline mt-1 block">
+                                Click to upload
+                              </label>
+                            </div>
+                          )}
+                        </div>
+                        {step.image && (
+                          <div className="mt-2">
+                            <Input
+                              value={step.caption || ''}
+                              onChange={(e) => updateStep(index, 'caption', e.target.value)}
+                              placeholder="Image caption (optional)"
+                              className="bg-surface border-outline text-on-surface text-sm"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 {/* Recommendations */}
                 {generatedFinding.recommendation && generatedFinding.recommendation.length > 0 && (
@@ -415,24 +561,35 @@ const GenerateFindingAIPage = () => {
               <p className="text-sm text-green-400">
                 ✓ Finding generated successfully! Review the details above and click "Accept & Save" to add it to your project.
               </p>
+              <p className="text-xs text-green-400/70 mt-1">
+                💾 Draft auto-saved. You can safely close this page and return later.
+              </p>
             </Card>
 
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => navigate(`/projects/${projectId}`)} className="border-outline text-on-surface-variant">
                 Back to Project
               </Button>
-              <Button type="button" variant="ghost" onClick={handleRegenerate} disabled={loading} className="text-on-surface">
+              <Button type="button" variant="ghost" onClick={handleRegenerate} disabled={loading || uploadingImage} className="text-on-surface">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Regenerate
               </Button>
-              <Button type="button" onClick={() => void handleAccept()} disabled={loading} className="bg-primary text-surface hover:bg-primary/90">
+              <Button type="button" onClick={() => void handleAccept()} disabled={loading || uploadingImage} className="bg-primary text-surface hover:bg-primary/90">
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Saving...
                   </>
+                ) : uploadingImage ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Uploading image...
+                  </>
                 ) : (
-                  'Accept & Save'
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Accept & Save
+                  </>
                 )}
               </Button>
             </div>
