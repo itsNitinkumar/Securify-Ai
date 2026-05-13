@@ -1393,8 +1393,8 @@ class ReportService {
         const docDefaults = $styles('w\\:docDefaults w\\:rPrDefault w\\:rPr').first();
         if (docDefaults.length) setFontsOn(docDefaults);
 
-        // Common styles: Normal + headings + TOC (Google Docs outline uses these)
-        ['Normal', 'Title', 'Subtitle', 'Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6', 'TOC1', 'TOC2', 'TOC3'].forEach((styleId) => {
+        // Common styles: Normal + headings
+        ['Normal', 'Heading1', 'Heading2', 'Heading3'].forEach((styleId) => {
           const style = $styles(`w\\:style[w\\:styleId="${styleId}"]`).first();
           const rPr = style.find('w\\:rPr').first();
           if (rPr.length) setFontsOn(rPr);
@@ -1576,13 +1576,12 @@ class ReportService {
       }
     };
 
-    const createImageDrawing = (relId: string, widthEMU: number = 6500000, heightEMU: number = 3600000): string => {
+    const createImageDrawing = (relId: string, widthEMU: number = 6200000, heightEMU: number = 3600000): string => {
       // Center the image and use a larger default size for report screenshots.
       return `<w:p>
         <w:pPr>
           <w:pStyle w:val="Normal"/>
           <w:jc w:val="center"/>
-          <w:spacing w:before="60" w:after="60"/>
         </w:pPr>
         <w:r>
           <w:drawing>
@@ -2522,46 +2521,6 @@ const range = children.slice(startIdx + 1, endIdx);
     replaceAllParagraphText('User Roles (Web application & API)', String(getSection('scope')?.fields?.user_roles_title || 'User Roles (Web application & API)'));
     replaceAllParagraphText('Tools', String(getSection('scope')?.fields?.tools_title || 'Tools'));
 
-    // Ensure main section headings use Heading3 (matches reference styling/outlines in Google Docs)
-    {
-      const headingTexts = [
-        sectionTitle('table_of_contents', 'Table of Contents'),
-        sectionTitle('confidentiality', 'Confidentiality and Distribution Restrictions'),
-        sectionTitle('introduction', 'Introduction'),
-        sectionTitle('approach', 'Approach'),
-        sectionTitle('runtime_assessment', 'Runtime Application Vulnerability Assessment'),
-        sectionTitle('scope', 'Scope'),
-        sectionTitle('assessment_limitation', 'Assessment Limitation'),
-        sectionTitle('findings_recommendation', 'Findings and Recommendation'),
-        sectionTitle('risk_classification', 'Risk Classification'),
-        sectionTitle('measurement_impact', 'Measurement of Impact'),
-        sectionTitle('measurement_likelihood', 'Measurement of Likelihood'),
-        sectionTitle('overall_risk', 'Overall Risk'),
-        sectionTitle('zero_risk_issues', 'Zero-risk Issues'),
-        sectionTitle('vulnerabilities', 'Vulnerabilities'),
-        sectionTitle('summary', 'Summary'),
-        sectionTitle('detailed_vulnerabilities', 'Detailed Vulnerabilities'),
-        sectionTitle('appendix_a', 'Appendix A'),
-      ].map((t) => String(t));
-
-      body.find('w\\:p').each((_: number, p: any) => {
-        const txt = paraText(p);
-        if (!txt) return;
-        if (!headingTexts.includes(txt)) return;
-        let pPr = $(p).children('w\\:pPr').first();
-        if (!pPr.length) {
-          $(p).prepend('<w:pPr/>');
-          pPr = $(p).children('w\\:pPr').first();
-        }
-        let pStyle = pPr.children('w\\:pStyle').first();
-        if (!pStyle.length) {
-          pPr.prepend('<w:pStyle w:val="Heading3"/>');
-        } else {
-          pStyle.attr('w:val', 'Heading3');
-        }
-      });
-    }
-
     // Second pass: replace any remaining literal placeholders in paragraphs inserted by section replacements.
     body.find('w\\:p').each((_: number, p: any) => {
       const text = paraText(p);
@@ -3126,10 +3085,6 @@ const range = children.slice(startIdx + 1, endIdx);
               { text: lead, bold: true, color: opts?.color || '000000' },
               { text: tail ? ` ${tail}` : '', color: opts?.color || '000000', underline: opts?.underline },
             ]);
-            // Tighten spacing for step lines so the image sits closer (professional report look).
-            if (String(lead).startsWith('Step ')) {
-              ensureSectionParaSpacing(p.get(0), { before: 0, after: 60 });
-            }
             sectionDoc(beforeNode).before(sectionDoc.xml(p));
           };
 
@@ -3462,9 +3417,8 @@ const range = children.slice(startIdx + 1, endIdx);
               const existingPPr = p.children('w\\:pPr').first();
               if (existingPPr.length) {
                 existingPPr.append('<w:jc w:val="center"/>');
-                existingPPr.append('<w:spacing w:before="0" w:after="120"/>');
               } else {
-                p.prepend('<w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="120"/></w:pPr>');
+                p.prepend('<w:pPr><w:jc w:val="center"/></w:pPr>');
               }
               setParagraphSegments(sectionDoc, captionPara.get(0), [
                 { text: `Fig ${step.stepNumber}: ${step.caption}`, italic: true, color: '9ca3af' },

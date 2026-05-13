@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { reportApi } from '@/api/reportApi';
 import { Finding } from '@/api/findingApi';
-import { Loader2, Eye, EyeOff, FileText } from 'lucide-react';
+import { Loader2, Eye, EyeOff, FileText, Download } from 'lucide-react';
 
 interface ReportPreviewProps {
   projectName: string;
@@ -24,32 +24,23 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
 }) => {
   const [showPreview, setShowPreview] = useState(true);
   const [pdfUrl, setPdfUrl] = useState<string>('');
+  const [docxUrl, setDocxUrl] = useState<string>('');
   const [loading, setLoading] = useState(false);
-
-  // Parent components often pass a new array instance on each render.
-  // Use a stable key to avoid refetching/reloading the preview unnecessarily.
-  const selectedKey = selectedFindingIds.length
-    ? [...selectedFindingIds].sort((a, b) => a - b).join(',')
-    : '';
+  const [pdfFailed, setPdfFailed] = useState(false);
 
   useEffect(() => {
-    if (showPreview && projectId && selectedKey) {
+    if (showPreview && projectId && selectedFindingIds.length > 0) {
       fetchPreview();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showPreview, projectId, selectedKey, projectTemplateId]);
-
-  useEffect(() => {
-    return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-    };
-  }, [pdfUrl]);
+  }, [showPreview, projectId, selectedFindingIds]);
 
   const fetchPreview = async () => {
     if (!projectId) return;
     
     setLoading(true);
+    setPdfFailed(false);
 
+    // Try PDF first
     try {
       const pdfBlob = await reportApi.previewReport({
         project_id: projectId,
@@ -59,8 +50,25 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
       });
       const url = window.URL.createObjectURL(pdfBlob);
       setPdfUrl(url);
-    } catch {
-      // Keep last good preview on screen if regeneration fails.
+      setDocxUrl(''); // Clear any previous DOCX
+    } catch (pdfErr: any) {
+      console.log('PDF preview failed, trying DOCX:', pdfErr);
+      setPdfFailed(true);
+      setPdfUrl('');
+      
+      // Fallback to DOCX
+      try {
+        const docxBlob = await reportApi.previewReport({
+          project_id: projectId,
+          format: 'docx',
+          template_id: projectTemplateId || undefined,
+          finding_ids: selectedFindingIds,
+        });
+        const docxUrlValue = window.URL.createObjectURL(docxBlob);
+        setDocxUrl(docxUrlValue);
+      } catch (docxErr: any) {
+        console.error('Both PDF and DOCX failed:', docxErr);
+      }
     } finally {
       setLoading(false);
     }
@@ -118,7 +126,26 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             />
           )}
 
-          {!pdfUrl && !loading && selectedFindingIds.length === 0 && (
+          {/* Fallback: PDF failed, show DOCX download */}
+          {docxUrl && !loading && !pdfUrl && (
+            <div className="p-8">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
+                <FileText className="w-16 h-16 mx-auto mb-4 text-amber-600" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">PDF Preview Unavailable</h3>
+                <p className="text-gray-600 mb-4">PDF generation is currently unavailable. Download the DOCX report instead.</p>
+                <a
+                  href={docxUrl}
+                  download={`${projectName.replace(/\s+/g, '_')}_report.docx`}
+                  className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download DOCX Report
+                </a>
+              </div>
+            </div>
+          )}
+
+          {!pdfUrl && !docxUrl && !loading && selectedFindingIds.length === 0 && (
             <div className="p-8 text-center text-gray-500">
               <FileText className="w-12 h-12 mx-auto mb-2 text-gray-400" />
               <p>Select findings to preview the report</p>
