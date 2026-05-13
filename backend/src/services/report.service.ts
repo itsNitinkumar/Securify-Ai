@@ -885,14 +885,7 @@ class ReportService {
       };
     }
 
-    let buffer: Buffer;
-    try {
-      buffer = await this.generatePDFFromDOCXBuffer(reportData);
-    } catch (error) {
-      console.warn('⚠️ Falling back to HTML PDF generation:', error);
-      const html = this.renderReportHTML(reportData);
-      buffer = await this.generatePDFBuffer(html);
-    }
+    const buffer = await this.generatePDFFromDOCXBuffer(reportData);
     return {
       buffer,
       contentType: 'application/pdf',
@@ -921,14 +914,7 @@ class ReportService {
     console.log('📄 Generating professional PDF report at:', filePath);
 
     try {
-      let buffer: Buffer;
-      try {
-        buffer = await this.generatePDFFromDOCXBuffer(data);
-      } catch (error) {
-        console.warn('⚠️ Falling back to HTML PDF generation:', error);
-        const html = this.renderReportHTML(data);
-        buffer = await this.generatePDFBuffer(html);
-      }
+      const buffer = await this.generatePDFFromDOCXBuffer(data);
       fs.writeFileSync(filePath, buffer);
 
       console.log('✅ Professional PDF report created successfully:', filePath);
@@ -1407,8 +1393,8 @@ class ReportService {
         const docDefaults = $styles('w\\:docDefaults w\\:rPrDefault w\\:rPr').first();
         if (docDefaults.length) setFontsOn(docDefaults);
 
-        // Common styles: Normal + headings
-        ['Normal', 'Heading1', 'Heading2', 'Heading3'].forEach((styleId) => {
+        // Common styles: Normal + headings + TOC (Google Docs outline uses these)
+        ['Normal', 'Title', 'Subtitle', 'Heading1', 'Heading2', 'Heading3', 'Heading4', 'Heading5', 'Heading6', 'TOC1', 'TOC2', 'TOC3'].forEach((styleId) => {
           const style = $styles(`w\\:style[w\\:styleId="${styleId}"]`).first();
           const rPr = style.find('w\\:rPr').first();
           if (rPr.length) setFontsOn(rPr);
@@ -1508,18 +1494,33 @@ class ReportService {
     const cloneNode = (el: any) => cheerio.load($.xml(el), { xmlMode: true, decodeEntities: false }).root().children().first();
 
     // Image handling for DOCX
-    const imageMap: Map<string, { relId: string; mediaPath: string }> = new Map();
+    const imageMap: Map<string, { relId: string; relTarget: string }> = new Map();
     let imageCounter = 0;
 
-    const addImageToZip = (base64Data: string, findingId: number, stepIdx: number): string | null => {
+    const addImageToZip = (imagePath: string, findingId: number, stepIdx: number): string | null => {
       try {
         const imageKey = `finding_${findingId}_step_${stepIdx}`;
         if (imageMap.has(imageKey)) {
           return imageMap.get(imageKey)!.relId;
         }
 
-        const base64 = base64Data.includes('base64,') ? base64Data.split('base64,')[1] : base64Data;
-        const binaryData = Buffer.from(base64, 'base64');
+        let binaryData: Buffer;
+
+        // Check if it's a file path (starts with /images/)
+        if (imagePath.startsWith('/images/')) {
+          const fullPath = path.join(process.cwd(), 'public', imagePath);
+          console.log(`   📁 Reading image from: ${fullPath}`);
+          if (!fs.existsSync(fullPath)) {
+            console.log(`   ❌ Image file not found: ${fullPath}`);
+            return null;
+          }
+          binaryData = fs.readFileSync(fullPath);
+          console.log(`   📄 Read ${binaryData.length} bytes`);
+        } else {
+          // Handle base64 data
+          const base64 = imagePath.includes('base64,') ? imagePath.split('base64,')[1] : imagePath;
+          binaryData = Buffer.from(base64, 'base64');
+        }
 
         // Determine image type and extension
         const mimeType = (() => {
@@ -1527,20 +1528,22 @@ class ReportService {
           if (firstBytes === 0xFF) return 'image/jpeg';
           if (firstBytes === 0x89) return 'image/png';
           if (firstBytes === 0x47) return 'image/gif';
+          if (firstBytes === 0x52) return 'image/webp';
           return 'image/jpeg';
         })();
 
-        const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/gif' ? 'gif' : 'jpg';
+        const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/gif' ? 'gif' : mimeType === 'image/webp' ? 'webp' : 'jpg';
         const mediaFileName = `image_${findingId}_${stepIdx}.${ext}`;
-        const mediaPath = `word/media/${mediaFileName}`;
+        const zipMediaPath = `word/media/${mediaFileName}`;
+        const relTarget = `media/${mediaFileName}`;
 
-        zip.file(mediaPath, binaryData);
+        zip.file(zipMediaPath, binaryData);
 
         imageCounter++;
         const relId = `rId${1000 + imageCounter}`;
-        imageMap.set(imageKey, { relId, mediaPath });
+        imageMap.set(imageKey, { relId, relTarget });
 
-        console.log(`   📷 Added image to zip: ${mediaPath} (${relId})`);
+        console.log(`   📷 Added image to zip: ${zipMediaPath} (${relId})`);
         return relId;
       } catch (err) {
         console.error(`   ❌ Failed to add image:`, err);
@@ -1561,19 +1564,25 @@ class ReportService {
       return cheerio.load(relsContent, { xmlMode: true, decodeEntities: false });
     };
 
-    const addImageRelationship = (relId: string, mediaPath: string): void => {
+    const addImageRelationship = (relId: string, relTarget: string): void => {
       const $rels = getOrCreateRels();
-      const existingRel = $rels(`Relationship[Target="${mediaPath}"]`);
+      const existingRel = $rels(`Relationship[Target="${relTarget}"]`);
       if (!existingRel.length) {
-        $rels('Relationships').append(`<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${mediaPath}"/>`);
+        $rels('Relationships').append(`<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${relTarget}"/>`);
         zip.file('word/_rels/document.xml.rels', $rels.xml());
+        console.log(`   🔗 Added relationship: ${relId} -> ${relTarget}`);
+      } else {
+        console.log(`   🔗 Relationship already exists: ${relId} -> ${relTarget}`);
       }
     };
 
-    const createImageDrawing = (relId: string, widthEMU: number = 5000000, heightEMU: number = 3000000): string => {
+    const createImageDrawing = (relId: string, widthEMU: number = 6500000, heightEMU: number = 3600000): string => {
+      // Center the image and use a larger default size for report screenshots.
       return `<w:p>
         <w:pPr>
           <w:pStyle w:val="Normal"/>
+          <w:jc w:val="center"/>
+          <w:spacing w:before="60" w:after="60"/>
         </w:pPr>
         <w:r>
           <w:drawing>
@@ -2513,6 +2522,46 @@ const range = children.slice(startIdx + 1, endIdx);
     replaceAllParagraphText('User Roles (Web application & API)', String(getSection('scope')?.fields?.user_roles_title || 'User Roles (Web application & API)'));
     replaceAllParagraphText('Tools', String(getSection('scope')?.fields?.tools_title || 'Tools'));
 
+    // Ensure main section headings use Heading3 (matches reference styling/outlines in Google Docs)
+    {
+      const headingTexts = [
+        sectionTitle('table_of_contents', 'Table of Contents'),
+        sectionTitle('confidentiality', 'Confidentiality and Distribution Restrictions'),
+        sectionTitle('introduction', 'Introduction'),
+        sectionTitle('approach', 'Approach'),
+        sectionTitle('runtime_assessment', 'Runtime Application Vulnerability Assessment'),
+        sectionTitle('scope', 'Scope'),
+        sectionTitle('assessment_limitation', 'Assessment Limitation'),
+        sectionTitle('findings_recommendation', 'Findings and Recommendation'),
+        sectionTitle('risk_classification', 'Risk Classification'),
+        sectionTitle('measurement_impact', 'Measurement of Impact'),
+        sectionTitle('measurement_likelihood', 'Measurement of Likelihood'),
+        sectionTitle('overall_risk', 'Overall Risk'),
+        sectionTitle('zero_risk_issues', 'Zero-risk Issues'),
+        sectionTitle('vulnerabilities', 'Vulnerabilities'),
+        sectionTitle('summary', 'Summary'),
+        sectionTitle('detailed_vulnerabilities', 'Detailed Vulnerabilities'),
+        sectionTitle('appendix_a', 'Appendix A'),
+      ].map((t) => String(t));
+
+      body.find('w\\:p').each((_: number, p: any) => {
+        const txt = paraText(p);
+        if (!txt) return;
+        if (!headingTexts.includes(txt)) return;
+        let pPr = $(p).children('w\\:pPr').first();
+        if (!pPr.length) {
+          $(p).prepend('<w:pPr/>');
+          pPr = $(p).children('w\\:pPr').first();
+        }
+        let pStyle = pPr.children('w\\:pStyle').first();
+        if (!pStyle.length) {
+          pPr.prepend('<w:pStyle w:val="Heading3"/>');
+        } else {
+          pStyle.attr('w:val', 'Heading3');
+        }
+      });
+    }
+
     // Second pass: replace any remaining literal placeholders in paragraphs inserted by section replacements.
     body.find('w\\:p').each((_: number, p: any) => {
       const text = paraText(p);
@@ -3077,6 +3126,10 @@ const range = children.slice(startIdx + 1, endIdx);
               { text: lead, bold: true, color: opts?.color || '000000' },
               { text: tail ? ` ${tail}` : '', color: opts?.color || '000000', underline: opts?.underline },
             ]);
+            // Tighten spacing for step lines so the image sits closer (professional report look).
+            if (String(lead).startsWith('Step ')) {
+              ensureSectionParaSpacing(p.get(0), { before: 0, after: 60 });
+            }
             sectionDoc(beforeNode).before(sectionDoc.xml(p));
           };
 
@@ -3379,25 +3432,45 @@ const range = children.slice(startIdx + 1, endIdx);
             const step = steps[si];
             console.log(`     Step ${step.stepNumber}: "${step.description.substring(0, 50)}..."`);
             appendSectionSplitParagraph(recLabel || backPara || titlePara, stepTemplate, `Step ${step.stepNumber}:`, step.description, { color: '000000' });
-            if (step.caption) {
-              const captionPara = cloneSectionNode(stepTemplate);
-              setParagraphSegments(sectionDoc, captionPara.get(0), [
-                { text: `Fig ${step.stepNumber}: ${step.caption}`, italic: true, color: '666666' },
-              ]);
-              sectionDoc(recLabel || backPara || titlePara).before(sectionDoc.xml(captionPara));
-              console.log(`       - Caption added: ${step.caption}`);
-            }
+            // Important ordering: we insert blocks BEFORE the anchor paragraph. Inserting in sequence means
+            // later inserts appear closer to the anchor. To get: Step -> Image -> Caption, we must insert
+            // Image first, then Caption.
             if (step.image && typeof step.image === 'string') {
               const findingId = finding.id || 0;
+              console.log(`       - Processing image for step ${si}: ${step.image}`);
               const relId = addImageToZip(step.image, findingId, si);
               if (relId) {
-                addImageRelationship(relId, imageMap.get(`finding_${findingId}_step_${si}`)!.mediaPath);
-                const imageDrawing = createImageDrawing(relId, 4800000, 3200000);
-                sectionDoc(recLabel || backPara || titlePara).before(imageDrawing);
-                console.log(`       - Image embedded: ${step.image.substring(0, 30)}...`);
+                const imageInfo = imageMap.get(`finding_${findingId}_step_${si}`);
+                if (imageInfo) {
+                  addImageRelationship(relId, imageInfo.relTarget);
+                  const imageDrawing = createImageDrawing(relId);
+                  const imgPara = cheerio.load(imageDrawing, { xmlMode: true, decodeEntities: false }).root().children().first();
+                  sectionDoc(recLabel || backPara || titlePara).before(sectionDoc.xml(imgPara));
+
+                  console.log(`       ✅ Image embedded successfully: ${imageInfo.relTarget} as ${relId}`);
+                } else {
+                  console.log(`       ❌ Image info not found in map`);
+                }
               } else {
-                console.log(`       - Failed to embed image`);
+                console.log(`       ❌ Failed to embed image`);
               }
+            }
+            if (step.caption) {
+              const captionPara = cloneSectionNode(stepTemplate);
+              // Add center alignment to caption
+              const p = sectionDoc(captionPara.get(0));
+              const existingPPr = p.children('w\\:pPr').first();
+              if (existingPPr.length) {
+                existingPPr.append('<w:jc w:val="center"/>');
+                existingPPr.append('<w:spacing w:before="0" w:after="120"/>');
+              } else {
+                p.prepend('<w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="120"/></w:pPr>');
+              }
+              setParagraphSegments(sectionDoc, captionPara.get(0), [
+                { text: `Fig ${step.stepNumber}: ${step.caption}`, italic: true, color: '9ca3af' },
+              ]);
+              sectionDoc(recLabel || backPara || titlePara).before(sectionDoc.xml(captionPara));
+              console.log(`       - Caption added (centered): ${step.caption}`);
             }
           }
 

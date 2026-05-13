@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, Plus, Upload, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, Upload, Save } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { findingApi, CreateFindingData } from '@/api/findingApi';
 import EvidenceUploader from '@/components/findings/EvidenceUploader';
+import StepEditor from '@/components/findings/StepEditor';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,13 @@ const CreateFindingPage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  interface Step {
+    stepNumber: number;
+    description: string;
+    image?: string;
+    caption?: string;
+  }
+
   const [formData, setFormData] = useState<CreateFindingData>({
     title: '',
     severity: 'Medium',
@@ -27,7 +35,7 @@ const CreateFindingPage = () => {
     affected_target: '',
     likelihood: '',
     impact: '',
-    steps_to_reproduce: [''],
+    steps_to_reproduce: [] as Step[],
     proof_of_concept: '',
     remediation: '',
     references: [''],
@@ -85,22 +93,15 @@ const CreateFindingPage = () => {
     };
   }, [formData, draftId]);
 
-  const addStep = () => {
+  const handleStepsChange = (steps: Step[]) => {
+    const renumberedSteps = steps.map((step, index) => ({
+      ...step,
+      stepNumber: index + 1,
+    }));
     setFormData((current) => ({
       ...current,
-      steps_to_reproduce: [...(current.steps_to_reproduce || []), ''],
+      steps_to_reproduce: renumberedSteps,
     }));
-  };
-
-  const updateStep = (index: number, value: string) => {
-    const next = [...(formData.steps_to_reproduce || [])];
-    next[index] = value;
-    setFormData((current) => ({ ...current, steps_to_reproduce: next }));
-  };
-
-  const removeStep = (index: number) => {
-    const next = (formData.steps_to_reproduce || []).filter((_: string, i: number) => i !== index);
-    setFormData((current) => ({ ...current, steps_to_reproduce: next.length ? next : [''] }));
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -110,7 +111,9 @@ const CreateFindingPage = () => {
       return;
     }
 
-    const filteredSteps = (formData.steps_to_reproduce || []).filter((s: string) => s.trim());
+    const filteredSteps = (formData.steps_to_reproduce || []).filter(
+      (s: Step) => s.description.trim() || s.image
+    );
     const submitData = { ...formData, steps_to_reproduce: filteredSteps };
 
     try {
@@ -220,37 +223,10 @@ const CreateFindingPage = () => {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-on-surface">Steps to Reproduce</label>
-                  <Button type="button" size="sm" variant="outline" onClick={addStep}>
-                    <Plus className="mr-1 h-4 w-4" />
-                    Add Step
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {(formData.steps_to_reproduce || []).map((step: string, index: number) => (
-                    <div key={index} className="flex gap-2">
-                      <span className="text-on-surface-variant mt-2">{index + 1}.</span>
-                      <Input
-                        value={step}
-                        onChange={(e) => updateStep(index, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && index === (formData.steps_to_reproduce?.length ?? 0) - 1 && step.trim()) {
-                            e.preventDefault();
-                            addStep();
-                          }
-                        }}
-                        placeholder="Enter step..."
-                        className="flex-1 bg-surface border-outline text-on-surface"
-                      />
-                      {(formData.steps_to_reproduce || []).length > 1 ? (
-                        <Button type="button" size="sm" variant="ghost" onClick={() => removeStep(index)} className="text-error">
-                          Remove
-                        </Button>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
+                <StepEditor
+                  steps={(formData.steps_to_reproduce || []) as Step[]}
+                  onChange={handleStepsChange}
+                />
               </div>
 
               <div>

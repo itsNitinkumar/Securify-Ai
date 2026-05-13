@@ -234,6 +234,7 @@ const FindingDetailPage = () => {
             isEditing={isEditing}
             onUpdate={loadFinding}
             onRegenerateSection={handleRegenerateSection}
+            onCancelEdit={() => setIsEditing(false)}
           />
         </div>
 

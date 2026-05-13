@@ -12,8 +12,10 @@ import { checkSessionTimeout } from './middlewares/sessionTimeout';
 
 const app: Application = express();
 
-// Security middleware
-app.use(helmet());
+// Security middleware - configure helmet to allow cross-origin images
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.use(cors({
   origin: config.frontendUrl,
   credentials: true,
@@ -47,8 +49,13 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files (uploaded images)
-app.use('/images', express.static('public/images'));
+// Serve static files (uploaded images) - CORS handled by helmet and global cors middleware
+app.use('/images', express.static('public/images', {
+  setHeaders: (res) => {
+    res.set('Access-Control-Allow-Origin', config.frontendUrl);
+    res.set('Access-Control-Allow-Credentials', 'true');
+  }
+}));
 
 // Session timeout check (after authentication)
 app.use('/api/v1', (req, res, next) => checkSessionTimeout(req as any, res, next));

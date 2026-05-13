@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { reportApi } from '@/api/reportApi';
 import { Finding } from '@/api/findingApi';
 import { Loader2, Eye, EyeOff, FileText } from 'lucide-react';
@@ -25,33 +25,42 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [showPreview, setShowPreview] = useState(true);
   const [pdfUrl, setPdfUrl] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string>('');
+
+  // Parent components often pass a new array instance on each render.
+  // Use a stable key to avoid refetching/reloading the preview unnecessarily.
+  const selectedKey = selectedFindingIds.length
+    ? [...selectedFindingIds].sort((a, b) => a - b).join(',')
+    : '';
 
   useEffect(() => {
-    if (showPreview && projectId && selectedFindingIds.length > 0) {
-      fetchPDFPreview();
+    if (showPreview && projectId && selectedKey) {
+      fetchPreview();
     }
-  }, [showPreview, projectId, selectedFindingIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPreview, projectId, selectedKey, projectTemplateId]);
 
-  const fetchPDFPreview = async () => {
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    };
+  }, [pdfUrl]);
+
+  const fetchPreview = async () => {
     if (!projectId) return;
     
     setLoading(true);
-    setError('');
 
     try {
-      const blob = await reportApi.previewReport({
+      const pdfBlob = await reportApi.previewReport({
         project_id: projectId,
         format: 'pdf',
         template_id: projectTemplateId || undefined,
         finding_ids: selectedFindingIds,
       });
-
-      const url = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(pdfBlob);
       setPdfUrl(url);
-    } catch (err: any) {
-      console.error('Failed to fetch PDF preview:', err);
-      setError('Failed to load report preview');
+    } catch {
+      // Keep last good preview on screen if regeneration fails.
     } finally {
       setLoading(false);
     }
@@ -91,23 +100,12 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             <div className="absolute inset-0 flex items-center justify-center bg-white z-10">
               <div className="text-center">
                 <Loader2 className="w-8 h-8 animate-spin text-green-600 mx-auto mb-2" />
-                <p className="text-gray-600">Loading report preview...</p>
+                <p className="text-gray-600">Generating report preview...</p>
               </div>
             </div>
           )}
 
-          {error && (
-            <div className="p-8 text-center text-red-600">
-              <p>{error}</p>
-              <button
-                onClick={fetchPDFPreview}
-                className="mt-2 text-green-600 hover:underline"
-              >
-                Try again
-              </button>
-            </div>
-          )}
-
+          {/* PDF Preview - success case */}
           {pdfUrl && !loading && (
             <iframe
               src={pdfUrl}
@@ -120,7 +118,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             />
           )}
 
-          {!pdfUrl && !loading && !error && selectedFindingIds.length === 0 && (
+          {!pdfUrl && !loading && selectedFindingIds.length === 0 && (
             <div className="p-8 text-center text-gray-500">
               <FileText className="w-12 h-12 mx-auto mb-2 text-gray-400" />
               <p>Select findings to preview the report</p>

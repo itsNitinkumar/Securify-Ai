@@ -19,20 +19,30 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const publicPaths = ['/signin', '/signup', '/auth/callback', '/forgot-password'];
+
+const isPublicPath = (path: string) => publicPaths.some(p => path.startsWith(p));
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch current user from API (cookies are sent automatically via axios)
+    const path = window.location.pathname;
+    
+    if (isPublicPath(path)) {
+      setIsLoading(false);
+      return;
+    }
+
     const fetchCurrentUser = async () => {
       try {
         const response = await axios.get('/auth/profile');
         
         if (response.data) {
           setUser(response.data.data || response.data.user);
-          setToken('cookie-based'); // Placeholder since we use cookies
+          setToken('cookie-based');
         }
       } catch (error) {
         console.error('Failed to fetch user:', error);

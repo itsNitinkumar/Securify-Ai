@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, RefreshCw, Sparkles, Upload, FileText, Shield, AlertTriangle, Plus, Trash2, Image as ImageIcon, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, RefreshCw, Sparkles, Upload as UploadIcon, FileText, Shield, AlertTriangle, Plus, Trash2, Image as ImageIcon, Save, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { findingApi } from '@/api/findingApi';
 import { uploadApi } from '@/api/uploadApi';
@@ -441,68 +441,87 @@ const GenerateFindingAIPage = () => {
                     </Button>
                   </div>
                   <div className="space-y-4">
-                    {editableSteps.map((step, index) => (
-                      <div key={index} className="bg-surface-low p-4 rounded-lg border border-outline-variant">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-semibold text-primary">Step {step.stepNumber}</span>
-                          {editableSteps.length > 1 && (
-                            <Button type="button" variant="ghost" size="sm" onClick={() => removeStep(index)} className="text-error hover:text-error/80">
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                        <textarea
-                          value={step.description}
-                          onChange={(e) => updateStep(index, 'description', e.target.value)}
-                          placeholder="Describe this step..."
-                          rows={2}
-                          className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface text-sm mb-3"
-                        />
-                        <div 
-                          className="border-2 border-dashed border-outline-variant rounded-lg p-4 text-center cursor-pointer hover:border-primary transition-colors"
-                          onDragOver={handleDragOver}
-                          onDrop={(e) => handleDrop(index, e)}
-                        >
-                          {step.image ? (
-                            <div className="relative">
-                              <img src={step.image} alt={`Step ${step.stepNumber}`} className="max-h-40 mx-auto rounded" />
-                              <button
-                                type="button"
-                                onClick={() => updateStep(index, 'image', '')}
-                                className="absolute top-0 right-0 bg-error text-white rounded-full p-1"
+                    {editableSteps.map((step, index) => {
+                      const imageUrl = step.image 
+                        ? (step.image.startsWith('http') ? step.image : step.image.startsWith('/') ? `http://localhost:3000${step.image}` : step.image)
+                        : '';
+                      
+                      return (
+                        <div key={index} className="bg-surface-low p-4 rounded-lg border border-outline-variant space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-primary">Step {step.stepNumber}</span>
+                            {editableSteps.length > 1 && (
+                              <Button type="button" variant="ghost" size="sm" onClick={() => removeStep(index)} className="text-error hover:text-error/80">
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                          <textarea
+                            value={step.description}
+                            onChange={(e) => updateStep(index, 'description', e.target.value)}
+                            placeholder="Describe this step..."
+                            rows={2}
+                            className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface text-sm resize-none"
+                          />
+                          <div>
+                            <label className="text-xs text-on-surface-variant mb-2 block">Image (Optional)</label>
+                            {uploadingImage ? (
+                              <div className="border-2 border-dashed border-primary rounded-lg p-8 text-center">
+                                <Loader2 className="w-8 h-8 text-primary mx-auto mb-2 animate-spin" />
+                                <p className="text-xs text-on-surface-variant">Uploading image...</p>
+                              </div>
+                            ) : imageUrl ? (
+                              <div className="relative rounded-lg overflow-hidden border border-outline-variant bg-surface">
+                                <img 
+                                  src={imageUrl} 
+                                  alt={`Step ${step.stepNumber}`} 
+                                  className="w-full max-h-80 object-contain" 
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => updateStep(index, 'image', '')}
+                                  className="absolute top-2 right-2 bg-surface/90 text-error hover:bg-error/20 rounded-full p-1.5"
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div 
+                                className="border-2 border-dashed border-outline-variant rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                                onDragOver={handleDragOver}
+                                onDrop={(e) => handleDrop(index, e)}
                               >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="text-on-surface-variant">
-                              <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                              <p className="text-xs">Drag & drop image, paste, or click to upload</p>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                id={`step-image-${index}`}
-                                onChange={(e) => e.target.files?.[0] && handleImageUpload(index, e.target.files[0])}
-                              />
-                              <label htmlFor={`step-image-${index}`} className="text-xs text-primary cursor-pointer hover:underline mt-1 block">
-                                Click to upload
-                              </label>
-                            </div>
-                          )}
-                        </div>
-                        {step.image && (
-                          <div className="mt-2">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  id={`step-image-${index}`}
+                                  onChange={(e) => e.target.files?.[0] && handleImageUpload(index, e.target.files[0])}
+                                />
+                                <label htmlFor={`step-image-${index}`} className="cursor-pointer flex flex-col items-center gap-2">
+                                  <UploadIcon className="w-6 h-6 text-on-surface-variant" />
+                                  <div className="text-on-surface-variant">
+                                    <p className="text-sm font-medium">Click to upload</p>
+                                    <p className="text-xs mt-1">Paste (Ctrl+V) or drag & drop</p>
+                                  </div>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-on-surface-variant mb-1 block">Caption</label>
                             <Input
                               value={step.caption || ''}
                               onChange={(e) => updateStep(index, 'caption', e.target.value)}
-                              placeholder="Image caption (optional)"
+                              placeholder="Add a caption for this image..."
                               className="bg-surface border-outline text-on-surface text-sm"
                             />
                           </div>
-                        )}
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 

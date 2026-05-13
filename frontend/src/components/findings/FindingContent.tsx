@@ -3,7 +3,8 @@ import { Finding, findingApi } from '@/api/findingApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles, Save, X, AlertTriangle, Shield, FileText } from 'lucide-react';
+import { Sparkles, Save, X, AlertTriangle, Shield, FileText, Plus } from 'lucide-react';
+import StepEditor from './StepEditor';
 
 const findingSeverities = ['Critical', 'High', 'Medium', 'Low', 'Informational'] as const;
 const riskSeverities = ['High', 'Medium', 'Low'] as const;
@@ -13,21 +14,49 @@ interface FindingContentProps {
   isEditing: boolean;
   onUpdate: () => void;
   onRegenerateSection: (section: string) => void;
+  onCancelEdit?: () => void;
 }
+
+interface Step {
+  stepNumber: number;
+  description: string;
+  image?: string;
+  caption?: string;
+}
+
+const normalizeSteps = (steps: any): Step[] => {
+  if (!steps) return [];
+  if (!Array.isArray(steps)) return [];
+  return steps.map((step: any, index: number) => {
+    if (typeof step === 'object' && step !== null) {
+      return {
+        stepNumber: step.stepNumber || index + 1,
+        description: step.description || '',
+        image: step.image || '',
+        caption: step.caption || '',
+      };
+    }
+    return {
+      stepNumber: index + 1,
+      description: String(step),
+      image: '',
+      caption: '',
+    };
+  });
+};
 
 const FindingContent = ({
   finding,
   isEditing,
   onUpdate,
   onRegenerateSection,
+  onCancelEdit,
 }: FindingContentProps) => {
   const [editData, setEditData] = useState({
     severity: finding.severity,
     description: finding.description,
     affected_target: finding.affected_target || '',
-    steps_to_reproduce: Array.isArray(finding.steps_to_reproduce)
-      ? finding.steps_to_reproduce
-      : finding.steps_to_reproduce ? [finding.steps_to_reproduce] : [],
+    steps_to_reproduce: normalizeSteps(finding.steps_to_reproduce),
     recommendation: finding.recommendation || [],
     remediation: finding.remediation || '',
     impact_severity: (typeof finding.impact === 'object' ? finding.impact?.severity : '') || '',
@@ -36,6 +65,14 @@ const FindingContent = ({
     likelihood_detail: (typeof finding.likelihood === 'object' ? finding.likelihood?.detail : '') || (typeof finding.likelihood === 'string' ? finding.likelihood : ''),
   });
   const [saving, setSaving] = useState(false);
+
+  const handleStepsChange = (steps: Step[]) => {
+    const renumberedSteps = steps.map((step, index) => ({
+      ...step,
+      stepNumber: index + 1,
+    }));
+    setEditData((prev) => ({ ...prev, steps_to_reproduce: renumberedSteps }));
+  };
 
   const handleSave = async () => {
     try {
@@ -64,6 +101,9 @@ const FindingContent = ({
       }
       await findingApi.updateFinding(finding.id, payload);
       onUpdate();
+      if (onCancelEdit) {
+        onCancelEdit();
+      }
     } catch (error) {
       console.error('Failed to update finding:', error);
       alert('Failed to update finding');
@@ -276,40 +316,36 @@ const FindingContent = ({
             )}
           </div>
           {isEditing ? (
-            <textarea
-              value={Array.isArray(editData.steps_to_reproduce)
-                ? editData.steps_to_reproduce.map((s: any) => typeof s === 'object' ? s.description : s).join('\n')
-                : editData.steps_to_reproduce}
-              onChange={(e) =>
-                setEditData({ ...editData, steps_to_reproduce: e.target.value.split('\n') })
-              }
-              rows={6}
-              className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none font-mono text-sm"
+            <StepEditor
+              steps={editData.steps_to_reproduce}
+              onChange={handleStepsChange}
             />
           ) : (
             <div className="space-y-4">
               {Array.isArray(finding.steps_to_reproduce) ? (
                 finding.steps_to_reproduce.map((step: any, index: number) => {
                   const isNewFormat = typeof step === 'object' && step !== null;
+                  const imageUrl = isNewFormat && step.image ? (step.image.startsWith('http') ? step.image : step.image.startsWith('/') ? `http://localhost:3000${step.image}` : step.image) : '';
+                  
                   return (
-                    <div key={index} className="bg-surface-low p-3 rounded-lg border border-outline-variant">
-                      <div className="flex items-center gap-2 mb-2">
+                    <div key={index} className="bg-surface-low p-4 rounded-lg border border-outline-variant space-y-3">
+                      <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded">
                           Step {isNewFormat ? step.stepNumber : index + 1}
                         </span>
                       </div>
-                      <p className="text-sm text-on-surface-variant mb-2">
+                      <p className="text-sm text-on-surface-variant">
                         {isNewFormat ? step.description : step}
                       </p>
-                      {isNewFormat && step.image && (
+                      {imageUrl && (
                         <div className="mt-2">
                           <img 
-                            src={step.image} 
+                            src={imageUrl} 
                             alt={`Step ${isNewFormat ? step.stepNumber : index + 1}`} 
-                            className="max-h-48 rounded border border-outline-variant" 
+                            className="w-full max-h-80 object-contain rounded-lg border border-outline-variant bg-surface" 
                           />
                           {step.caption && (
-                            <p className="text-xs text-on-surface-variant mt-1 italic">{step.caption}</p>
+                            <p className="text-xs text-gray-400 mt-2 italic text-center">{step.caption}</p>
                           )}
                         </div>
                       )}
@@ -326,61 +362,131 @@ const FindingContent = ({
         </Card>
       )}
 
-      {/* Recommendations (AI array) */}
-      {(finding.recommendation || isEditing) && (
+      {/* Recommendations (AI array) - View Mode Only */}
+      {finding.recommendation && !isEditing && (
         <Card className="p-4 md:p-6 bg-surface-high border-primary/20">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2">
               <Shield className="w-4 h-4" />
               Recommendations
             </h3>
-            {!isEditing && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onRegenerateSection('recommendation')}
-                className="text-primary hover:text-primary/80"
-              >
-                <Sparkles className="w-4 h-4 mr-2" />
-                AI Regenerate
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onRegenerateSection('recommendation')}
+              className="text-primary hover:text-primary/80"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              AI Regenerate
+            </Button>
           </div>
-          {isEditing ? (
-            <textarea
-              value={Array.isArray(editData.recommendation)
-                ? editData.recommendation.join('\n\n')
-                : editData.recommendation}
-              onChange={(e) =>
-                setEditData({ ...editData, recommendation: e.target.value.split('\n\n').filter((s) => s.trim()) })
-              }
-              rows={8}
-              className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-            />
-          ) : (
-            <ul className="space-y-3">
-              {finding.recommendation?.map((rec, index) => {
-                const match = rec.match(/^\*\*(.+?)\*\*:?\s*(.+)$/s);
-                if (match) {
-                  return (
-                    <li key={index} className="flex items-start gap-3 text-sm text-on-surface-variant">
-                      <span className="mt-1.5 w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
-                      <span className="leading-relaxed">
-                        <span className="font-semibold text-on-surface">{match[1]}:</span>{' '}
-                        {match[2]}
-                      </span>
-                    </li>
-                  );
-                }
+          <ul className="space-y-3">
+            {finding.recommendation?.map((rec, index) => {
+              const match = rec.match(/^\*\*(.+?)\*\*:?\s*(.+)$/s);
+              if (match) {
                 return (
                   <li key={index} className="flex items-start gap-3 text-sm text-on-surface-variant">
                     <span className="mt-1.5 w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
-                    <span className="leading-relaxed">{rec}</span>
+                    <span className="leading-relaxed">
+                      <span className="font-semibold text-on-surface">{match[1]}:</span>{' '}
+                      {match[2]}
+                    </span>
                   </li>
                 );
-              })}
-            </ul>
-          )}
+              }
+              return (
+                <li key={index} className="flex items-start gap-3 text-sm text-on-surface-variant">
+                  <span className="mt-1.5 w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
+                  <span className="leading-relaxed">{rec}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+
+      {/* Recommendations - Edit Mode */}
+      {isEditing && (
+        <Card className="p-4 md:p-6 bg-surface-high border-primary/20">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2">
+              <Shield className="w-4 h-4" />
+              Recommendations
+            </h3>
+          </div>
+          <div className="space-y-3">
+            {editData.recommendation.map((rec, index) => {
+              const match = rec.match(/^\*\*(.+?)\*\*:?\s*(.+)$/s);
+              return (
+                <div key={index} className="flex items-start gap-3">
+                  <span className="mt-3 w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={match ? match[1] : rec.split(':')[0]}
+                      onChange={(e) => {
+                        const newRecs = [...editData.recommendation];
+                        if (match) {
+                          newRecs[index] = `**${e.target.value}:** ${match[2]}`;
+                        } else {
+                          const parts = rec.split(':');
+                          parts[0] = e.target.value;
+                          newRecs[index] = parts.join(':');
+                        }
+                        setEditData({ ...editData, recommendation: newRecs });
+                      }}
+                      className="w-full px-2 py-1 bg-surface border border-outline rounded text-on-surface font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="Category"
+                    />
+                    <textarea
+                      value={match ? match[2] : rec.split(':').slice(1).join(':')}
+                      onChange={(e) => {
+                        const newRecs = [...editData.recommendation];
+                        if (match) {
+                          newRecs[index] = `**${match[1]}:** ${e.target.value}`;
+                        } else {
+                          const parts = rec.split(':');
+                          parts.splice(1).join(':').length;
+                          newRecs[index] = `${parts[0]}: ${e.target.value}`;
+                        }
+                        setEditData({ ...editData, recommendation: newRecs });
+                      }}
+                      rows={2}
+                      className="w-full mt-1 px-2 py-1 bg-surface border border-outline rounded text-on-surface text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="Description"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const newRecs = editData.recommendation.filter((_, i) => i !== index);
+                      setEditData({ ...editData, recommendation: newRecs });
+                    }}
+                    className="text-error hover:bg-error/10"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              );
+            })}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setEditData({
+                  ...editData,
+                  recommendation: [...editData.recommendation, '**New Category:** Description']
+                });
+              }}
+              className="text-primary"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Add Recommendation
+            </Button>
+          </div>
         </Card>
       )}
 
@@ -457,9 +563,7 @@ const FindingContent = ({
                 severity: finding.severity,
                 description: finding.description,
                 affected_target: finding.affected_target || '',
-                steps_to_reproduce: Array.isArray(finding.steps_to_reproduce)
-                  ? finding.steps_to_reproduce
-                  : finding.steps_to_reproduce ? [finding.steps_to_reproduce] : [],
+                steps_to_reproduce: normalizeSteps(finding.steps_to_reproduce),
                 recommendation: finding.recommendation || [],
                 remediation: finding.remediation || '',
                 impact_severity: (typeof finding.impact === 'object' ? finding.impact?.severity : '') || '',
