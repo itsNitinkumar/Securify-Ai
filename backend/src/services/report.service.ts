@@ -793,7 +793,12 @@ class ReportService {
         // Ignore font check failures (fc-match might not exist in minimal containers).
       }
 
-      const docxBuffer = await this.generateDOCXBuffer(data);
+      let docxBuffer = await this.generateDOCXBuffer(data);
+
+      // PDF conversion via LibreOffice can ignore paragraph-level run formatting on some template-derived
+      // headings (notably around TOC/major sections). Patch those headings in a PDF-only copy so the
+      // DOCX output remains unchanged.
+      docxBuffer = this.patchDocxHeadingsForLibreOfficePdf(docxBuffer);
       fs.writeFileSync(inputPath, docxBuffer);
 
       await this.execFileAsync(sofficePath, [
@@ -821,6 +826,216 @@ class ReportService {
       } catch {
         // Ignore temp cleanup failures.
       }
+    }
+  }
+
+  private static patchDocxHeadingsForLibreOfficePdf(docxBuffer: Buffer): Buffer {
+    // Best-effort: if deps aren't present, don't fail report generation.
+    let PizZip: any;
+    let cheerio: any;
+    try {
+      PizZip = require('pizzip');
+      cheerio = require('cheerio');
+    } catch {
+      return docxBuffer;
+    }
+
+    const targetHeadings = new Set([
+      'Table of Contents',
+      'Introduction',
+      'Approach',
+      'Scope',
+      'Findings and Recommendation',
+      'Vulnerabilities',
+    ]);
+
+    try {
+      const zip = new PizZip(docxBuffer);
+      const documentPath = 'word/document.xml';
+      const documentFile = zip.file(documentPath);
+      const documentXml = documentFile && typeof (documentFile as any).asText === 'function' ? (documentFile as any).asText() : '';
+      if (!documentXml) return docxBuffer;
+
+      const $ = cheerio.load(documentXml, { xmlMode: true });
+
+      // Patch the expanded TOC field results (these often contain Arial runs, which
+      // LibreOffice substitutes differently during PDF export). Limit changes strictly
+      // to the TOC field's result range.
+      {
+        let inToc = false;
+        let seenTocBegin = false;
+
+        const setRunFontsToRoboto = (scope: any) => {
+          $(scope)
+            .find('w\\:r')
+            .each((__: number, r: any) => {
+              let rPr = $(r).children('w\\:rPr').first();
+              if (!rPr.length) {
+                $(r).prepend('<w:rPr/>');
+                rPr = $(r).children('w\\:rPr').first();
+              }
+              let rFonts = rPr.children('w\\:rFonts').first();
+              if (!rFonts.length) {
+                rPr.prepend('<w:rFonts/>');
+                rFonts = rPr.children('w\\:rFonts').first();
+              }
+              rFonts.attr('w:ascii', 'Roboto');
+              rFonts.attr('w:hAnsi', 'Roboto');
+              rFonts.attr('w:cs', 'Roboto');
+              rFonts.attr('w:eastAsia', 'Roboto');
+            });
+        };
+
+        // Walk paragraphs in order so we can track field state across paragraph boundaries.
+        $('w\\:p').each((_: number, p: any) => {
+          const pXml = $.xml(p);
+          if (!seenTocBegin && /<w:instrText[^>]*>\s*TOC\b/i.test(pXml)) {
+            seenTocBegin = true;
+          }
+
+          if (seenTocBegin) {
+            if (pXml.includes('w:fldCharType="separate"')) {
+              inToc = true;
+              // Everything after the separate is field result.
+            }
+            if (inToc) {
+              setRunFontsToRoboto(p);
+            }
+            if (inToc && pXml.includes('w:fldCharType="end"')) {
+              // End of this TOC field.
+              inToc = false;
+              seenTocBegin = false;
+            }
+          }
+        });
+      }
+
+      const paraText = (pEl: any): string => {
+        const parts: string[] = [];
+        $(pEl)
+          .find('w\\:t')
+          .each((_: number, t: any) => {
+            const v = $(t).text();
+            if (v) parts.push(v);
+          });
+        return parts.join('').replace(/\s+/g, ' ').trim();
+      };
+
+      const ensurePPrChild = (p: any, tag: string, attrs: Record<string, string>, prepend = false) => {
+        let pPr = $(p).children('w\\:pPr').first();
+        if (!pPr.length) {
+          $(p).prepend('<w:pPr/>');
+          pPr = $(p).children('w\\:pPr').first();
+        }
+        let node = pPr.children(`w\\:${tag}`).first();
+        if (!node.length) {
+          const attrStr = Object.entries(attrs)
+            .map(([k, v]) => `${k}="${String(v)}"`)
+            .join(' ');
+          const xmlNode = `<w:${tag} ${attrStr}/>`;
+          if (prepend) pPr.prepend(xmlNode);
+          else pPr.append(xmlNode);
+          node = pPr.children(`w\\:${tag}`).first();
+        } else {
+          for (const [k, v] of Object.entries(attrs)) node.attr(k, String(v));
+        }
+      };
+
+      $('w\\:p').each((_: number, p: any) => {
+        const txt = paraText(p);
+        if (!targetHeadings.has(txt)) return;
+
+        // Force the template's Heading1 style so LibreOffice keeps the same
+        // visual heading treatment (Roboto + green text + green underline rule).
+        // This is PDF-only; DOCX output remains unchanged.
+        ensurePPrChild(p, 'pStyle', { 'w:val': 'Heading1' }, true);
+        // Ensure it's treated as a top-level outline item.
+        ensurePPrChild(p, 'outlineLvl', { 'w:val': '0' });
+
+        // Force Roboto on runs within the paragraph.
+        $(p)
+          .find('w\\:r')
+          .each((__: number, r: any) => {
+            let rPr = $(r).children('w\\:rPr').first();
+            if (!rPr.length) {
+              $(r).prepend('<w:rPr/>');
+              rPr = $(r).children('w\\:rPr').first();
+            }
+
+            // Ensure LibreOffice picks the same heavier headline face.
+            let b = rPr.children('w\\:b').first();
+            if (!b.length) rPr.prepend('<w:b w:val="1"/>');
+            else b.attr('w:val', '1');
+            let bCs = rPr.children('w\\:bCs').first();
+            if (!bCs.length) rPr.prepend('<w:bCs w:val="1"/>');
+            else bCs.attr('w:val', '1');
+
+            let rFonts = rPr.children('w\\:rFonts').first();
+            if (!rFonts.length) {
+              rPr.prepend('<w:rFonts/>');
+              rFonts = rPr.children('w\\:rFonts').first();
+            }
+            rFonts.attr('w:ascii', 'Roboto');
+            rFonts.attr('w:hAnsi', 'Roboto');
+            rFonts.attr('w:cs', 'Roboto');
+            rFonts.attr('w:eastAsia', 'Roboto');
+          });
+      });
+
+      zip.file(documentPath, $.xml());
+
+      // LibreOffice may render TOC entries with fallback fonts if TOC* styles don't
+      // explicitly set rFonts. Patch TOC styles in the PDF-only copy.
+      const stylesPath = 'word/styles.xml';
+      const stylesFile = zip.file(stylesPath);
+      const stylesXml = stylesFile && typeof (stylesFile as any).asText === 'function' ? (stylesFile as any).asText() : '';
+      if (stylesXml) {
+        const $s = cheerio.load(stylesXml, { xmlMode: true });
+        const tocStyleIds = new Set([
+          'TOCHeading',
+          'TOCH1',
+          'TOCH1Char',
+          'TOC1',
+          'TOC1Char',
+          'TOC2',
+          'TOC3',
+          'TOC4',
+          'TOC5',
+          'TOC6',
+          'TOC7',
+          'TOC8',
+          'TOC9',
+        ]);
+
+        const ensureStyleFonts = (styleEl: any) => {
+          let rPr = $s(styleEl).children('w\\:rPr').first();
+          if (!rPr.length) {
+            $s(styleEl).append('<w:rPr/>');
+            rPr = $s(styleEl).children('w\\:rPr').first();
+          }
+          let rFonts = rPr.children('w\\:rFonts').first();
+          if (!rFonts.length) {
+            rPr.prepend('<w:rFonts/>');
+            rFonts = rPr.children('w\\:rFonts').first();
+          }
+          rFonts.attr('w:ascii', 'Roboto');
+          rFonts.attr('w:hAnsi', 'Roboto');
+          rFonts.attr('w:cs', 'Roboto');
+          rFonts.attr('w:eastAsia', 'Roboto');
+        };
+
+        $s('w\\:style').each((__: number, st: any) => {
+          const id = String($s(st).attr('w:styleId') || '');
+          if (!id) return;
+          if (tocStyleIds.has(id)) ensureStyleFonts(st);
+        });
+
+        zip.file(stylesPath, $s.xml());
+      }
+
+      return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+    } catch {
+      return docxBuffer;
     }
   }
 
