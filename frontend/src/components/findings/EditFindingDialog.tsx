@@ -64,7 +64,7 @@ const EditFindingDialog = ({ findingId, open, onOpenChange, onSuccess }: EditFin
         };
         
         // Normalize steps to new format
-        const normalizeSteps = (steps: any): Array<{stepNumber: number; description: string; image?: string; caption?: string}> => {
+        const normalizeSteps = (steps: any): Array<{stepNumber: number; description: string; imageKey?: string; caption?: string}> => {
           if (!steps || !Array.isArray(steps)) return [];
           
           // Check if already in new format

@@ -1,121 +1,99 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
 import { protect } from '../middlewares/auth';
 
 const router = Router();
 
-// Ensure upload directory exists
-const uploadDir = path.join(__dirname, '../../public/images/steps');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Configure multer for image uploads
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, `step-${uniqueSuffix}${ext}`);
-  }
-});
+/**
+ * Multer configuration for S3 upload
+ * Uses memoryStorage() to keep files in memory buffer
+ * No local filesystem storage
+ */
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 5 * 1024 * 1024, // 5MB limit
   },
   fileFilter: (_req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    // Allowed image types: png, jpg, jpeg, webp
+    const allowedTypes = /jpeg|jpg|png|webp/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
 
     if (mimetype && extname) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed'));
+      cb(new Error('Only image files (png, jpg, jpeg, webp) are allowed'));
     }
   }
 });
 
-// Upload step image
-router.post('/step-image', protect, upload.single('image'), (req, res) => {
+/**
+ * Upload step image to S3
+ * POST /api/upload/step-image
+ * 
+ * Upload flow:
+ * 1. Multer parses multipart form data and stores file in memory
+ * 2. Uploads buffer directly to S3
+ * 3. Returns imageKey (S3 key) to store in database
+ * 4. Returns signedUrl for immediate preview
+ * 
+ * IMPORTANT: Frontend should store imageKey in database, NOT signedUrl
+ */
+router.post('/step-image', protect, upload.single('image'), async (req, res) => {
   try {
-    if (!req.file) {
+    const { findingId, stepId, projectId } = req.body;
+    const file = req.file;
+
+    if (!file) {
       return res.status(400).json({
         success: false,
         message: 'No image file provided'
       });
     }
 
-    const imageUrl = `/images/steps/${req.file.filename}`;
-    
+    const s3Service = require('../services/s3.service').default;
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(7);
+    const ext = file.originalname.split('.').pop() || 'png';
+
+    // Generate proper S3 key structure
+    let imageKey: string;
+
+    if (findingId && stepId !== undefined && projectId) {
+      // Proper structure for saved findings
+      imageKey = `findings/${projectId}/${findingId}/steps/${stepId}/${timestamp}-${randomString}.${ext}`;
+    } else if (findingId && stepId !== undefined) {
+      // Fallback if projectId not provided
+      imageKey = `findings/unknown/${findingId}/steps/${stepId}/${timestamp}-${randomString}.${ext}`;
+    } else {
+      // Draft/temporary upload (should be moved later when finding is saved)
+      imageKey = `temp/drafts/${timestamp}-${randomString}.${ext}`;
+    }
+
+    // Upload to S3
+    await s3Service.uploadImage(file.buffer, imageKey, file.mimetype);
+
+    // Generate signed URL for immediate preview (1 hour)
+    const signedUrl = await s3Service.getSignedUrl(imageKey, 3600);
+
+    // IMPORTANT: Frontend should save imageKey, not signedUrl
     return res.json({
       success: true,
       data: {
-        url: imageUrl,
-        filename: req.file.filename,
-        size: req.file.size
-      }
+        imageKey,        // ← Store this in database
+        signedUrl,       // ← Use this for immediate preview only
+        url: imageKey,   // ← For backward compatibility, return key as "url"
+        filename: file.originalname,
+        size: file.size
+      },
+      message: 'Image uploaded. Store imageKey in database, not signedUrl.'
     });
   } catch (error: any) {
-    console.error('Image upload error:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to upload image'
-    });
-  }
-});
-
-// Upload base64 image
-router.post('/step-image-base64', protect, (req, res) => {
-  try {
-    const { image } = req.body;
-    
-    if (!image || !image.startsWith('data:image/')) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid base64 image data'
-      });
-    }
-
-    // Extract base64 data and extension
-    const matches = image.match(/^data:image\/(\w+);base64,(.+)$/);
-    if (!matches) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid image format'
-      });
-    }
-
-    const ext = matches[1];
-    const base64Data = matches[2];
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    // Generate unique filename
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const filename = `step-${uniqueSuffix}.${ext}`;
-    const filepath = path.join(uploadDir, filename);
-
-    // Save file
-    fs.writeFileSync(filepath, buffer);
-
-    const imageUrl = `/images/steps/${filename}`;
-    
-    return res.json({
-      success: true,
-      data: {
-        url: imageUrl,
-        filename,
-        size: buffer.length
-      }
-    });
-  } catch (error: any) {
-    console.error('Base64 image upload error:', error);
+    console.error('Upload error:', error);
     return res.status(500).json({
       success: false,
       message: error.message || 'Failed to upload image'

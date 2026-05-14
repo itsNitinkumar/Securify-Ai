@@ -98,12 +98,12 @@ const GenerateFindingAIPage = () => {
       const converted = steps.map((step, index) => ({
         stepNumber: index + 1,
         description: typeof step === 'string' ? step : step.description || '',
-        image: typeof step === 'object' ? step.image : undefined,
+        imageKey: typeof step === 'object' ? step.imageKey : undefined,
         caption: typeof step === 'object' ? step.caption : undefined,
       }));
       setEditableSteps(converted);
     } else {
-      setEditableSteps([{ stepNumber: 1, description: '', image: '', caption: '' }]);
+      setEditableSteps([{ stepNumber: 1, description: '', imageKey: '', caption: '' }]);
     }
   };
 
@@ -142,7 +142,7 @@ const GenerateFindingAIPage = () => {
     try {
       setLoading(true);
       // Filter out empty steps
-      const validSteps = editableSteps.filter(s => s.description.trim() || s.image);
+      const validSteps = editableSteps.filter(s => s.description.trim() || s.imageKey);
       
       console.log('Saving finding with steps:', validSteps);
       
@@ -183,7 +183,7 @@ const GenerateFindingAIPage = () => {
 
   const addStep = () => {
     const newStepNumber = editableSteps.length + 1;
-    setEditableSteps([...editableSteps, { stepNumber: newStepNumber, description: '', image: '', caption: '' }]);
+    setEditableSteps([...editableSteps, { stepNumber: newStepNumber, description: '', imageKey: '', caption: '' }]);
   };
 
   const removeStep = (index: number) => {
@@ -203,8 +203,10 @@ const GenerateFindingAIPage = () => {
       setUploadingImage(true);
       const response = await uploadApi.uploadStepImage(file);
       if (response.data) {
-        updateStep(index, 'image', response.data.url);
-        toast.success('Image uploaded');
+        // IMPORTANT: Store imageKey (S3 key), NOT signedUrl
+        const imageKey = response.data.imageKey || response.data.url || '';
+        updateStep(index, 'imageKey', imageKey);
+        toast.success('Image uploaded successfully');
       }
     } catch (error) {
       console.error('Failed to upload image:', error);
@@ -442,8 +444,8 @@ const GenerateFindingAIPage = () => {
                   </div>
                   <div className="space-y-4">
                     {editableSteps.map((step, index) => {
-                      const imageUrl = step.image 
-                        ? (step.image.startsWith('http') ? step.image : step.image.startsWith('/') ? `http://localhost:3000${step.image}` : step.image)
+                      const imageUrl = step.imageKey 
+                        ? (step.imageKey.startsWith('http') ? step.imageKey : step.imageKey.startsWith('/') ? `http://localhost:3000${step.imageKey}` : step.imageKey)
                         : '';
                       
                       return (

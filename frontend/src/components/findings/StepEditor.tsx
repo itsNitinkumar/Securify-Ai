@@ -9,7 +9,7 @@ import { toast } from 'react-hot-toast';
 interface Step {
   stepNumber: number;
   description: string;
-  image?: string;
+  imageKey?: string;  // S3 key, not signed URL
   caption?: string;
 }
 
@@ -34,7 +34,7 @@ const StepEditor = ({ steps, onChange }: StepEditorProps) => {
     const newStep: Step = {
       stepNumber: steps.length + 1,
       description: '',
-      image: '',
+      imageKey: '',
       caption: '',
     };
     onChange([...steps, newStep]);
@@ -63,27 +63,47 @@ const StepEditor = ({ steps, onChange }: StepEditorProps) => {
 
   const handleImageUpload = async (index: number, file: File) => {
     try {
+      console.log('📤 Uploading image:', file.name, file.type, file.size);
       setUploadingIndex(index);
       
+      // Create local preview immediately for better UX
       const previewUrl = URL.createObjectURL(file);
       setPreviews(prev => ({ ...prev, [index]: previewUrl }));
+      console.log('✓ Local preview created');
       
+      // Upload to S3
+      console.log('📡 Calling upload API...');
       const response = await uploadApi.uploadStepImage(file);
+      console.log('✓ Upload response:', response);
+      
       if (response.data) {
-        updateStep(index, 'image', response.data.url);
-        if (previews[index]) {
-          URL.revokeObjectURL(previews[index]);
-        }
-        setPreviews(prev => {
-          const newPreviews = { ...prev };
-          delete newPreviews[index];
-          return newPreviews;
-        });
-        toast.success('Image uploaded');
+        // Store the S3 key in the database
+        const imageKey = response.data.imageKey || response.data.url || '';
+        console.log('✓ Image key:', imageKey);
+        
+        // But use the signed URL for immediate preview
+        const previewUrl = response.data.signedUrl || imageKey;
+        console.log('✓ Preview URL:', previewUrl);
+        
+        // Update step with imageKey (for database)
+        updateStep(index, 'imageKey', imageKey);
+        
+        // But keep the signed URL in preview for immediate display
+        setPreviews(prev => ({ ...prev, [index]: previewUrl }));
+        
+        toast.success('Image uploaded successfully');
+      } else {
+        console.error('❌ No data in response');
+        toast.error('Upload failed - no data returned');
       }
     } catch (error) {
-      console.error('Failed to upload image:', error);
-      toast.error('Failed to upload image');
+      console.error('❌ Failed to upload image:', error);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
+      toast.error(`Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Clean up preview on error
       if (previews[index]) {
         URL.revokeObjectURL(previews[index]);
       }
@@ -140,7 +160,7 @@ const StepEditor = ({ steps, onChange }: StepEditorProps) => {
         return newPreviews;
       });
     }
-    updateStep(index, 'image', '');
+    updateStep(index, 'imageKey', '');
   };
 
   useEffect(() => {
@@ -163,7 +183,7 @@ const StepEditor = ({ steps, onChange }: StepEditorProps) => {
 
       <div className="space-y-4">
         {steps.map((step, index) => {
-          const currentImage = previews[index] || (step.image ? getImageUrl(step.image) : '');
+          const currentImage = previews[index] || (step.imageKey ? getImageUrl(step.imageKey) : '');
           
           return (
             <Card key={index} className="p-4 bg-surface border-outline-variant">

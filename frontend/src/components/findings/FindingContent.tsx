@@ -32,7 +32,7 @@ const normalizeSteps = (steps: any): Step[] => {
       return {
         stepNumber: step.stepNumber || index + 1,
         description: step.description || '',
-        image: step.image || '',
+        imageKey: step.imageKey || '',
         caption: step.caption || '',
       };
     }
@@ -325,7 +325,7 @@ const FindingContent = ({
               {Array.isArray(finding.steps_to_reproduce) ? (
                 finding.steps_to_reproduce.map((step: any, index: number) => {
                   const isNewFormat = typeof step === 'object' && step !== null;
-                  const imageUrl = isNewFormat && step.image ? (step.image.startsWith('http') ? step.image : step.image.startsWith('/') ? `http://localhost:3000${step.image}` : step.image) : '';
+                  const imageUrl = isNewFormat && step.imageKey ? (step.imageKey.startsWith('http') ? step.imageKey : step.imageKey.startsWith('/') ? `http://localhost:3000${step.imageKey}` : step.imageKey) : '';
                   
                   return (
                     <div key={index} className="bg-surface-low p-4 rounded-lg border border-outline-variant space-y-3">

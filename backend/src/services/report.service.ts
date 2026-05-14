@@ -1497,7 +1497,7 @@ class ReportService {
     const imageMap: Map<string, { relId: string; relTarget: string }> = new Map();
     let imageCounter = 0;
 
-    const addImageToZip = (imagePath: string, findingId: number, stepIdx: number): string | null => {
+    const addImageToZip = async (imagePath: string, findingId: number, stepIdx: number): Promise<string | null> => {
       try {
         const imageKey = `finding_${findingId}_step_${stepIdx}`;
         if (imageMap.has(imageKey)) {
@@ -1506,8 +1506,33 @@ class ReportService {
 
         let binaryData: Buffer;
 
-        // Check if it's a file path (starts with /images/)
-        if (imagePath.startsWith('/images/')) {
+        // Check if it's an S3 key (doesn't start with http:// or https:// or /images/)
+        const isS3Key = !imagePath.startsWith('http://') && !imagePath.startsWith('https://') && !imagePath.startsWith('/images/') && !imagePath.startsWith('data:');
+        
+        if (isS3Key) {
+          // It's an S3 key - generate signed URL and download
+          console.log(`   ☁️  Downloading from S3: ${imagePath}`);
+          const s3Service = require('./s3.service').default;
+          const signedUrl = await s3Service.getSignedUrl(imagePath, 3600);
+          console.log(`   🔗 Generated signed URL`);
+          
+          // Download image from S3
+          const https = require('https');
+          const http = require('http');
+          const protocol = signedUrl.startsWith('https') ? https : http;
+          
+          binaryData = await new Promise<Buffer>((resolve, reject) => {
+            protocol.get(signedUrl, (res: any) => {
+              const chunks: Buffer[] = [];
+              res.on('data', (chunk: Buffer) => chunks.push(chunk));
+              res.on('end', () => resolve(Buffer.concat(chunks)));
+              res.on('error', reject);
+            }).on('error', reject);
+          });
+          
+          console.log(`   📄 Downloaded ${binaryData.length} bytes from S3`);
+        } else if (imagePath.startsWith('/images/')) {
+          // Local file path
           const fullPath = path.join(process.cwd(), 'public', imagePath);
           console.log(`   📁 Reading image from: ${fullPath}`);
           if (!fs.existsSync(fullPath)) {
@@ -1516,6 +1541,23 @@ class ReportService {
           }
           binaryData = fs.readFileSync(fullPath);
           console.log(`   📄 Read ${binaryData.length} bytes`);
+        } else if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+          // Already a URL (signed URL) - download it
+          console.log(`   🌐 Downloading from URL: ${imagePath.substring(0, 100)}...`);
+          const https = require('https');
+          const http = require('http');
+          const protocol = imagePath.startsWith('https') ? https : http;
+          
+          binaryData = await new Promise<Buffer>((resolve, reject) => {
+            protocol.get(imagePath, (res: any) => {
+              const chunks: Buffer[] = [];
+              res.on('data', (chunk: Buffer) => chunks.push(chunk));
+              res.on('end', () => resolve(Buffer.concat(chunks)));
+              res.on('error', reject);
+            }).on('error', reject);
+          });
+          
+          console.log(`   📄 Downloaded ${binaryData.length} bytes`);
         } else {
           // Handle base64 data
           const base64 = imagePath.includes('base64,') ? imagePath.split('base64,')[1] : imagePath;
@@ -3359,13 +3401,13 @@ const range = children.slice(startIdx + 1, endIdx);
             return txt.includes('http') || txt.includes('www');
           }) || bodyTextTemplate;
 
-          const normalizeSteps = (steps: any): Array<{stepNumber: number; description: string; image?: string; caption?: string}> => {
+          const normalizeSteps = (steps: any): Array<{stepNumber: number; description: string; imageKey?: string; caption?: string}> => {
             if (!steps) return [];
             if (Array.isArray(steps) && steps.length > 0 && typeof steps[0] === 'object' && steps[0] !== null && 'description' in steps[0]) {
               return steps.map((step, idx) => ({
                 stepNumber: step.stepNumber || idx + 1,
                 description: String(step.description || '').trim(),
-                image: step.image,
+                imageKey: step.imageKey || step.image, // Support both imageKey (new) and image (legacy)
                 caption: step.caption
               })).filter(s => s.description);
             }
@@ -3390,10 +3432,10 @@ const range = children.slice(startIdx + 1, endIdx);
             // Important ordering: we insert blocks BEFORE the anchor paragraph. Inserting in sequence means
             // later inserts appear closer to the anchor. To get: Step -> Image -> Caption, we must insert
             // Image first, then Caption.
-            if (step.image && typeof step.image === 'string') {
+            if (step.imageKey && typeof step.imageKey === 'string') {
               const findingId = finding.id || 0;
-              console.log(`       - Processing image for step ${si}: ${step.image}`);
-              const relId = addImageToZip(step.image, findingId, si);
+              console.log(`       - Processing image for step ${si}: ${step.imageKey}`);
+              const relId = await addImageToZip(step.imageKey, findingId, si);
               if (relId) {
                 const imageInfo = imageMap.get(`finding_${findingId}_step_${si}`);
                 if (imageInfo) {

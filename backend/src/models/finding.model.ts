@@ -12,9 +12,9 @@ interface Finding {
   steps_to_reproduce?: Array<{
     stepNumber: number;
     description: string;
-    image?: string;
+    imageKey?: string;  // S3 key, not signed URL
     caption?: string;
-  }>; // JSONB array - new structure with image support
+  }>; // JSONB array - stores S3 keys for images
   recommendation?: string[]; // JSONB array - AI-generated recommendations
   remediation?: string; // TEXT - deprecated, kept for backward compatibility
   references?: string[]; // JSONB array - AI-generated references

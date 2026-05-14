@@ -208,7 +208,7 @@ const FindingViewer = ({
                     const isNewFormat = typeof step === 'object' && step !== null && 'stepNumber' in step;
                     const stepNumber = isNewFormat ? step.stepNumber : index + 1;
                     const description = isNewFormat ? step.description : step;
-                    const image = isNewFormat ? step.image : null;
+                    const imageKey = isNewFormat ? step.imageKey : null;
                     const caption = isNewFormat ? step.caption : null;
                     
                     return (
@@ -221,10 +221,10 @@ const FindingViewer = ({
                         <p className="text-sm text-on-surface-variant mb-2">
                           {description}
                         </p>
-                        {image && (
+                        {imageKey && (
                           <div className="mt-3">
                             <img 
-                              src={image} 
+                              src={imageKey} 
                               alt={`Step ${stepNumber}`} 
                               className="max-h-64 rounded border border-outline-variant" 
                             />

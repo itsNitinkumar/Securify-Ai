@@ -56,4 +56,10 @@ export const config = {
     redirectUri: process.env.GOOGLE_DRIVE_REDIRECT_URI || '',
     refreshToken: process.env.GOOGLE_DRIVE_REFRESH_TOKEN || '',
   },
+  aws: {
+    region: process.env.AWS_REGION || 'us-east-1',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+    s3BucketName: process.env.S3_BUCKET_NAME || '',
+  },
 };

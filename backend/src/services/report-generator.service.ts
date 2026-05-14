@@ -99,7 +99,7 @@ export class ReportGeneratorService {
             .join('');
     }
 
-    private static normalizeSteps(steps?: any[] | string): Array<{stepNumber: number; description: string; image?: string; caption?: string}> {
+    private static normalizeSteps(steps?: any[] | string): Array<{stepNumber: number; description: string; imageKey?: string; caption?: string}> {
         console.log('🔍 normalizeSteps input:', {
             steps,
             type: typeof steps,
@@ -110,12 +110,12 @@ export class ReportGeneratorService {
         
         if (!steps) return [];
         
-        // New format: array of objects with stepNumber, description, image, caption
+        // New format: array of objects with stepNumber, description, imageKey, caption
         if (Array.isArray(steps) && steps.length > 0 && typeof steps[0] === 'object' && steps[0] !== null && 'stepNumber' in steps[0]) {
             const normalized = steps.map((step) => ({
                 stepNumber: step.stepNumber || 0,
                 description: String(step.description || '').trim(),
-                image: step.image,
+                imageKey: step.imageKey || step.image, // Support both imageKey (new) and image (legacy)
                 caption: step.caption
             })).filter(s => s.description);
             
@@ -272,8 +272,8 @@ export class ReportGeneratorService {
         const stepsHtml = steps.length
             ? steps.map((step) => {
                 let html = `<p class="finding-step"><strong>Step ${step.stepNumber}:</strong> ${this.escapeHtml(step.description)}</p>`;
-                if (step.image) {
-                    html += `<div class="step-image-container"><img src="${this.escapeHtml(step.image)}" alt="Step ${step.stepNumber}" class="step-image" />`;
+                if (step.imageKey) {
+                    html += `<div class="step-image-container"><img src="${this.escapeHtml(step.imageKey)}" alt="Step ${step.stepNumber}" class="step-image" />`;
                     if (step.caption) {
                         html += `<p class="step-caption"><em>${this.escapeHtml(step.caption)}</em></p>`;
                     }

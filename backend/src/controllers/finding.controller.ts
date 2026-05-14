@@ -7,8 +7,35 @@ import VersionService from '../services/version.service';
 import ActivityLogService from '../services/activity-log.service';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
+import imageUrlService from '../services/image-url.service';
+import { config } from '../config/env';
 
 class FindingController {
+  /**
+   * Helper: Process finding images to convert paths to accessible URLs
+   */
+  private static async processFindingImages(finding: any): Promise<any> {
+    if (!finding) return finding;
+    
+    const baseUrl = config.frontendUrl.replace(':5173', ':3000'); // Use backend URL
+    
+    if (finding.steps_to_reproduce && Array.isArray(finding.steps_to_reproduce)) {
+      finding.steps_to_reproduce = await imageUrlService.processStepsImages(
+        finding.steps_to_reproduce,
+        baseUrl
+      );
+    }
+    
+    return finding;
+  }
+
+  /**
+   * Helper: Process multiple findings
+   */
+  private static async processMultipleFindings(findings: any[]): Promise<any[]> {
+    return Promise.all(findings.map(f => this.processFindingImages(f)));
+  }
+
   // Generate finding content using AI (without creating a finding)
   static generateContent = asyncHandler(async (req: Request, res: Response) => {
     console.log('📥 Generate content request received');
@@ -198,10 +225,13 @@ class FindingController {
     if (project_id && user.role !== 'client') filters.project_id = project_id;
 
     const findings = await FindingModel.findAll(filters);
+    
+    // Process image URLs
+    const processedFindings = await FindingController.processMultipleFindings(findings);
 
     res.json({
       success: true,
-      data: findings,
+      data: processedFindings,
     });
   });
 
@@ -245,9 +275,12 @@ class FindingController {
       stepsType: typeof finding.steps_to_reproduce,
     });
 
+    // Process image URLs
+    const processedFinding = await FindingController.processFindingImages(finding);
+
     res.json({
       success: true,
-      data: finding,
+      data: processedFinding,
     });
   });
 
