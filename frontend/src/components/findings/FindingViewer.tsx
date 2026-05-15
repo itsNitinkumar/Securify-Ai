@@ -220,12 +220,11 @@ const FindingViewer = ({
                     // Support both new format (object) and legacy format (string)
                     const isNewFormat = typeof step === 'object' && step !== null && 'stepNumber' in step;
                     const stepNumber = isNewFormat ? step.stepNumber : index + 1;
-                    const description = isNewFormat ? step.description : step;
-                    const imageKey = isNewFormat ? step.imageKey : null;
+                    const description = isNewFormat ? (step.description || '') : (step || '');
                     const caption = isNewFormat ? step.caption : null;
                     
-                    // imageKey should already be a signed URL from backend
-                    const imageUrl = imageKey || '';
+                    // Use signedUrl for display (backend provides this), fallback to imageKey
+                    const imageUrl = isNewFormat ? (step.signedUrl || step.imageKey || '') : '';
                     
                     return (
                       <div key={index} className="bg-surface-low p-3 rounded-lg border border-outline-variant">
