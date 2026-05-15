@@ -167,12 +167,24 @@ const ProjectDetailPage = () => {
   const handleDeleteFinding = async (findingId: number) => {
     if (!project) return;
     try {
+      // Optimistically update UI immediately
+      setProject((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          findings: prev.findings.filter((f) => f.id !== findingId),
+        };
+      });
+      
       await findingApi.deleteFinding(findingId);
       toast.success('Finding deleted');
+      // Reload to ensure consistency with backend
       await load();
     } catch (error) {
       console.error('Failed to delete finding:', error);
       toast.error('Failed to delete finding');
+      // Reload on error to restore correct state
+      await load();
     }
   };
 

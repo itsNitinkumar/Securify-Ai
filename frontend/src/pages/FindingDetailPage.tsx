@@ -4,13 +4,11 @@ import {
   ArrowLeft,
   Edit,
   Trash2,
-  XCircle,
   History,
 } from 'lucide-react';
 import { findingApi, Finding } from '@/api/findingApi';
 import { authApi } from '@/api/authApi';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import FindingContent from '@/components/findings/FindingContent';
 import FindingWorkflowButtons from '@/components/findings/FindingWorkflowButtons';
@@ -27,47 +25,123 @@ const FindingDetailPage = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [lastKnownProjectId, setLastKnownProjectId] = useState<number | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string>('');
   const [currentUserId, setCurrentUserId] = useState<number>(0);
 
   useEffect(() => {
-    if (id) {
-      loadFinding();
-      loadCurrentUser();
-    }
-  }, [id]);
+    let isMounted = true;
 
-  const loadCurrentUser = async () => {
-    try {
-      const response = await authApi.getProfile();
-      const userData = (response.data as any)?.data || (response.data as any)?.user || response.data;
-      setCurrentUserRole(userData?.role || '');
-      setCurrentUserId(userData?.id || 0);
-    } catch (error) {
-      console.error('Failed to load user profile:', error);
+    if (id && !isDeleting) {
+      const load = async () => {
+        try {
+          setLoading(true);
+          const response = await findingApi.getFinding(parseInt(id));
+          const findingData = (response.data as any)?.data || response.data;
+          if (isMounted) {
+            setFinding(findingData);
+            // Store project_id for later use (in case finding gets deleted)
+            if (findingData?.project_id) {
+              setLastKnownProjectId(findingData.project_id);
+            }
+          }
+        } catch (error: any) {
+          console.error('Failed to load finding:', error);
+
+          // If finding not found (404), silently redirect to project page or dashboard
+          if (error?.response?.status === 404) {
+            const redirectTo = lastKnownProjectId
+              ? `/projects/${lastKnownProjectId}`
+              : '/dashboard';
+            navigate(redirectTo, { replace: true });
+            return;
+          }
+
+          if (isMounted) {
+            setFinding(null);
+          }
+        } finally {
+          if (isMounted) {
+            setLoading(false);
+          }
+        }
+      };
+
+      const loadUser = async () => {
+        try {
+          const response = await authApi.getProfile();
+          const userData = (response.data as any)?.data || (response.data as any)?.user || response.data;
+          if (isMounted) {
+            setCurrentUserRole(userData?.role || '');
+            setCurrentUserId(userData?.id || 0);
+          }
+        } catch (error) {
+          console.error('Failed to load user profile:', error);
+        }
+      };
+
+      load();
+      loadUser();
     }
-  };
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id, isDeleting, navigate, lastKnownProjectId]);
 
   const loadFinding = async () => {
+    if (isDeleting) return; // Don't reload if deleting
     try {
       setLoading(true);
       const response = await findingApi.getFinding(parseInt(id!));
       const findingData = (response.data as any)?.data || response.data;
       setFinding(findingData);
-    } catch (error) {
+      // Store project_id for later use
+      if (findingData?.project_id) {
+        setLastKnownProjectId(findingData.project_id);
+      }
+    } catch (error: any) {
       console.error('Failed to load finding:', error);
+
+      // If finding not found (404), silently redirect to project page or dashboard
+      if (error?.response?.status === 404) {
+        const redirectTo = lastKnownProjectId
+          ? `/projects/${lastKnownProjectId}`
+          : '/dashboard';
+        navigate(redirectTo, { replace: true });
+        return;
+      }
+
+      setFinding(null);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async () => {
+    if (isDeleting || !finding) return; // Prevent double-clicks and ensure finding is loaded
+
+    setIsDeleting(true);
+    setConfirmDelete(false);
+
+    // Get project_id from finding
+    const projectId = finding.project_id;
+
+    // Determine where to navigate
+    const navigateTo = projectId
+      ? `/projects/${projectId}`
+      : '/dashboard';
+
+    // Navigate IMMEDIATELY
+    navigate(navigateTo, { replace: true });
+    toast.success('Finding deleted');
+
+    // Delete in background
     try {
       await findingApi.deleteFinding(parseInt(id!));
-      navigate('/findings');
     } catch (error) {
       console.error('Failed to delete finding:', error);
-      toast.error('Failed to delete finding');
     }
   };
 
@@ -92,18 +166,10 @@ const FindingDetailPage = () => {
     );
   }
 
+  // If finding is null and not loading, we've already redirected in useEffect
+  // This should never render, but just in case:
   if (!finding) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-surface">
-        <Card className="p-12 text-center bg-surface-high border-outline">
-          <XCircle className="w-16 h-16 text-error mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-on-surface mb-2">Finding not found</h3>
-          <Button onClick={() => navigate('/findings')} className="mt-4">
-            Back to Findings
-          </Button>
-        </Card>
-      </div>
-    );
+    return null;
   }
 
   const severityColors: Record<string, string> = {
@@ -126,7 +192,7 @@ const FindingDetailPage = () => {
     if (finding?.project_id) {
       navigate(`/projects/${finding.project_id}`);
     } else {
-      navigate('/finding-library');
+      navigate('/projects'); // Go to projects list
     }
   };
 
@@ -194,16 +260,17 @@ const FindingDetailPage = () => {
               variant="outline"
               size="sm"
               onClick={() => setConfirmDelete(true)}
+              disabled={isDeleting}
               className="border-error/30 text-error hover:bg-error/10"
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Delete
+              {isDeleting ? 'Deleting...' : 'Delete'}
             </Button>
           </div>
         </div>
       </div>
 
-      {confirmDelete ? (
+      {confirmDelete && !isDeleting ? (
         <div className="mb-6">
           <InlineConfirm
             danger

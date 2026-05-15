@@ -25,7 +25,6 @@ const ActivityFilters = ({ filters, onFiltersChange }: ActivityFiltersProps) => 
     { value: 'finding', label: 'Finding' },
     { value: 'report', label: 'Report' },
     { value: 'user', label: 'User' },
-    { value: 'finding_library', label: 'Template' },
   ];
 
   const timeRanges = [

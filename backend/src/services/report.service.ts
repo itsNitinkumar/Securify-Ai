@@ -2841,6 +2841,17 @@ const range = children.slice(startIdx + 1, endIdx);
           { name: 'cURL Utility', description: 'Command line utility to perform HTTP/s requests.' },
         ];
 
+    // Optional: Out Of Scope Endpoints table (injected between User Roles and Tools)
+    const includeOutOfScopeEndpoints = Boolean(
+      (data.project as any)?.include_out_of_scope_endpoints ?? (data.project as any)?.includeOutOfScopeEndpoints
+    );
+    const outOfScopeEndpointsRaw = (data.project as any)?.out_of_scope_endpoints || (data.project as any)?.outOfScopeEndpoints;
+    const outOfScopeEndpoints = Array.isArray(outOfScopeEndpointsRaw)
+      ? outOfScopeEndpointsRaw
+        .map((r: any) => ({ name: String(r?.name || '').trim(), url: String(r?.url || '').trim() }))
+        .filter((r: any) => r.name || r.url)
+      : [];
+
     const tables = body.find('w\\:tbl').toArray();
     const setTableHeader = (tbl: any, values: string[]) => {
       const rows = $(tbl).find('> w\\:tr').toArray();
@@ -2880,6 +2891,43 @@ const range = children.slice(startIdx + 1, endIdx);
     if (tables[0]) applySimpleTableTheme(tables[0]);
     if (tables[1]) applySimpleTableTheme(tables[1]);
     if (tables[2]) applySimpleTableTheme(tables[2]);
+
+    // Inject Out Of Scope Endpoints table (optional) below User Roles and above Tools.
+    // Keep this insertion-only and reuse existing table markup for consistent styling.
+    if (includeOutOfScopeEndpoints && outOfScopeEndpoints.length && tables[0] && tables[1] && tables[2]) {
+      const toolsTbl = tables[2];
+
+      // Clone the Application Details table (same two-column structure: Name/URL).
+      const oosTbl = cloneNode(tables[0]);
+      setTableHeader(oosTbl.get(0), ['Name', 'URL']);
+      setTableRows(oosTbl.get(0), outOfScopeEndpoints.map((r: any) => [String(r.name || ''), String(r.url || '')]));
+      applySimpleTableTheme(oosTbl.get(0));
+
+      // Add a heading paragraph matching other scope table headings.
+      const oosHeading = 'Out Of Scope Endpoints';
+      const headingPara = $('<w:p/>');
+      const pPr = $('<w:pPr/>');
+      const spacing = $('<w:spacing/>');
+      spacing.attr('w:before', '240');
+      spacing.attr('w:after', '120');
+      pPr.append(spacing);
+      const rPr = $('<w:rPr/>');
+      const bold = $('<w:b w:val="1"/><w:bCs w:val="1"/>');
+      const color = $(`<w:color w:val="${this.brand.green || '00d639'}"/>`);
+      const sz = $('<w:sz w:val="24"/><w:szCs w:val="24"/>');
+      rPr.append(bold);
+      rPr.append(color);
+      rPr.append(sz);
+      pPr.append(rPr);
+      headingPara.append(pPr);
+      const run = $('<w:r/>');
+      run.append(rPr.clone());
+      run.append(`<w:t xml:space="preserve">${escapeXmlText(oosHeading)}</w:t>`);
+      headingPara.append(run);
+
+      $(toolsTbl).before($.xml(headingPara));
+      $(toolsTbl).before($.xml(oosTbl));
+    }
 
     // Insert standalone heading paragraphs before each scope table
     const tableHeadings = [
@@ -3335,13 +3383,15 @@ const range = children.slice(startIdx + 1, endIdx);
             sourceNode: any,
             lead: string,
             tail: string,
-            opts?: { color?: string; underline?: string }
+            opts?: { color?: string; underline?: string; normalizeIndent?: boolean; spacing?: { before?: number; after?: number } }
           ) => {
             const p = cloneSectionNode(sourceNode);
             setParagraphSegments(sectionDoc, p.get(0), [
               { text: lead, bold: true, color: opts?.color || '000000' },
               { text: tail ? ` ${tail}` : '', color: opts?.color || '000000', underline: opts?.underline },
             ]);
+            if (opts?.normalizeIndent) ensureNoRightIndent(p.get(0));
+            if (opts?.spacing) ensureSectionParaSpacing(p.get(0), opts.spacing);
             sectionDoc(beforeNode).before(sectionDoc.xml(p));
           };
 
@@ -3390,6 +3440,22 @@ const range = children.slice(startIdx + 1, endIdx);
             }
             if (typeof spacing.before === 'number') sp.attr('w:before', String(spacing.before));
             if (typeof spacing.after === 'number') sp.attr('w:after', String(spacing.after));
+          };
+
+          // Some prototype paragraphs carry a right-indent (w:ind w:right) which produces
+          // a visible extra gap in the generated DOCX/PDF for inserted step lines.
+          const ensureNoRightIndent = (p: any) => {
+            if (!p) return;
+            let pPr = sectionDoc(p).find('w\\:pPr').first();
+            if (!pPr.length) {
+              sectionDoc(p).prepend('<w:pPr/>');
+              pPr = sectionDoc(p).find('w\\:pPr').first();
+            }
+            const ind = pPr.find('w\\:ind').first();
+            if (ind.length) {
+              if (ind.attr('w:right') != null) ind.attr('w:right', '0');
+              if (ind.attr('w:end') != null) ind.attr('w:end', '0');
+            }
           };
 
           // Subheading spacing (matches reference tighter grouping).
@@ -3638,12 +3704,18 @@ const range = children.slice(startIdx + 1, endIdx);
             })).filter(s => s.description);
           };
 
-          const steps = normalizeSteps(finding.steps_to_reproduce);
-          console.log(`   - Inserting ${steps.length} steps`);
-          for (let si = 0; si < steps.length; si++) {
-            const step = steps[si];
-            console.log(`     Step ${step.stepNumber}: "${step.description.substring(0, 50)}..."`);
-            appendSectionSplitParagraph(recLabel || backPara || titlePara, stepTemplate, `Step ${step.stepNumber}:`, step.description, { color: '000000' });
+           const steps = normalizeSteps(finding.steps_to_reproduce);
+           console.log(`   - Inserting ${steps.length} steps`);
+           for (let si = 0; si < steps.length; si++) {
+             const step = steps[si];
+             console.log(`     Step ${step.stepNumber}: "${step.description.substring(0, 50)}..."`);
+             appendSectionSplitParagraph(
+               recLabel || backPara || titlePara,
+               stepTemplate,
+               `Step ${step.stepNumber}:`,
+               step.description,
+               { color: '000000', normalizeIndent: true, spacing: { before: 0, after: 120 } }
+             );
             // Important ordering: we insert blocks BEFORE the anchor paragraph. Inserting in sequence means
             // later inserts appear closer to the anchor. To get: Step -> Image -> Caption, we must insert
             // Image first, then Caption.
@@ -3667,16 +3739,17 @@ const range = children.slice(startIdx + 1, endIdx);
                 console.log(`       ❌ Failed to embed image`);
               }
             }
-            if (step.caption) {
-              const captionPara = cloneSectionNode(stepTemplate);
-              // Add center alignment to caption
-              const p = sectionDoc(captionPara.get(0));
-              const existingPPr = p.children('w\\:pPr').first();
-              if (existingPPr.length) {
-                existingPPr.append('<w:jc w:val="center"/>');
-              } else {
-                p.prepend('<w:pPr><w:jc w:val="center"/></w:pPr>');
-              }
+             if (step.caption) {
+               const captionPara = cloneSectionNode(stepTemplate);
+               ensureNoRightIndent(captionPara.get(0));
+               // Add center alignment to caption
+               const p = sectionDoc(captionPara.get(0));
+               const existingPPr = p.children('w\\:pPr').first();
+               if (existingPPr.length) {
+                 existingPPr.append('<w:jc w:val="center"/>');
+               } else {
+                 p.prepend('<w:pPr><w:jc w:val="center"/></w:pPr>');
+               }
               setParagraphSegments(sectionDoc, captionPara.get(0), [
                 { text: `Fig ${step.stepNumber}: ${step.caption}`, italic: true, color: '9ca3af' },
               ]);

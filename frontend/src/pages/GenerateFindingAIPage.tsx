@@ -2,6 +2,7 @@ import { useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, RefreshCw, Sparkles, Upload as UploadIcon, FileText, Shield, AlertTriangle, Plus, Trash2, Image as ImageIcon, Save, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import S3Image from '@/components/common/S3Image';
 import { findingApi } from '@/api/findingApi';
 import { uploadApi } from '@/api/uploadApi';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ interface StepData {
   stepNumber: number;
   description: string;
   image?: string;
+  imageKey?: string;
   caption?: string;
 }
 
@@ -143,9 +145,9 @@ const GenerateFindingAIPage = () => {
       setLoading(true);
       // Filter out empty steps
       const validSteps = editableSteps.filter(s => s.description.trim() || s.imageKey);
-      
+
       console.log('Saving finding with steps:', validSteps);
-      
+
       const response = await findingApi.create({
         title: generatedFinding.title || formData.title,
         severity: formData.severity,
@@ -203,8 +205,10 @@ const GenerateFindingAIPage = () => {
       setUploadingImage(true);
       const response = await uploadApi.uploadStepImage(file);
       if (response.data) {
-        // IMPORTANT: Store imageKey (S3 key), NOT signedUrl
+        // Store ONLY imageKey in database (S3 key)
         const imageKey = response.data.imageKey || response.data.url || '';
+
+        // Store the imageKey (NOT signedUrl) in the step
         updateStep(index, 'imageKey', imageKey);
         toast.success('Image uploaded successfully');
       }
@@ -216,7 +220,7 @@ const GenerateFindingAIPage = () => {
     }
   };
 
-  const handleImagePaste = async (index: number, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handleImagePaste = async (index: number, e: React.ClipboardEvent<HTMLDivElement | HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
     if (items) {
       for (let i = 0; i < items.length; i++) {
@@ -254,6 +258,32 @@ const GenerateFindingAIPage = () => {
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back to Project
       </Button>
+
+      {(generatedFinding || formData.title || formData.evidence) && (
+        <Button
+          variant="outline"
+          onClick={() => {
+            if (window.confirm('Are you sure you want to discard this draft? All unsaved changes will be lost.')) {
+              clearDraft();
+              setGeneratedFinding(null);
+              setEditableSteps([]);
+              setFormData({
+                title: '',
+                severity: 'Medium',
+                vulnerabilityType: '',
+                affectedEndpoint: '',
+                evidence: '',
+              });
+              setStep('input');
+              toast.success('Draft discarded');
+            }
+          }}
+          className="mb-4 ml-2 text-error border-error/50 hover:bg-error/10"
+        >
+          <X className="mr-2 h-4 w-4" />
+          Discard Draft
+        </Button>
+      )}
 
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
@@ -399,11 +429,10 @@ const GenerateFindingAIPage = () => {
                       <div className="bg-surface-low p-4 rounded-lg">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-xs font-semibold text-on-surface uppercase">Likelihood:</span>
-                          <Badge className={`${
-                            generatedFinding.likelihood.severity === 'High' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                            generatedFinding.likelihood.severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
-                            'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                          }`}>
+                          <Badge className={`${generatedFinding.likelihood.severity === 'High' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                              generatedFinding.likelihood.severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                                'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                            }`}>
                             {generatedFinding.likelihood.severity || 'N/A'}
                           </Badge>
                         </div>
@@ -418,11 +447,10 @@ const GenerateFindingAIPage = () => {
                         <div className="flex items-center gap-2 mb-2">
                           <AlertTriangle className="w-4 h-4 text-on-surface" />
                           <span className="text-xs font-semibold text-on-surface uppercase">Impact:</span>
-                          <Badge className={`${
-                            generatedFinding.impact.severity === 'High' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                            generatedFinding.impact.severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
-                            'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                          }`}>
+                          <Badge className={`${generatedFinding.impact.severity === 'High' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                              generatedFinding.impact.severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                                'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                            }`}>
                             {generatedFinding.impact.severity || 'N/A'}
                           </Badge>
                         </div>
@@ -444,10 +472,9 @@ const GenerateFindingAIPage = () => {
                   </div>
                   <div className="space-y-4">
                     {editableSteps.map((step, index) => {
-                      const imageUrl = step.imageKey 
-                        ? (step.imageKey.startsWith('http') ? step.imageKey : step.imageKey.startsWith('/') ? `http://localhost:3000${step.imageKey}` : step.imageKey)
-                        : '';
-                      
+                      // imageKey is stored in DB, we'll fetch signed URL when needed
+                      const imageUrl = step.imageKey || '';
+
                       return (
                         <div key={index} className="bg-surface-low p-4 rounded-lg border border-outline-variant space-y-4">
                           <div className="flex items-center justify-between">
@@ -474,26 +501,31 @@ const GenerateFindingAIPage = () => {
                               </div>
                             ) : imageUrl ? (
                               <div className="relative rounded-lg overflow-hidden border border-outline-variant bg-surface">
-                                <img 
-                                  src={imageUrl} 
-                                  alt={`Step ${step.stepNumber}`} 
-                                  className="w-full max-h-80 object-contain" 
+                                <S3Image
+                                  imageKey={imageUrl}
+                                  alt={`Step ${step.stepNumber}`}
+                                  className="w-full max-h-80 object-contain"
                                 />
                                 <Button
                                   type="button"
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() => updateStep(index, 'image', '')}
-                                  className="absolute top-2 right-2 bg-surface/90 text-error hover:bg-error/20 rounded-full p-1.5"
+                                  onClick={() => updateStep(index, 'imageKey', '')}
+                                  className="absolute top-2 right-2 bg-surface/90 text-error hover:bg-error/20 rounded-full p-1.5 z-10"
                                 >
                                   <X className="w-4 h-4" />
                                 </Button>
                               </div>
                             ) : (
-                              <div 
-                                className="border-2 border-dashed border-outline-variant rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                              <div
+                                tabIndex={0}
+                                className="border-2 border-dashed border-outline-variant rounded-lg p-6 text-center hover:border-primary/50 focus:border-primary focus:outline-none transition-colors cursor-pointer"
                                 onDragOver={handleDragOver}
                                 onDrop={(e) => handleDrop(index, e)}
+                                onPaste={(e) => handleImagePaste(index, e)}
+                                onClick={() => document.getElementById(`step-image-${index}`)?.click()}
+                                role="button"
+                                aria-label="Upload, drag and drop, or paste image"
                               >
                                 <input
                                   type="file"
@@ -502,13 +534,13 @@ const GenerateFindingAIPage = () => {
                                   id={`step-image-${index}`}
                                   onChange={(e) => e.target.files?.[0] && handleImageUpload(index, e.target.files[0])}
                                 />
-                                <label htmlFor={`step-image-${index}`} className="cursor-pointer flex flex-col items-center gap-2">
+                                <div className="pointer-events-none flex flex-col items-center gap-2">
                                   <UploadIcon className="w-6 h-6 text-on-surface-variant" />
                                   <div className="text-on-surface-variant">
                                     <p className="text-sm font-medium">Click to upload</p>
-                                    <p className="text-xs mt-1">Paste (Ctrl+V) or drag & drop</p>
+                                    <p className="text-xs mt-1">or paste (Ctrl+V), drag & drop</p>
                                   </div>
-                                </label>
+                                </div>
                               </div>
                             )}
                           </div>

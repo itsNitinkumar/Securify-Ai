@@ -49,12 +49,12 @@ export const uploadApi = {
     if (stepId !== undefined) {
       formData.append('stepId', stepId.toString());
     }
-    
+
     // Use new S3 endpoint if findingId and stepId are provided
     const endpoint = findingId && stepId !== undefined
       ? `/upload/findings/${findingId}/steps/${stepId}/image`
       : '/upload/step-image';
-    
+
     const response = await axiosInstance.post<ApiResponse<UploadResponse>>(
       endpoint,
       formData,
@@ -98,5 +98,22 @@ export const uploadApi = {
       { caption }
     );
     return response.data;
+  },
+
+  /**
+   * Get signed URL for an S3 imageKey
+   * Converts S3 key to temporary signed URL for display
+   */
+  getSignedUrl: async (imageKey: string): Promise<string> => {
+    try {
+      const response = await axiosInstance.post<ApiResponse<{ signedUrl: string }>>(
+        '/upload/get-signed-url',
+        { imageKey }
+      );
+      return response.data.data?.signedUrl || imageKey;
+    } catch (error) {
+      console.error('Failed to get signed URL:', error);
+      return imageKey; // Fallback to imageKey
+    }
   },
 };

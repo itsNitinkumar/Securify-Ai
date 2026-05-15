@@ -91,23 +91,59 @@ class ImageUrlService {
   }
 
   /**
-   * Process steps array and convert all imageKeys to accessible URLs
+   * Process steps array and convert all image keys to signed URLs
+   * IMPORTANT: Keeps original imageKey, adds signedUrl for display
    */
   async processStepsImages(
-    steps: Array<{ stepNumber: number; description: string; imageKey?: string; caption?: string }> | undefined,
+    steps: any[] | undefined,
     baseUrl: string = 'http://localhost:3000'
-  ): Promise<Array<{ stepNumber: number; description: string; imageKey?: string; caption?: string }>> {
+  ): Promise<any[]> {
     if (!steps || !Array.isArray(steps)) return [];
 
     return Promise.all(
       steps.map(async (step) => {
-        if (!step.imageKey) return step;
+        const processedStep = { ...step };
 
-        const accessibleUrl = await this.getAccessibleUrl(step.imageKey, baseUrl);
-        return {
-          ...step,
-          imageKey: accessibleUrl || step.imageKey, // Fallback to original if conversion fails
-        };
+        // Handle old format: single imageKey
+        if (step.imageKey) {
+          const signedUrl = await this.getAccessibleUrl(step.imageKey, baseUrl);
+          // Keep original imageKey, add signedUrl for display
+          processedStep.imageKey = step.imageKey;  // Original S3 key
+          processedStep.signedUrl = signedUrl || step.imageKey;  // Signed URL for display
+        }
+
+        // Handle new format: images array
+        if (step.images && Array.isArray(step.images)) {
+          processedStep.images = await Promise.all(
+            step.images.map(async (img: any) => {
+              // Handle different image formats
+              if (typeof img === 'string') {
+                // Simple string format - assume it's an imageKey
+                const signedUrl = await this.getAccessibleUrl(img, baseUrl);
+                return {
+                  imageKey: img,  // Original S3 key
+                  signedUrl: signedUrl || img,  // Signed URL for display
+                  url: signedUrl || img, // For backward compatibility
+                };
+              } else if (img && typeof img === 'object') {
+                // Object format with imageKey
+                const imageKey = img.imageKey || img.key || img.url;
+                if (imageKey) {
+                  const signedUrl = await this.getAccessibleUrl(imageKey, baseUrl);
+                  return {
+                    ...img,
+                    imageKey: imageKey,  // Keep original S3 key
+                    signedUrl: signedUrl || imageKey,  // Signed URL for display
+                    url: signedUrl || imageKey, // For backward compatibility
+                  };
+                }
+              }
+              return img;
+            })
+          );
+        }
+
+        return processedStep;
       })
     );
   }

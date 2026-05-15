@@ -221,7 +221,7 @@ export const ImportFindingsDialog: React.FC<ImportFindingsDialogProps> = ({
         {getLikelihoodDetail(finding.likelihood) && (
           <div>
             <h4 className="text-sm font-semibold text-on-surface mb-1">Likelihood</h4>
-            <p className="text-sm text-on-surface">
+            <p className="text-sm text-on-surface-variant">
               {finding.likelihood && typeof finding.likelihood === 'object' && finding.likelihood.severity && (
                 <span className="font-semibold">{finding.likelihood.severity}</span>
               )}
@@ -234,7 +234,7 @@ export const ImportFindingsDialog: React.FC<ImportFindingsDialogProps> = ({
         {getImpactDetail(finding.impact) && (
           <div>
             <h4 className="text-sm font-semibold text-on-surface mb-1">Impact</h4>
-            <p className="text-sm text-on-surface">
+            <p className="text-sm text-on-surface-variant">
               {finding.impact && typeof finding.impact === 'object' && finding.impact.severity && (
                 <span className="font-semibold">{finding.impact.severity}</span>
               )}
@@ -247,11 +247,46 @@ export const ImportFindingsDialog: React.FC<ImportFindingsDialogProps> = ({
         {steps.length > 0 && (
           <div>
             <h4 className="text-sm font-semibold text-on-surface mb-2">Steps to Reproduce</h4>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {steps.map((step: any, index: number) => (
-                <div key={index} className="text-sm text-on-surface-variant">
-                  <span className="font-semibold text-on-surface">Step {index + 1}: </span>
-                  {typeof step === 'string' ? step : step.description || `Step ${index + 1}`}
+                <div key={index} className="space-y-2">
+                  <div className="text-sm text-on-surface-variant">
+                    <span className="font-semibold text-on-surface">Step {index + 1}: </span>
+                    {typeof step === 'string' ? step : step.description || `Step ${index + 1}`}
+                  </div>
+                  {step.images && Array.isArray(step.images) && step.images.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      {step.images.map((img: any, imgIndex: number) => {
+                        // Handle different image formats
+                        let imageUrl = '';
+                        if (typeof img === 'string') {
+                          imageUrl = img;
+                        } else if (img.signedUrl) {
+                          imageUrl = img.signedUrl;
+                        } else if (img.url) {
+                          imageUrl = img.url;
+                        } else if (img.imageKey) {
+                          // If only imageKey is present, skip (backend should have provided signedUrl)
+                          console.warn('Image has imageKey but no signedUrl:', img.imageKey);
+                          return null;
+                        }
+                        
+                        return imageUrl ? (
+                          <img
+                            key={imgIndex}
+                            src={imageUrl}
+                            alt={`Step ${index + 1} screenshot ${imgIndex + 1}`}
+                            className="w-full rounded border border-outline hover:scale-105 transition-transform cursor-pointer"
+                            onClick={() => window.open(imageUrl, '_blank')}
+                            onError={(e) => {
+                              console.error('Failed to load image:', imageUrl);
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        ) : null;
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -453,9 +488,9 @@ export const ImportFindingsDialog: React.FC<ImportFindingsDialogProps> = ({
                 {previewFinding?.severity}
               </span>
             </div>
-            {previewFinding?.affected_target && (
-              <p className="text-sm text-on-surface-variant">{previewFinding.affected_target}</p>
-            )}
+            <DialogDescription>
+              {previewFinding?.affected_target || 'Preview finding details'}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto">{previewFinding && renderFindingPreview(previewFinding)}</div>

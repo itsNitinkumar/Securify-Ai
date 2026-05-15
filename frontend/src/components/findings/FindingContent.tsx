@@ -325,7 +325,8 @@ const FindingContent = ({
               {Array.isArray(finding.steps_to_reproduce) ? (
                 finding.steps_to_reproduce.map((step: any, index: number) => {
                   const isNewFormat = typeof step === 'object' && step !== null;
-                  const imageUrl = isNewFormat && step.imageKey ? (step.imageKey.startsWith('http') ? step.imageKey : step.imageKey.startsWith('/') ? `http://localhost:3000${step.imageKey}` : step.imageKey) : '';
+                  // Use signedUrl from backend if available, otherwise use imageKey
+                  const imageUrl = isNewFormat ? (step.signedUrl || step.imageKey) : '';
                   
                   return (
                     <div key={index} className="bg-surface-low p-4 rounded-lg border border-outline-variant space-y-3">
@@ -343,6 +344,10 @@ const FindingContent = ({
                             src={imageUrl} 
                             alt={`Step ${isNewFormat ? step.stepNumber : index + 1}`} 
                             className="w-full max-h-80 object-contain rounded-lg border border-outline-variant bg-surface" 
+                            onError={(e) => {
+                              console.error('Image failed to load:', imageUrl);
+                              e.currentTarget.style.display = 'none';
+                            }}
                           />
                           {step.caption && (
                             <p className="text-xs text-gray-400 mt-2 italic text-center">{step.caption}</p>

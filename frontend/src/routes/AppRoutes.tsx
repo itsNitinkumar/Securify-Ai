@@ -27,9 +27,6 @@ import ApproveUserPage from '../pages/ApproveUserPage';
 import CreateManagerPage from '../pages/CreateManagerPage';
 import EditUserPage from '../pages/EditUserPage';
 import RoleRequestPage from '../pages/RoleRequestPage';
-import FindingLibraryPage from '../pages/FindingLibraryPage';
-import FindingTemplateDetailPage from '../pages/FindingTemplateDetailPage';
-import FindingTemplateCreatePage from '../pages/FindingTemplateCreatePage';
 
 const AppRoutes = () => {
   return (
@@ -61,9 +58,6 @@ const AppRoutes = () => {
         <Route path="templates/:templateId" element={<TemplateEditorPage />} />
         <Route path="search" element={<SearchIntelPage />} />
         <Route path="findings/:id" element={<FindingDetailPage />} />
-        <Route path="finding-library" element={<FindingLibraryPage />} />
-        <Route path="finding-library/new" element={<FindingTemplateCreatePage />} />
-        <Route path="finding-library/:templateId" element={<FindingTemplateDetailPage />} />
         <Route path="activity" element={<ActivityLogsPage />} />
         <Route path="users" element={<UsersManagementPage />} />
         <Route path="users/create-manager" element={<CreateManagerPage />} />

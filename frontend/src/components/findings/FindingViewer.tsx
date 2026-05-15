@@ -37,6 +37,17 @@ const FindingViewer = ({
   const [loading, setLoading] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
+  const severityBadge = (severity: string) => {
+    const colors: Record<string, string> = {
+      Critical: 'bg-red-500/10 text-red-400 border-red-500/20',
+      High: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+      Medium: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+      Low: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+      Informational: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+    };
+    return colors[severity] || colors.Low;
+  };
+
   useEffect(() => {
     if (open && findingId) {
       loadFinding();
@@ -172,8 +183,8 @@ const FindingViewer = ({
                       <div className="flex items-center gap-2 mb-2">
                         <AlertTriangle className="w-4 h-4 text-on-surface" />
                         <span className="text-sm font-semibold text-on-surface">Impact:</span>
-                        {typeof finding.impact === 'object' && (
-                          <Badge className="ml-1">{finding.impact.severity}</Badge>
+                        {typeof finding.impact === 'object' && finding.impact.severity && (
+                          <Badge className={severityBadge(finding.impact.severity) + " ml-1"}>{finding.impact.severity}</Badge>
                         )}
                       </div>
                       <p className="text-sm text-on-surface-variant">
@@ -185,8 +196,8 @@ const FindingViewer = ({
                     <div>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-sm font-semibold text-on-surface">Likelihood:</span>
-                        {typeof finding.likelihood === 'object' && (
-                          <Badge className="ml-1">{finding.likelihood.severity}</Badge>
+                        {typeof finding.likelihood === 'object' && finding.likelihood.severity && (
+                          <Badge className={severityBadge(finding.likelihood.severity) + " ml-1"}>{finding.likelihood.severity}</Badge>
                         )}
                       </div>
                       <p className="text-sm text-on-surface-variant">
@@ -203,13 +214,18 @@ const FindingViewer = ({
               <Card className="p-4 bg-surface border-outline-variant">
                 <h3 className="text-sm font-semibold text-on-surface mb-3">Steps to Reproduce</h3>
                 <div className="space-y-4">
-                  {finding.steps_to_reproduce.map((step: any, index: number) => {
+                  {(() => {
+                    console.log('📸 Steps data:', JSON.stringify(finding.steps_to_reproduce.slice(0, 2), null, 2));
+                    return finding.steps_to_reproduce.map((step: any, index: number) => {
                     // Support both new format (object) and legacy format (string)
                     const isNewFormat = typeof step === 'object' && step !== null && 'stepNumber' in step;
                     const stepNumber = isNewFormat ? step.stepNumber : index + 1;
                     const description = isNewFormat ? step.description : step;
                     const imageKey = isNewFormat ? step.imageKey : null;
                     const caption = isNewFormat ? step.caption : null;
+                    
+                    // imageKey should already be a signed URL from backend
+                    const imageUrl = imageKey || '';
                     
                     return (
                       <div key={index} className="bg-surface-low p-3 rounded-lg border border-outline-variant">
@@ -221,12 +237,24 @@ const FindingViewer = ({
                         <p className="text-sm text-on-surface-variant mb-2">
                           {description}
                         </p>
-                        {imageKey && (
+                        {imageUrl && (
                           <div className="mt-3">
                             <img 
-                              src={imageKey} 
+                              src={imageUrl} 
                               alt={`Step ${stepNumber}`} 
                               className="max-h-64 rounded border border-outline-variant" 
+                              onError={(e) => {
+                                console.error('Image failed to load:', {
+                                  url: imageUrl,
+                                  isS3: imageUrl.includes('amazonaws.com'),
+                                  isSigned: imageUrl.includes('X-Amz'),
+                                  length: imageUrl.length
+                                });
+                                e.currentTarget.style.display = 'none';
+                              }}
+                              onLoad={() => {
+                                console.log('Image loaded successfully:', imageUrl.substring(0, 100));
+                              }}
                             />
                             {caption && (
                               <p className="text-xs text-on-surface-variant mt-2 italic">{caption}</p>
@@ -235,7 +263,7 @@ const FindingViewer = ({
                         )}
                       </div>
                     );
-                  })}
+                  })})()}
                 </div>
               </Card>
             )}

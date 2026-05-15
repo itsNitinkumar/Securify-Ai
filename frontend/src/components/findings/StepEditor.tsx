@@ -29,6 +29,38 @@ const getImageUrl = (imagePath: string | undefined): string => {
 const StepEditor = ({ steps, onChange }: StepEditorProps) => {
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [previews, setPreviews] = useState<Record<number, string>>({});
+  const [loadingPreviews, setLoadingPreviews] = useState<Set<number>>(new Set());
+
+  // Load signed URLs for existing images
+  useEffect(() => {
+    const loadExistingImages = async () => {
+      const newLoadingSet = new Set<number>();
+      
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        // Only load if imageKey exists and we don't already have a preview
+        if (step.imageKey && !previews[i]) {
+          newLoadingSet.add(i);
+          setLoadingPreviews(prev => new Set([...prev, i]));
+          
+          try {
+            const signedUrl = await uploadApi.getSignedUrl(step.imageKey);
+            setPreviews(prev => ({ ...prev, [i]: signedUrl }));
+          } catch (error) {
+            console.error(`Failed to load image for step ${i}:`, error);
+          } finally {
+            setLoadingPreviews(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(i);
+              return newSet;
+            });
+          }
+        }
+      }
+    };
+
+    loadExistingImages();
+  }, [steps.map(s => s.imageKey).join(',')]); // Re-run when imageKeys change
 
   const addStep = () => {
     const newStep: Step = {
@@ -226,10 +258,12 @@ const StepEditor = ({ steps, onChange }: StepEditorProps) => {
                   <label className="text-xs text-on-surface-variant mb-2 block">
                     Image (Optional)
                   </label>
-                  {uploadingIndex === index ? (
+                  {uploadingIndex === index || loadingPreviews.has(index) ? (
                     <div className="border-2 border-dashed border-primary rounded-lg p-8 text-center">
                       <Loader2 className="w-8 h-8 text-primary mx-auto mb-2 animate-spin" />
-                      <p className="text-xs text-on-surface-variant">Uploading image...</p>
+                      <p className="text-xs text-on-surface-variant">
+                        {uploadingIndex === index ? 'Uploading image...' : 'Loading image...'}
+                      </p>
                     </div>
                   ) : currentImage ? (
                     <div className="space-y-3">
@@ -252,9 +286,14 @@ const StepEditor = ({ steps, onChange }: StepEditorProps) => {
                     </div>
                   ) : (
                     <div 
-                      className="border-2 border-dashed border-outline-variant rounded-lg p-6 text-center hover:border-primary/50 transition-colors"
+                      tabIndex={0}
+                      className="border-2 border-dashed border-outline-variant rounded-lg p-6 text-center hover:border-primary/50 focus:border-primary focus:outline-none transition-colors cursor-pointer"
                       onDragOver={handleImageDragOver}
                       onDrop={(e) => handleImageDrop(index, e)}
+                      onPaste={(e) => handleImagePaste(index, e)}
+                      onClick={() => document.getElementById(`image-upload-${index}`)?.click()}
+                      role="button"
+                      aria-label="Upload, drag and drop, or paste image"
                     >
                       <input
                         type="file"
@@ -266,18 +305,15 @@ const StepEditor = ({ steps, onChange }: StepEditorProps) => {
                         className="hidden"
                         id={`image-upload-${index}`}
                       />
-                      <label
-                        htmlFor={`image-upload-${index}`}
-                        className="cursor-pointer flex flex-col items-center gap-2"
-                      >
+                      <div className="pointer-events-none flex flex-col items-center gap-2">
                         <div className="p-3 bg-surface rounded-full">
                           <Upload className="w-6 h-6 text-on-surface-variant" />
                         </div>
                         <div className="text-on-surface-variant">
                           <p className="text-sm font-medium">Click to upload</p>
-                          <p className="text-xs mt-1">Paste (Ctrl+V) or drag & drop image</p>
+                          <p className="text-xs mt-1">or paste (Ctrl+V), drag & drop</p>
                         </div>
-                      </label>
+                      </div>
                     </div>
                   )}
                 </div>

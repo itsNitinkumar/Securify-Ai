@@ -101,4 +101,42 @@ router.post('/step-image', protect, upload.single('image'), async (req, res) => 
   }
 });
 
+/**
+ * Get signed URL for an S3 image key
+ * POST /api/upload/get-signed-url
+ * 
+ * Converts S3 imageKey to a temporary signed URL for display
+ */
+router.post('/get-signed-url', protect, async (req, res) => {
+  try {
+    const { imageKey } = req.body;
+
+    if (!imageKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'imageKey is required'
+      });
+    }
+
+    const s3Service = require('../services/s3.service').default;
+    
+    // Generate signed URL (1 hour expiry)
+    const signedUrl = await s3Service.getSignedUrl(imageKey, 3600);
+
+    return res.json({
+      success: true,
+      data: {
+        imageKey,
+        signedUrl
+      }
+    });
+  } catch (error: any) {
+    console.error('Get signed URL error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to generate signed URL'
+    });
+  }
+});
+
 export default router;
