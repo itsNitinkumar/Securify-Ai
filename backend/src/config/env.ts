@@ -27,7 +27,7 @@ for (const envVar of requiredEnvVars) {
 export const config = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '5000', 10),
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173' || "https://your-frontend-url.onrender.com",
   database: {
     url: process.env.DATABASE_URL!,
   },
