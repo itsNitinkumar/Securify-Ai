@@ -22,7 +22,7 @@ class DashboardController {
   });
 
   // Get findings by severity
-  static getFindingsBySeverity = asyncHandler(async (req: Request, res: Response) => {
+  static getFindingsBySeverity = asyncHandler(async (_req: Request, res: Response) => {
     const data = await DashboardService.getFindingsBySeverity();
 
     res.json({
@@ -32,7 +32,7 @@ class DashboardController {
   });
 
   // Get findings by status
-  static getFindingsByStatus = asyncHandler(async (req: Request, res: Response) => {
+  static getFindingsByStatus = asyncHandler(async (_req: Request, res: Response) => {
     const data = await DashboardService.getFindingsByStatus();
 
     res.json({
@@ -67,7 +67,7 @@ class DashboardController {
     const limit = parseInt(req.query.limit as string) || 5;
     const data = await DashboardService.getTopAnalysts(limit);
 
-    res.json({
+    return res.json({
       success: true,
       data,
     });
@@ -88,7 +88,7 @@ class DashboardController {
   });
 
   // Get findings trend
-  static getFindingsTrend = asyncHandler(async (req: Request, res: Response) => {
+  static getFindingsTrend = asyncHandler(async (_req: Request, res: Response) => {
     const data = await DashboardService.getFindingsTrend();
 
     res.json({
@@ -114,7 +114,7 @@ class DashboardController {
 
     const data = await DashboardService.getUserActivitySummary(userId);
 
-    res.json({
+    return res.json({
       success: true,
       data,
     });

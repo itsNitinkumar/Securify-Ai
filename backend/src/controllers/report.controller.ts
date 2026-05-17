@@ -75,7 +75,7 @@ class ReportController {
   // Download Report
   static async downloadReport(req: Request, res: Response) {
     try {
-      const reportId = parseInt(req.params.id);
+      const reportId = parseInt(req.params.id as string);
 
       if (isNaN(reportId)) {
         throw new ApiError(400, 'Invalid report ID');
@@ -113,7 +113,7 @@ class ReportController {
   // Get Reports by Project
   static async getReportsByProject(req: Request, res: Response) {
     try {
-      const projectId = parseInt(req.params.projectId);
+      const projectId = parseInt(req.params.projectId as string);
 
       if (isNaN(projectId)) {
         throw new ApiError(400, 'Invalid project ID');
@@ -158,7 +158,7 @@ class ReportController {
   // Delete Report
   static async deleteReport(req: Request, res: Response) {
     try {
-      const reportId = parseInt(req.params.id);
+      const reportId = parseInt(req.params.id as string);
 
       if (isNaN(reportId)) {
         throw new ApiError(400, 'Invalid report ID');
@@ -193,7 +193,7 @@ class ReportController {
     }
   }
 
-  static async getAllTemplates(req: Request, res: Response) {
+  static async getAllTemplates(_req: Request, res: Response) {
     try {
       const templates = await ReportService.getAllTemplates();
       res.json(templates);
@@ -207,7 +207,7 @@ class ReportController {
 
   static async getTemplate(req: Request, res: Response) {
     try {
-      const templateId = parseInt(req.params.id);
+      const templateId = parseInt(req.params.id as string);
 
       if (isNaN(templateId)) {
         throw new ApiError(400, 'Invalid template ID');
@@ -225,7 +225,7 @@ class ReportController {
 
   static async updateTemplate(req: Request, res: Response) {
     try {
-      const templateId = parseInt(req.params.id);
+      const templateId = parseInt(req.params.id as string);
 
       if (isNaN(templateId)) {
         throw new ApiError(400, 'Invalid template ID');
@@ -243,7 +243,7 @@ class ReportController {
 
   static async deleteTemplate(req: Request, res: Response) {
     try {
-      const templateId = parseInt(req.params.id);
+      const templateId = parseInt(req.params.id as string);
 
       if (isNaN(templateId)) {
         throw new ApiError(400, 'Invalid template ID');

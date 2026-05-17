@@ -1,21 +1,21 @@
 import pool from '../config/database';
 
-interface FindingVersion {
-  finding_id: number;
-  version_number: number;
-  title: string;
-  severity: string;
-  description: string;
-  affected_target?: string;
-  likelihood?: any; // JSONB
-  impact?: any; // JSONB
-  steps_to_reproduce?: any;
-  recommendation?: any; // JSONB array
-  references?: any;
-  tags?: any;
-  status: string;
-  created_by: number;
-}
+// interface FindingVersion {
+//   finding_id: number;
+//   version_number: number;
+//   title: string;
+//   severity: string;
+//   description: string;
+//   affected_target?: string;
+//   likelihood?: any; // JSONB
+//   impact?: any; // JSONB
+//   steps_to_reproduce?: any;
+//   recommendation?: any; // JSONB array
+//   references?: any;
+//   tags?: any;
+//   status: string;
+//   created_by: number;
+// }
 
 class VersionService {
   static async createVersion(findingId: number, findingData: any, userId: number): Promise<void> {

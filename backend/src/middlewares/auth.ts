@@ -1,4 +1,4 @@
-import { Response, NextFunction, RequestHandler } from 'express';
+import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AuthRequest, UserRole } from '../types';
 import ApiError from '../utils/ApiError';
@@ -7,7 +7,7 @@ import { config } from '../config/env';
 import AuthModel from '../models/auth.model';
 
 export const protect = asyncHandler<AuthRequest>(
-  async (req: AuthRequest, res: Response, next: NextFunction) => {
+  async (req: AuthRequest, _res: Response, next: NextFunction) => {
     // Check for token in Authorization header or cookies
     let token = req.headers.authorization?.split(' ')[1];
 

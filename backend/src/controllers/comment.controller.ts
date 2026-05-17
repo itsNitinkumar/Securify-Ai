@@ -43,7 +43,7 @@ class CommentController {
 
   // Get comments for a finding
   static getCommentsByFinding = asyncHandler(async (req: Request, res: Response) => {
-    const findingId = parseInt(req.params.finding_id);
+    const findingId = parseInt(req.params.finding_id as string);
 
     if (isNaN(findingId)) {
       throw new ApiError(400, 'Invalid finding ID');
@@ -59,7 +59,7 @@ class CommentController {
 
   // Update comment
   static updateComment = asyncHandler(async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const { comment } = req.body;
     const user = (req as any).user;
 
@@ -92,7 +92,7 @@ class CommentController {
 
   // Delete comment
   static deleteComment = asyncHandler(async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const user = (req as any).user;
 
     if (isNaN(id)) {

@@ -3,9 +3,9 @@ import ApiError from '../utils/ApiError';
 
 const errorHandler = (
   err: Error | ApiError,
-  req: Request,
+  _req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void => {
   let statusCode = 500;
   let message = 'Internal Server Error';

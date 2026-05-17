@@ -51,7 +51,7 @@ router.use('/templates', templateRoutes);
 router.use('/upload', uploadRoutes);
 
 // Health check
-router.get('/health', (req, res) => {
+router.get('/health', (_req, res) => {
   res.status(200).json({
     success: true,
     message: 'Server is running',

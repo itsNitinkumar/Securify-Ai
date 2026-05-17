@@ -1,25 +1,26 @@
-import {
-  AlignmentType,
-  HighlightColor,
-  BorderStyle,
-  Footer,
-  Header,
-  HeadingLevel,
-  ImageRun,
-  PageNumber,
-  PageBreak,
-  Paragraph,
-  SimpleField,
-  ShadingType,
-  Table,
-  TableCell,
-  TableLayoutType,
-  TableRow,
-  TextRun,
-  VerticalAlign,
-  WidthType,
-} from 'docx';
-import puppeteer from 'puppeteer';
+// Unused imports - commented out since methods using them are disabled
+// import {
+//   AlignmentType,
+//   HighlightColor,
+//   BorderStyle,
+//   Footer,
+//   Header,
+//   HeadingLevel,
+//   ImageRun,
+//   PageNumber,
+//   PageBreak,
+//   Paragraph,
+//   SimpleField,
+//   ShadingType,
+//   Table,
+//   TableCell,
+//   TableLayoutType,
+//   TableRow,
+//   TextRun,
+//   VerticalAlign,
+//   WidthType,
+// } from 'docx';
+// import puppeteer from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -153,7 +154,7 @@ class ReportService {
 
   private static renderReportHTML(data: ReportData, opts?: { inlineImages?: boolean }): string {
     const { project, findings, metadata } = data;
-    
+
     // Debug: Log findings data
     console.log('📊 Report findings data:', {
       count: findings.length,
@@ -163,12 +164,12 @@ class ReportService {
         steps_to_reproduce: findings[0].steps_to_reproduce,
         stepsType: typeof findings[0].steps_to_reproduce,
         stepsIsArray: Array.isArray(findings[0].steps_to_reproduce),
-        firstStep: Array.isArray(findings[0].steps_to_reproduce) && findings[0].steps_to_reproduce.length > 0 
-          ? findings[0].steps_to_reproduce[0] 
+        firstStep: Array.isArray(findings[0].steps_to_reproduce) && findings[0].steps_to_reproduce.length > 0
+          ? findings[0].steps_to_reproduce[0]
           : null
       } : null
     });
-    
+
     let html = this.loadTemplate(data.template);
 
     html = html
@@ -344,429 +345,13 @@ class ReportService {
       const riskSrc = inlinedRisk || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X8Xc8AAAAASUVORK5CYII=';
       html = html.replace(/{{RISK_MATRIX_SRC}}/g, riskSrc);
       // Replace common risk-matrix image URLs if present
-      html = html.replace(/(risk-?matrix\.png)/g, (m) => riskSrc);
+      html = html.replace(/(risk-?matrix\.png)/g, () => riskSrc);
     }
 
     return html;
   }
 
-  private static async htmlToDocChildren(html: string): Promise<Array<Paragraph | Table>> {
-    // Converts our report HTML pages into editable DOCX blocks.
-    // Requires: `npm i cheerio` in backend.
-    let cheerio: any;
-    try {
-      const mod: any = await import('cheerio');
-      cheerio = mod?.default ?? mod;
-    } catch {
-      throw new ApiError(
-        500,
-        'DOCX generation requires HTML parsing dependency. Please install: `cd backend && npm i cheerio`'
-      );
-    }
-
-    const $ = cheerio.load(html);
-
-    const blocks: Array<Paragraph | Table> = [];
-
-    const pushParagraph = (children: TextRun[], opts?: { heading?: any; alignment?: any; spacing?: any }) => {
-      blocks.push(
-        new Paragraph({
-          heading: opts?.heading,
-          alignment: opts?.alignment,
-          spacing: opts?.spacing,
-          children,
-        })
-      );
-    };
-
-    const textRunsFromNode = (node: any, style?: { bold?: boolean; italics?: boolean; color?: string; size?: number; highlight?: any }): TextRun[] => {
-      if (!node) return [];
-      const runs: TextRun[] = [];
-      const type = node.type;
-
-      if (type === 'text') {
-        const t = String(node.data || '');
-        if (t) {
-          runs.push(new TextRun({
-            text: t,
-            bold: style?.bold,
-            italics: style?.italics,
-            color: style?.color || this.brand.text,
-            size: style?.size || 22,
-            highlight: style?.highlight,
-          }));
-        }
-        return runs;
-      }
-
-      if (type === 'tag') {
-        const name = String(node.name || '').toLowerCase();
-        if (name === 'br') {
-          runs.push(new TextRun({ text: '', break: 1 } as any));
-          return runs;
-        }
-
-        const nextStyle = {
-          bold: style?.bold || name === 'strong' || name === 'b',
-          italics: style?.italics || name === 'em' || name === 'i',
-          color: style?.color,
-          size: style?.size,
-          highlight: style?.highlight,
-        };
-
-        // For anchors, keep visible text; also append URL if text differs.
-        if (name === 'a') {
-          const href = node.attribs?.href ? String(node.attribs.href) : '';
-          const linkText = $(node).text();
-          runs.push(...textRunsFromChildren(node, nextStyle));
-          if (href && href.trim() && href.trim() !== linkText.trim()) {
-            runs.push(new TextRun({ text: ` (${href.trim()})`, color: this.brand.gray, size: 20 }));
-          }
-          return runs;
-        }
-
-        // Highlight span: keep text but add bold to stand out.
-        if (name === 'span' && typeof node.attribs?.class === 'string' && node.attribs.class.includes('highlight-yellow')) {
-          runs.push(...textRunsFromChildren(node, { ...nextStyle, bold: true, highlight: HighlightColor.YELLOW }));
-          return runs;
-        }
-
-        runs.push(...textRunsFromChildren(node, nextStyle));
-        return runs;
-      }
-
-      return runs;
-    };
-
-    const textRunsFromChildren = (node: any, style?: { bold?: boolean; italics?: boolean; color?: string; size?: number; highlight?: any }): TextRun[] => {
-      const runs: TextRun[] = [];
-      const children = Array.isArray(node.children) ? node.children : [];
-      for (const child of children) {
-        runs.push(...textRunsFromNode(child, style));
-      }
-      return runs;
-    };
-
-    const paragraphFromEl = (el: any, opts?: { heading?: any; alignment?: any; spacing?: any; color?: string; size?: number; bold?: boolean; italics?: boolean }) => {
-      const runs = textRunsFromChildren(el, {
-        color: opts?.color,
-        size: opts?.size,
-        bold: opts?.bold,
-        italics: opts?.italics,
-      });
-      const clean = $(el).text().replace(/\s+/g, ' ').trim();
-      if (!clean) return;
-      pushParagraph(runs, { ...opts, spacing: opts?.spacing ?? { after: 90 } });
-    };
-
-    const tableFromEl = (tableEl: any) => {
-      const rows: TableRow[] = [];
-      const $table = $(tableEl);
-
-      const countColumns = (tr: any): number => {
-        const cells = $(tr).children('th,td').toArray();
-        return cells.reduce((total: number, cell: any) => {
-          const colspanRaw = $(cell).attr('colspan');
-          const colspan = colspanRaw ? parseInt(colspanRaw, 10) : 1;
-          return total + (Number.isFinite(colspan) && colspan > 0 ? colspan : 1);
-        }, 0);
-      };
-
-      const pushRow = (cells: TableCell[]) => {
-        rows.push(new TableRow({ children: cells }));
-      };
-
-      const allRows = [
-        ...$table.find('thead tr').toArray(),
-        ...$table.find('tbody tr').toArray(),
-        ...$table.children('tr').toArray(),
-      ];
-      const maxColumns = allRows.reduce((max, tr) => Math.max(max, countColumns(tr)), 0) || 1;
-      const tableWidthTwips = 10000;
-      const cellWidthTwips = Math.max(900, Math.floor(tableWidthTwips / maxColumns));
-      const columnWidths = Array.from({ length: maxColumns }, () => cellWidthTwips);
-
-      const handleTr = (tr: any, isHeader: boolean) => {
-        const cells: TableCell[] = [];
-        const tds = $(tr).children('th,td').toArray();
-        for (const td of tds) {
-          const colspanRaw = $(td).attr('colspan');
-          const colspan = colspanRaw ? parseInt(colspanRaw, 10) : 1;
-          const span = Number.isFinite(colspan) && colspan > 1 ? colspan : 1;
-          const txt = $(td).text().replace(/\s+/g, ' ').trim();
-          const cellOpts: any = {
-            width: { size: cellWidthTwips * span, type: WidthType.DXA },
-            shading: isHeader ? { fill: this.brand.green, type: ShadingType.CLEAR, color: 'auto' } : undefined,
-            borders: {
-              top: { style: BorderStyle.SINGLE, size: 1, color: 'E5F3DE' },
-              bottom: { style: BorderStyle.SINGLE, size: 1, color: 'E5F3DE' },
-              left: { style: BorderStyle.SINGLE, size: 1, color: 'E5F3DE' },
-              right: { style: BorderStyle.SINGLE, size: 1, color: 'E5F3DE' },
-            },
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: txt,
-                    bold: isHeader,
-                    color: isHeader ? 'FFFFFF' : this.brand.text,
-                    size: 22,
-                  }),
-                ],
-              }),
-            ],
-          };
-          if (span > 1) {
-            cellOpts.columnSpan = colspan;
-          }
-          cells.push(new TableCell(cellOpts));
-        }
-        if (cells.length) pushRow(cells);
-      };
-
-      const theadRows = $table.find('thead tr').toArray();
-      for (const tr of theadRows) handleTr(tr, true);
-
-      const tbodyRows = $table.find('tbody tr').toArray();
-      if (tbodyRows.length) {
-        for (const tr of tbodyRows) handleTr(tr, false);
-      } else {
-        // Some templates omit tbody
-        const directRows = $table.children('tr').toArray();
-        for (const tr of directRows) handleTr(tr, false);
-      }
-
-      if (!rows.length) return;
-      blocks.push(
-        new Table({
-          width: { size: tableWidthTwips, type: WidthType.DXA },
-          layout: TableLayoutType.FIXED,
-          columnWidths,
-          rows,
-        })
-      );
-      blocks.push(new Paragraph({ spacing: { after: 120 } }));
-    };
-
-    const matrixFromEl = (wrapEl: any) => {
-      const cells = $(wrapEl).find('.matrix-grid .matrix-cell').toArray();
-      if (cells.length !== 9) {
-        return;
-      }
-
-      const fillForCell = (cellEl: any) => {
-        const cls = String($(cellEl).attr('class') || '');
-        if (cls.includes('risk-critical')) return 'D61F1F';
-        if (cls.includes('risk-high')) return 'F28C28';
-        if (cls.includes('risk-medium')) return 'F2C94C';
-        if (cls.includes('risk-low')) return '2F80ED';
-        return '6B6B6B';
-      };
-
-      const rows: TableRow[] = [];
-      for (let r = 0; r < 3; r++) {
-        const rowCells: TableCell[] = [];
-        for (let c = 0; c < 3; c++) {
-          const i = r * 3 + c;
-          const txt = $(cells[i]).text().replace(/\s+/g, ' ').trim();
-          const fill = fillForCell(cells[i]);
-          rowCells.push(
-            this.docTableCell(txt, 3000, false, true, {
-              align: AlignmentType.CENTER,
-              fill,
-              textColor: fill === 'F2C94C' ? '111111' : 'FFFFFF',
-            })
-          );
-        }
-        rows.push(new TableRow({ children: rowCells }));
-      }
-
-      blocks.push(this.docLabel('Risk Matrix', HeadingLevel.HEADING_2));
-      blocks.push(
-        new Paragraph({
-          spacing: { after: 120 },
-          children: [new TextRun({ text: 'Impact x Likelihood', color: this.brand.gray, size: 20 })],
-        })
-      );
-      blocks.push(
-        new Table({
-          width: { size: 3000, type: WidthType.PERCENTAGE },
-          layout: TableLayoutType.FIXED,
-          rows,
-        })
-      );
-      blocks.push(new Paragraph({ spacing: { after: 120 } }));
-    };
-
-    const shouldSkipEl = (el: any): boolean => {
-      const cls = String($(el).attr('class') || '');
-      const name = String(el.name || '').toLowerCase();
-      if (name === 'div' && (cls.includes('brand-header') || cls.includes('page-footer') || cls.includes('footer-bar-wrap'))) return true;
-      if (name === 'img') return true;
-      return false;
-    };
-
-    const pages = $('.page').toArray();
-    for (const page of pages) {
-      const cls = String($(page).attr('class') || '');
-      // We generate cover ourselves.
-      if (cls.includes('cover-page')) continue;
-
-      const pageText = $(page).text().replace(/\s+/g, ' ').trim().toLowerCase();
-      if ($(page).find('.toc-table').length > 0 || pageText.startsWith('table of contents')) {
-        pushParagraph(
-          [new TextRun({ text: 'Table of Contents', bold: true, color: this.brand.greenDark, size: 40 })],
-          { heading: HeadingLevel.HEADING_1, spacing: { after: 120 } }
-        );
-        blocks.push(
-          new Paragraph({
-            spacing: { before: 120, after: 120 },
-            children: [new SimpleField('TOC \\o "1-3" \\h \\z \\u')],
-          })
-        );
-        blocks.push(new Paragraph({ children: [new PageBreak()] }));
-        continue;
-      }
-
-      const processElement = (el: any) => {
-        if (!el) return;
-        if (shouldSkipEl(el)) return;
-
-        const tag = String(el.name || '').toLowerCase();
-
-        if (tag === 'div') {
-          const divCls = String($(el).attr('class') || '');
-          if (divCls.includes('matrix-wrap')) {
-            matrixFromEl(el);
-            return;
-          }
-
-          // Traverse other divs (including TOC blocks).
-          const children = $(el).children().toArray();
-          for (const child of children) processElement(child);
-          return;
-        }
-
-        if (tag === 'table') {
-          tableFromEl(el);
-          return;
-        }
-
-        if (tag === 'h1') {
-          paragraphFromEl(el, {
-            heading: HeadingLevel.HEADING_1,
-            spacing: { after: 90 },
-            color: this.brand.greenDark,
-            size: 38,
-            bold: true,
-          });
-          blocks.push(
-            new Paragraph({
-              border: {
-                bottom: { color: '8FC46B', style: BorderStyle.SINGLE, size: 4 },
-              },
-              spacing: { after: 120 },
-            })
-          );
-          return;
-        }
-
-        if (tag === 'h2') {
-          paragraphFromEl(el, {
-            heading: HeadingLevel.HEADING_2,
-            spacing: { before: 220, after: 80 },
-            color: this.brand.greenDark,
-            size: 30,
-            bold: true,
-          });
-          return;
-        }
-
-        if (tag === 'h3') {
-          paragraphFromEl(el, {
-            heading: HeadingLevel.HEADING_3,
-            spacing: { before: 160, after: 60 },
-            color: this.brand.text,
-            size: 24,
-            bold: true,
-          });
-          return;
-        }
-
-        if (tag === 'p') {
-          const cls = String($(el).attr('class') || '');
-          if (cls.includes('lead-italic')) {
-            paragraphFromEl(el, { italics: true, color: this.brand.gray });
-          } else {
-            paragraphFromEl(el);
-          }
-          return;
-        }
-
-        if (tag === 'ul') {
-          const items = $(el).children('li').toArray();
-          for (const li of items) {
-            // Extract runs from the <li>, preserving b/i tags, color, size
-            const runs = textRunsFromChildren(li, { color: this.brand.text, size: 22 });
-            // Render using Word's bullet point with correct color/indent
-            blocks.push(
-              new Paragraph({
-                bullet: {
-                  level: 0,
-                  bulletChar: '•',
-                  color: this.brand.green,
-                },
-                spacing: { after: 70 },
-                children: runs,
-              })
-            );
-          }
-          blocks.push(new Paragraph({ spacing: { after: 90 } }));
-        }
-      };
-
-      const children = $(page).children().toArray();
-      for (const el of children) {
-        processElement(el);
-      }
-
-      blocks.push(new Paragraph({ children: [new PageBreak()] }));
-    }
-
-    // Trim trailing page break
-    while (blocks.length) {
-      const last = blocks[blocks.length - 1] as any;
-      const isPageBreakPara = last?.options?.children?.some?.((c: any) => c?.options?.break === 1);
-      if (isPageBreakPara) {
-        blocks.pop();
-        continue;
-      }
-      break;
-    }
-
-    return blocks;
-  }
-
-  private static async generatePDFBuffer(html: string): Promise<Buffer> {
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdf = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: 0, right: 0, bottom: 0, left: 0 },
-      });
-
-      return Buffer.from(pdf);
-    } finally {
-      await browser.close();
-    }
-  }
+  // Unused method: generatePDFBuffer - commented out
 
   private static async generatePDFFromDOCXBuffer(data: ReportData): Promise<Buffer> {
     const sofficePath = '/usr/bin/soffice';
@@ -1141,244 +726,13 @@ class ReportService {
   }
 
 
-  private static async fetchLogoBuffer(): Promise<Buffer | null> {
-    // Avoid relying on global fetch typings/runtime; use built-in https.
-    const httpsMod: any = await import('https');
-    const https: any = httpsMod?.default ?? httpsMod;
-    const maxRedirects = 4;
+  // Unused method: fetchLogoBuffer - commented out
 
-    const get = async (url: string, redirectsLeft: number): Promise<Buffer> => {
-      return await new Promise((resolve, reject) => {
-        const req = https.request(url, { method: 'GET' }, (res: any) => {
-          const status = res.statusCode || 0;
-          const location = res.headers.location;
+  // Unused method: buildDocHeader - commented out
 
-          if (status >= 300 && status < 400 && location) {
-            if (redirectsLeft <= 0) {
-              reject(new Error('Too many redirects'));
-              return;
-            }
-            res.resume();
-            const nextUrl = new URL(location, url).toString();
-            void get(nextUrl, redirectsLeft - 1).then(resolve, reject);
-            return;
-          }
+  // Unused method: buildDocFooter - commented out
 
-          if (status < 200 || status >= 300) {
-            reject(new Error(`HTTP ${status}`));
-            return;
-          }
-
-          const chunks: Buffer[] = [];
-          res.on('data', (chunk: any) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-          res.on('end', () => resolve(Buffer.concat(chunks)));
-        });
-        req.on('error', reject);
-        req.end();
-      });
-    };
-
-    try {
-      return await get(this.brand.logoUrl, maxRedirects);
-    } catch {
-      return null;
-    }
-  }
-
-  private static buildDocHeader(logoBuffer: Buffer | null): Header {
-    // Approximate the PDF brand header: logo + green pill line + green dot.
-    const logo = logoBuffer
-      ? new ImageRun({ type: 'png', data: logoBuffer, transformation: { width: 140, height: 28 } })
-      : new TextRun({ text: 'SECURIFY', bold: true, color: this.brand.greenDark, size: 28 });
-
-    const pill = new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        new TableRow({
-          height: { value: 300, rule: 'exact' },
-          children: [
-            new TableCell({
-              width: { size: 2100, type: WidthType.DXA },
-              verticalAlign: VerticalAlign.CENTER,
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } },
-              children: [new Paragraph({ spacing: { after: 0 }, children: [logo] })],
-            }),
-            new TableCell({
-              verticalAlign: VerticalAlign.CENTER,
-              shading: { fill: this.brand.green, type: ShadingType.CLEAR, color: 'auto' },
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } },
-              children: [new Paragraph({ children: [new TextRun({ text: '' })] })],
-            }),
-            new TableCell({
-              width: { size: 180, type: WidthType.DXA },
-              verticalAlign: VerticalAlign.CENTER,
-              shading: { fill: this.brand.green, type: ShadingType.CLEAR, color: 'auto' },
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } },
-              children: [new Paragraph({ children: [new TextRun({ text: '' })] })],
-            }),
-          ],
-        }),
-      ],
-    });
-
-    return new Header({
-      children: [
-        pill,
-        new Paragraph({ spacing: { after: 40 } }),
-      ],
-    });
-  }
-
-  private static buildDocFooter(): Footer {
-    // Approximate the PDF footer: green bar + dot + "Page (n)".
-    // We can't know total pages at generation time with docx; keep it dynamic.
-    const bar = new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        new TableRow({
-          height: { value: 300, rule: 'exact' },
-          children: [
-            new TableCell({
-              verticalAlign: VerticalAlign.CENTER,
-              shading: { fill: this.brand.green, type: ShadingType.CLEAR, color: 'auto' },
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } },
-              children: [new Paragraph({ children: [new TextRun({ text: '' })] })],
-            }),
-            new TableCell({
-              width: { size: 180, type: WidthType.DXA },
-              verticalAlign: VerticalAlign.CENTER,
-              shading: { fill: this.brand.green, type: ShadingType.CLEAR, color: 'auto' },
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } },
-              children: [new Paragraph({ children: [new TextRun({ text: '' })] })],
-            }),
-          ],
-        }),
-      ],
-    });
-
-    return new Footer({
-      children: [
-        bar,
-        new Paragraph({
-          alignment: AlignmentType.RIGHT,
-          spacing: { before: 40 },
-          children: [
-            new TextRun({ text: 'Page (', color: this.brand.text, size: 22 }),
-            new SimpleField(PageNumber.CURRENT),
-            new TextRun({ text: ')', color: this.brand.text, size: 22 }),
-          ],
-        }),
-      ],
-    });
-  }
-
-  private static coverPage(project: any, metadata: { generatedDate: string }, logoBuffer: Buffer | null): Array<Paragraph | Table> {
-    // Cover design: top green stripe + green side bars + dark hero panel + centered logo and metadata.
-    // Implemented with tables for predictable layout.
-    const logo = logoBuffer
-      ? new ImageRun({ type: 'png', data: logoBuffer, transformation: { width: 360, height: 72 } })
-      : new TextRun({ text: 'SECURIFY', bold: true, color: this.brand.greenDark, size: 64 });
-
-    const client = (project.client_name || 'Client Name') as string;
-
-    // Requirement: use project name as report title.
-    // Keep client name as the prominent line below the hero.
-    const subtitle = String(project.name || 'Penetration Test Report');
-
-    const hero = new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        new TableRow({
-          children: [
-            new TableCell({
-              shading: { fill: '3B3B3B', type: ShadingType.CLEAR, color: 'auto' },
-              borders: {
-                top: { style: BorderStyle.SINGLE, size: 16, color: 'F2F2F2' },
-                bottom: { style: BorderStyle.SINGLE, size: 16, color: 'F2F2F2' },
-                left: { style: BorderStyle.SINGLE, size: 16, color: 'F2F2F2' },
-                right: { style: BorderStyle.SINGLE, size: 16, color: 'F2F2F2' },
-              },
-              children: [
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  spacing: { before: 520, after: 520 },
-                  children: [
-                    logoBuffer
-                      ? new ImageRun({ type: 'png', data: logoBuffer, transformation: { width: 460, height: 92 } })
-                      : logo,
-                  ],
-                }),
-              ],
-            }),
-          ],
-        }),
-      ],
-    });
-
-    const frame = new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        new TableRow({
-          children: [
-            new TableCell({
-              columnSpan: 3,
-              shading: { fill: this.brand.green, type: ShadingType.CLEAR, color: 'auto' },
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } },
-              children: [new Paragraph('')],
-            }),
-          ],
-        }),
-        new TableRow({
-          children: [
-            new TableCell({
-              width: { size: 540, type: WidthType.DXA },
-              shading: { fill: this.brand.green, type: ShadingType.CLEAR, color: 'auto' },
-              verticalAlign: VerticalAlign.CENTER,
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } },
-              children: [new Paragraph('')],
-            }),
-            new TableCell({
-              verticalAlign: VerticalAlign.CENTER,
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } },
-              children: [
-                new Paragraph({ spacing: { before: 360 }, children: [new TextRun({ text: '', size: 1 })] }),
-                hero,
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  spacing: { before: 520, after: 120 },
-                  children: [new TextRun({ text: client, bold: false, color: this.brand.greenDark, size: 44 })],
-                }),
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  spacing: { after: 80 },
-                  children: [new TextRun({ text: subtitle, bold: true, color: this.brand.text, size: 28 })],
-                }),
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  spacing: { after: 420 },
-                  children: [new TextRun({ text: metadata.generatedDate, color: '8E7F2B', size: 24 })],
-                }),
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  spacing: { before: 360 },
-                  children: [new TextRun({ text: '8', bold: true, color: this.brand.green, size: 120 })],
-                }),
-              ],
-            }),
-            new TableCell({
-              width: { size: 540, type: WidthType.DXA },
-              shading: { fill: this.brand.green, type: ShadingType.CLEAR, color: 'auto' },
-              verticalAlign: VerticalAlign.CENTER,
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } },
-              children: [new Paragraph('')],
-            }),
-          ],
-        }),
-      ],
-    });
-
-    return [frame];
-  }
+  // Unused method: coverPage - commented out
 
   private static resolveDocxTemplatePath(template: ReportTemplate): string | null {
     const normalized = this.normalizeTemplateData(template);
@@ -1723,19 +1077,19 @@ class ReportService {
 
         // Check if it's an S3 key (doesn't start with http:// or https:// or /images/)
         const isS3Key = !imagePath.startsWith('http://') && !imagePath.startsWith('https://') && !imagePath.startsWith('/images/') && !imagePath.startsWith('data:');
-        
+
         if (isS3Key) {
           // It's an S3 key - generate signed URL and download
           console.log(`   ☁️  Downloading from S3: ${imagePath}`);
           const s3Service = require('./s3.service').default;
           const signedUrl = await s3Service.getSignedUrl(imagePath, 3600);
           console.log(`   🔗 Generated signed URL`);
-          
+
           // Download image from S3
           const https = require('https');
           const http = require('http');
           const protocol = signedUrl.startsWith('https') ? https : http;
-          
+
           binaryData = await new Promise<Buffer>((resolve, reject) => {
             protocol.get(signedUrl, (res: any) => {
               const chunks: Buffer[] = [];
@@ -1744,7 +1098,7 @@ class ReportService {
               res.on('error', reject);
             }).on('error', reject);
           });
-          
+
           console.log(`   📄 Downloaded ${binaryData.length} bytes from S3`);
         } else if (imagePath.startsWith('/images/')) {
           // Local file path
@@ -1762,7 +1116,7 @@ class ReportService {
           const https = require('https');
           const http = require('http');
           const protocol = imagePath.startsWith('https') ? https : http;
-          
+
           binaryData = await new Promise<Buffer>((resolve, reject) => {
             protocol.get(imagePath, (res: any) => {
               const chunks: Buffer[] = [];
@@ -1771,7 +1125,7 @@ class ReportService {
               res.on('error', reject);
             }).on('error', reject);
           });
-          
+
           console.log(`   📄 Downloaded ${binaryData.length} bytes`);
         } else {
           // Handle base64 data
@@ -2418,15 +1772,15 @@ class ReportService {
       // Add items - handle old DB structure where items includes closing_items
       if (Array.isArray(section?.items) && section.items.length) {
         const closingItemsCount = Array.isArray(section?.closing_items) ? section.closing_items.length : 0;
-        
+
         // If closing_items exists and items.length > closingItemsCount, assume old structure
         // and only use the first (items.length - closingItemsCount) items
         const numFirstList = closingItemsCount > 0 && section.items.length > closingItemsCount
           ? section.items.length - closingItemsCount
           : section.items.length;
-        
+
         const itemsToUse = section.items.slice(0, numFirstList);
-        
+
         if (key === 'runtime_assessment' || key === 'measurement_impact' || key === 'measurement_likelihood') {
           // Preserve ** markers for bold rendering
           parts.push(...itemsToUse.map((item: any) => {
@@ -2482,7 +1836,7 @@ class ReportService {
       let endIdx = children.findIndex((el: any, idx: number) => idx > startIdx && stopHeadings.includes(paraText(el)));
       if (endIdx === -1) endIdx = children.length;
 
-const range = children.slice(startIdx + 1, endIdx);
+      const range = children.slice(startIdx + 1, endIdx);
       const paragraphsInRange = range.filter((el: any) => {
         const t = String(el?.tagName || '');
         return t === 'w:p' || t.endsWith(':p');
@@ -2491,7 +1845,7 @@ const range = children.slice(startIdx + 1, endIdx);
       const templateParagraph = paragraphsInRange.find((p: any) => paraText(p)) || paragraphsInRange[0];
       if (!templateParagraph) return;
 
-      
+
 
       // Prefer inserting before the first table in the section (keeps tables after text).
       // Some DOCX templates can include non-paragraph wrappers; be explicit here.
@@ -2967,7 +2321,7 @@ const range = children.slice(startIdx + 1, endIdx);
       const outOfScopeSection = getSection('out_of_scope');
       const oosBody = typeof outOfScopeSection?.body === 'string' ? resolvePlaceholders(outOfScopeSection.body) : '';
       const oosItems = Array.isArray(outOfScopeSection?.items) ? outOfScopeSection.items.map((item: any) => resolvePlaceholders(String(item || ''))) : [];
-      
+
       if (oosBody || oosItems.length) {
         const allKids = bodyChildren();
         const assessmentLimitationIdx = allKids.findIndex((el: any) => paraText(el) === 'Assessment Limitation');
@@ -2980,7 +2334,7 @@ const range = children.slice(startIdx + 1, endIdx);
               break;
             }
           }
-          
+
           // Fallback to any paragraph
           let templateP = bulletTemplateP;
           if (!templateP) {
@@ -2991,7 +2345,7 @@ const range = children.slice(startIdx + 1, endIdx);
               }
             }
           }
-          
+
           if (templateP) {
             const insertBefore = allKids[assessmentLimitationIdx];
             const emptyP = cloneNode(templateP);
@@ -2999,7 +2353,7 @@ const range = children.slice(startIdx + 1, endIdx);
             // Remove bullet formatting from empty paragraph
             emptyP.find('w\\:numPr').remove();
             $(insertBefore).before($.xml(emptyP));
-            
+
             if (oosBody) {
               const bodyP = cloneNode(templateP);
               setParaText(bodyP.get(0), oosBody);
@@ -3008,7 +2362,7 @@ const range = children.slice(startIdx + 1, endIdx);
               clearRunFormatting($, bodyP.get(0), { color: '000000' });
               $(insertBefore).before($.xml(bodyP));
             }
-            
+
             for (const item of oosItems) {
               const itemP = bulletTemplateP ? cloneNode(bulletTemplateP) : cloneNode(templateP);
               setParaText(itemP.get(0), item);
@@ -3041,20 +2395,22 @@ const range = children.slice(startIdx + 1, endIdx);
       }
     }
 
-    const matrixRows = Array.isArray(getSection('risk_classification')?.matrix_rows) && getSection('risk_classification').matrix_rows.length
-      ? getSection('risk_classification').matrix_rows
-      : [
-        { low: 'Medium', medium: 'High', high: 'Critical' },
-        { low: 'Low', medium: 'Medium', high: 'High' },
-        { low: 'Low', medium: 'Low', high: 'Medium' },
-      ];
-    const riskFillForValue = (value: string) => {
-      const normalized = String(value || '').toLowerCase();
-      if (normalized === 'critical') return { fill: 'C00000', text: 'FFFFFF' };
-      if (normalized === 'high') return { fill: 'FF0000', text: 'FFFFFF' };
-      if (normalized === 'medium') return { fill: 'FFC000', text: '000000' };
-      return { fill: '00B050', text: 'FFFFFF' };
-    };
+    // const matrixRows = Array.isArray(getSection('risk_classification')?.matrix_rows) && getSection('risk_classification').matrix_rows.length
+    //   ? getSection('risk_classification').matrix_rows
+    //   : [
+    //     { low: 'Medium', medium: 'High', high: 'Critical' },
+    //     { low: 'Low', medium: 'Medium', high: 'High' },
+    //     { low: 'Low', medium: 'Low', high: 'Medium' },
+    //   ];
+
+    // const riskFillForValue = (value: string) => {
+    //   const normalized = String(value || '').toLowerCase();
+    //   if (normalized === 'critical') return { fill: 'C00000', text: 'FFFFFF' };
+    //   if (normalized === 'high') return { fill: 'FF0000', text: 'FFFFFF' };
+    //   if (normalized === 'medium') return { fill: 'FFC000', text: '000000' };
+    //   return { fill: '00B050', text: 'FFFFFF' };
+    // };
+
     let riskMatrixImageEmbedded = false;
     const riskMatrixImageCandidates = [
       // Prefer a public asset if provided by the user
@@ -3084,10 +2440,10 @@ const range = children.slice(startIdx + 1, endIdx);
       path.join(this.templatesDir, 'riskmatrix.png'),
     ];
     const riskMatrixImagePath = riskMatrixImageCandidates.find((p) => {
-        const exists = fs.existsSync(p);
-        console.log(`[RiskMatrix] checking "${p}" => ${exists ? 'FOUND' : 'not found'}`);
-        return exists;
-      });
+      const exists = fs.existsSync(p);
+      console.log(`[RiskMatrix] checking "${p}" => ${exists ? 'FOUND' : 'not found'}`);
+      return exists;
+    });
     if (riskMatrixImagePath) {
       console.log(`[RiskMatrix] Using image: ${riskMatrixImagePath}`);
       try {
@@ -3095,7 +2451,7 @@ const range = children.slice(startIdx + 1, endIdx);
         const imageName = path.basename(riskMatrixImagePath);
         const ext = imageName.toLowerCase().replace(/^.*\./, '').split('?')[0];
         const isJpeg = ['jpg', 'jpeg'].includes(ext);
-        const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
+        // const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
         const relId = 'rIdRiskMatrixImage';
         const mediaPath = `word/media/${imageName}`;
 
@@ -3119,28 +2475,28 @@ const range = children.slice(startIdx + 1, endIdx);
         const targetHeading = sectionTitle('zero_risk_issues', 'Zero-risk Issues');
         const headingEl = bodyChildren().find((el: any) => paraText(el) === targetHeading);
         if (headingEl) {
-        // Determine image extent (cx/cy) in EMUs using the actual image pixel dimensions when possible
-        let cxVal = 3810000;
-        let cyVal = 2222500;
-        try {
-          // Try to measure image dimensions using sharp if available
-          let sharpPkg: any = null;
-          try { sharpPkg = require('sharp'); } catch {}
-          if (sharpPkg) {
-            const meta = await sharpPkg(imageBuffer).metadata();
-            const w = Number(meta?.width || 0) || 0;
-            const h = Number(meta?.height || 0) || 0;
-            if (w > 0 && h > 0) {
-              const EMU_PER_PX = 9525; // EMU per pixel at 96 DPI
-              cxVal = Math.round(w * EMU_PER_PX);
-              cyVal = Math.round(h * EMU_PER_PX);
+          // Determine image extent (cx/cy) in EMUs using the actual image pixel dimensions when possible
+          let cxVal = 3810000;
+          let cyVal = 2222500;
+          try {
+            // Try to measure image dimensions using sharp if available
+            let sharpPkg: any = null;
+            try { sharpPkg = require('sharp'); } catch { }
+            if (sharpPkg) {
+              const meta = await sharpPkg(imageBuffer).metadata();
+              const w = Number(meta?.width || 0) || 0;
+              const h = Number(meta?.height || 0) || 0;
+              if (w > 0 && h > 0) {
+                const EMU_PER_PX = 9525; // EMU per pixel at 96 DPI
+                cxVal = Math.round(w * EMU_PER_PX);
+                cyVal = Math.round(h * EMU_PER_PX);
+              }
             }
+          } catch (e) {
+            // Fallback to previously used fixed size
           }
-        } catch (e) {
-          // Fallback to previously used fixed size
-        }
 
-        const drawingXml = `<w:p>
+          const drawingXml = `<w:p>
             <w:pPr><w:jc w:val="center"/></w:pPr>
             <w:r>
               <w:drawing>
@@ -3324,11 +2680,11 @@ const range = children.slice(startIdx + 1, endIdx);
 
         for (let i = 0; i < findingBlocks.length; i++) {
           const finding = findingBlocks[i] as any;
-           // Each detailed vulnerability starts on a new page, except the first one
-           // (so the first finding begins immediately after the "Detailed Vulnerabilities" heading).
-           if (i > 0) {
-             $(children[appendixIdx]).before($.xml(makePageBreakPara()));
-           }
+          // Each detailed vulnerability starts on a new page, except the first one
+          // (so the first finding begins immediately after the "Detailed Vulnerabilities" heading).
+          if (i > 0) {
+            $(children[appendixIdx]).before($.xml(makePageBreakPara()));
+          }
 
           const sectionDoc = cheerio.load('<root/>', { xmlMode: true, decodeEntities: false });
           const sectionRoot = sectionDoc('root');
@@ -3400,7 +2756,7 @@ const range = children.slice(startIdx + 1, endIdx);
 
           // Find the title paragraph - it's the first substantial paragraph that's not a label
           // We need to find it BEFORE any label paragraphs
-          let titlePara = null;
+          let titlePara: any = null;
           for (const p of paras) {
             const txt = sectionParaText(p);
             // Stop searching once we hit label paragraphs
@@ -3475,46 +2831,46 @@ const range = children.slice(startIdx + 1, endIdx);
             return '2F80ED';
           })();
 
-           if (titlePara) {
-             const oldTitle = sectionParaText(titlePara);
-             sectionSetParaText(titlePara, String(finding.title || 'Untitled Finding'));
-             // Force the finding title to Heading 3 style (matches reference layout)
-             {
-               let pPr = sectionDoc(titlePara).find('w\\:pPr').first();
-               if (!pPr.length) {
-                 sectionDoc(titlePara).prepend('<w:pPr/>');
-                 pPr = sectionDoc(titlePara).find('w\\:pPr').first();
-               }
-               let pStyle = pPr.find('w\\:pStyle').first();
-               if (!pStyle.length) {
-                 pPr.prepend('<w:pStyle w:val="Heading3"/>');
-               } else {
-                 pStyle.attr('w:val', 'Heading3');
-               }
+          if (titlePara) {
+            const oldTitle = sectionParaText(titlePara);
+            sectionSetParaText(titlePara, String(finding.title || 'Untitled Finding'));
+            // Force the finding title to Heading 3 style (matches reference layout)
+            {
+              let pPr = sectionDoc(titlePara).find('w\\:pPr').first();
+              if (!pPr.length) {
+                sectionDoc(titlePara).prepend('<w:pPr/>');
+                pPr = sectionDoc(titlePara).find('w\\:pPr').first();
+              }
+              let pStyle = pPr.find('w\\:pStyle').first();
+              if (!pStyle.length) {
+                pPr.prepend('<w:pStyle w:val="Heading3"/>');
+              } else {
+                pStyle.attr('w:val', 'Heading3');
+              }
 
-                // Help Google Docs map this to "Heading 3" in its outline.
-                let outline = pPr.find('w\\:outlineLvl').first();
-                if (!outline.length) {
-                  pPr.append('<w:outlineLvl w:val="2"/>');
-                } else {
-                  outline.attr('w:val', '2');
+              // Help Google Docs map this to "Heading 3" in its outline.
+              let outline = pPr.find('w\\:outlineLvl').first();
+              if (!outline.length) {
+                pPr.append('<w:outlineLvl w:val="2"/>');
+              } else {
+                outline.attr('w:val', '2');
+              }
+
+              // Also force Roboto on the title run(s).
+              sectionDoc(titlePara).find('w\\:rPr').each((_: number, rPr: any) => {
+                let rFonts = sectionDoc(rPr).find('w\\:rFonts').first();
+                if (!rFonts.length) {
+                  sectionDoc(rPr).prepend('<w:rFonts/>');
+                  rFonts = sectionDoc(rPr).find('w\\:rFonts').first();
                 }
-
-                // Also force Roboto on the title run(s).
-                sectionDoc(titlePara).find('w\\:rPr').each((_: number, rPr: any) => {
-                  let rFonts = sectionDoc(rPr).find('w\\:rFonts').first();
-                  if (!rFonts.length) {
-                    sectionDoc(rPr).prepend('<w:rFonts/>');
-                    rFonts = sectionDoc(rPr).find('w\\:rFonts').first();
-                  }
-                  rFonts.attr('w:ascii', 'Roboto');
-                  rFonts.attr('w:hAnsi', 'Roboto');
-                  rFonts.attr('w:cs', 'Roboto');
-                  rFonts.attr('w:eastAsia', 'Roboto');
-                });
-             }
-             console.log(`   - Replaced "${oldTitle}" with "${sectionParaText(titlePara)}"`);
-           }
+                rFonts.attr('w:ascii', 'Roboto');
+                rFonts.attr('w:hAnsi', 'Roboto');
+                rFonts.attr('w:cs', 'Roboto');
+                rFonts.attr('w:eastAsia', 'Roboto');
+              });
+            }
+            console.log(`   - Replaced "${oldTitle}" with "${sectionParaText(titlePara)}"`);
+          }
           if (riskPara) {
             setParagraphSegments(sectionDoc, riskPara, [
               { text: 'Risk:', bold: true, color: '000000' },
@@ -3579,24 +2935,24 @@ const range = children.slice(startIdx + 1, endIdx);
                 break;
               }
             }
-            
+
             // Check if it's a URL and format as hyperlink with green bullet point
             if (bulletTemplate) {
               const p = cloneSectionNode(bulletTemplate);
-              
+
               // Ensure green bullet color
               let pPr = sectionDoc(p).find('w\\:pPr').first();
               if (!pPr.length) {
                 sectionDoc(p).prepend('<w:pPr/>');
                 pPr = sectionDoc(p).find('w\\:pPr').first();
               }
-              
+
               // Add or update numPr for green bullet
               let numPr = pPr.find('w\\:numPr').first();
               if (!numPr.length) {
                 pPr.append('<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>');
               }
-              
+
               if (affected.startsWith('http://') || affected.startsWith('https://')) {
                 setParagraphSegments(sectionDoc, p.get(0), [
                   { text: affected, color: '1155CC', underline: 'single' },
@@ -3682,7 +3038,7 @@ const range = children.slice(startIdx + 1, endIdx);
             return txt.includes('http') || txt.includes('www');
           }) || bodyTextTemplate;
 
-          const normalizeSteps = (steps: any): Array<{stepNumber: number; description: string; imageKey?: string; caption?: string}> => {
+          const normalizeSteps = (steps: any): Array<{ stepNumber: number; description: string; imageKey?: string; caption?: string }> => {
             if (!steps) return [];
             if (Array.isArray(steps) && steps.length > 0 && typeof steps[0] === 'object' && steps[0] !== null && 'description' in steps[0]) {
               return steps.map((step, idx) => ({
@@ -3704,18 +3060,18 @@ const range = children.slice(startIdx + 1, endIdx);
             })).filter(s => s.description);
           };
 
-           const steps = normalizeSteps(finding.steps_to_reproduce);
-           console.log(`   - Inserting ${steps.length} steps`);
-           for (let si = 0; si < steps.length; si++) {
-             const step = steps[si];
-             console.log(`     Step ${step.stepNumber}: "${step.description.substring(0, 50)}..."`);
-             appendSectionSplitParagraph(
-               recLabel || backPara || titlePara,
-               stepTemplate,
-               `Step ${step.stepNumber}:`,
-               step.description,
-               { color: '000000', normalizeIndent: true, spacing: { before: 0, after: 120 } }
-             );
+          const steps = normalizeSteps(finding.steps_to_reproduce);
+          console.log(`   - Inserting ${steps.length} steps`);
+          for (let si = 0; si < steps.length; si++) {
+            const step = steps[si];
+            console.log(`     Step ${step.stepNumber}: "${step.description.substring(0, 50)}..."`);
+            appendSectionSplitParagraph(
+              recLabel || backPara || titlePara,
+              stepTemplate,
+              `Step ${step.stepNumber}:`,
+              step.description,
+              { color: '000000', normalizeIndent: true, spacing: { before: 0, after: 120 } }
+            );
             // Important ordering: we insert blocks BEFORE the anchor paragraph. Inserting in sequence means
             // later inserts appear closer to the anchor. To get: Step -> Image -> Caption, we must insert
             // Image first, then Caption.
@@ -3739,17 +3095,17 @@ const range = children.slice(startIdx + 1, endIdx);
                 console.log(`       ❌ Failed to embed image`);
               }
             }
-             if (step.caption) {
-               const captionPara = cloneSectionNode(stepTemplate);
-               ensureNoRightIndent(captionPara.get(0));
-               // Add center alignment to caption
-               const p = sectionDoc(captionPara.get(0));
-               const existingPPr = p.children('w\\:pPr').first();
-               if (existingPPr.length) {
-                 existingPPr.append('<w:jc w:val="center"/>');
-               } else {
-                 p.prepend('<w:pPr><w:jc w:val="center"/></w:pPr>');
-               }
+            if (step.caption) {
+              const captionPara = cloneSectionNode(stepTemplate);
+              ensureNoRightIndent(captionPara.get(0));
+              // Add center alignment to caption
+              const p = sectionDoc(captionPara.get(0));
+              const existingPPr = p.children('w\\:pPr').first();
+              if (existingPPr.length) {
+                existingPPr.append('<w:jc w:val="center"/>');
+              } else {
+                p.prepend('<w:pPr><w:jc w:val="center"/></w:pPr>');
+              }
               setParagraphSegments(sectionDoc, captionPara.get(0), [
                 { text: `Fig ${step.stepNumber}: ${step.caption}`, italic: true, color: '9ca3af' },
               ]);
@@ -3760,7 +3116,7 @@ const range = children.slice(startIdx + 1, endIdx);
 
           const recs = toLines(finding.recommendation);
           console.log(`   - Inserting ${recs.length} recommendations`);
-          
+
           // Find a bullet paragraph template from the document
           let bulletTemplate = null;
           for (const p of paras) {
@@ -3769,28 +3125,28 @@ const range = children.slice(startIdx + 1, endIdx);
               break;
             }
           }
-          
+
           for (let ri = 0; ri < recs.length; ri++) {
             const cleaned = stripMarkdownEmphasis(recs[ri]);
             const colonIndex = cleaned.indexOf(':');
-            
+
             // Use bullet template if available, otherwise create custom bullet
             if (bulletTemplate) {
               const p = cloneSectionNode(bulletTemplate);
-              
+
               // Ensure green bullet color
               let pPr = sectionDoc(p).find('w\\:pPr').first();
               if (!pPr.length) {
                 sectionDoc(p).prepend('<w:pPr/>');
                 pPr = sectionDoc(p).find('w\\:pPr').first();
               }
-              
+
               // Add or update numPr for green bullet
               let numPr = pPr.find('w\\:numPr').first();
               if (!numPr.length) {
                 pPr.append('<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>');
               }
-              
+
               if (colonIndex !== -1) {
                 setParagraphSegments(sectionDoc, p.get(0), [
                   { text: cleaned.slice(0, colonIndex + 1), bold: true, color: '000000' },

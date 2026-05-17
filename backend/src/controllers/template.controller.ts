@@ -60,7 +60,7 @@ class TemplateController {
   });
 
   // Get all templates
-  static getAllTemplates = asyncHandler(async (req: AuthRequest, res: Response) => {
+  static getAllTemplates = asyncHandler(async (_req: AuthRequest, res: Response) => {
     const templates = await TemplateModel.getAll();
 
     res.json({
@@ -74,7 +74,7 @@ class TemplateController {
   static getTemplate = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    const template = await TemplateModel.getById(parseInt(id));
+    const template = await TemplateModel.getById(parseInt(id as string));
 
     if (!template) {
       throw new ApiError(404, 'Template not found');
@@ -88,7 +88,7 @@ class TemplateController {
   });
 
   // Get default template
-  static getDefaultTemplate = asyncHandler(async (req: AuthRequest, res: Response) => {
+  static getDefaultTemplate = asyncHandler(async (_req: AuthRequest, res: Response) => {
     const template = await TemplateModel.getDefault();
 
     if (!template) {
@@ -107,19 +107,19 @@ class TemplateController {
     const { id } = req.params;
     const updateData = req.body;
 
-    const existingTemplate = await TemplateModel.getById(parseInt(id));
+    const existingTemplate = await TemplateModel.getById(parseInt(id as string));
     if (!existingTemplate) {
       throw new ApiError(404, 'Template not found');
     }
 
-    const template = await TemplateModel.update(parseInt(id), updateData);
+    const template = await TemplateModel.update(parseInt(id as string), updateData);
 
     // Log activity
     await ActivityLogService.log({
       user_id: req.user!.id,
       action: 'update_template',
       entity_type: 'template',
-      entity_id: parseInt(id),
+      entity_id: parseInt(id as string),
       details: { changes: updateData },
       ip_address: req.ip,
       user_agent: req.get('user-agent'),
@@ -136,7 +136,7 @@ class TemplateController {
   static deleteTemplate = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    const template = await TemplateModel.getById(parseInt(id));
+    const template = await TemplateModel.getById(parseInt(id as string));
     if (!template) {
       throw new ApiError(404, 'Template not found');
     }
@@ -145,14 +145,14 @@ class TemplateController {
       throw new ApiError(400, 'Cannot delete default template');
     }
 
-    await TemplateModel.delete(parseInt(id));
+    await TemplateModel.delete(parseInt(id as string));
 
     // Log activity
     await ActivityLogService.log({
       user_id: req.user!.id,
       action: 'delete_template',
       entity_type: 'template',
-      entity_id: parseInt(id),
+      entity_id: parseInt(id as string),
       details: { template_name: template.name },
       ip_address: req.ip,
       user_agent: req.get('user-agent'),
@@ -179,19 +179,19 @@ class TemplateController {
   static setDefaultTemplate = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    const template = await TemplateModel.getById(parseInt(id));
+    const template = await TemplateModel.getById(parseInt(id as string));
     if (!template) {
       throw new ApiError(404, 'Template not found');
     }
 
-    await TemplateModel.update(parseInt(id), { is_default: true });
+    await TemplateModel.update(parseInt(id as string), { is_default: true });
 
     // Log activity
     await ActivityLogService.log({
       user_id: req.user!.id,
       action: 'set_default_template',
       entity_type: 'template',
-      entity_id: parseInt(id),
+      entity_id: parseInt(id as string),
       details: { template_name: template.name },
       ip_address: req.ip,
       user_agent: req.get('user-agent'),

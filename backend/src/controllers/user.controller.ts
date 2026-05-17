@@ -20,7 +20,7 @@ class UserController {
   });
 
   static getUser = asyncHandler(async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const currentUser = (req as any).user;
     const user = await UserService.getUserById(id);
     
@@ -54,12 +54,12 @@ class UserController {
       throw new ApiError(403, 'Only admin can create admins');
     }
     
-    const user = await UserService.createUser(email, name, userRole);
+    const user = await UserService.createUser(email, name);
     ApiResponse.success(res, 201, 'User created successfully', user);
   });
 
   static updateUser = asyncHandler(async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const { name, role } = req.body;
     const currentUser = (req as any).user;
     
@@ -106,7 +106,7 @@ class UserController {
   });
 
   static deleteUser = asyncHandler(async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const currentUser = (req as any).user;
     
     // Get user to delete
@@ -139,7 +139,7 @@ class UserController {
   });
 
   static approveUser = asyncHandler(async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const { role } = req.body;
     const currentUser = (req as any).user;
     
@@ -182,7 +182,7 @@ class UserController {
 
   // Admin only: Delete manager
   static deleteManager = asyncHandler(async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const currentUser = (req as any).user;
     
     // Only admin can delete managers

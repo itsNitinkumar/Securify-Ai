@@ -8,7 +8,7 @@ export const validateEmail = (email: string): boolean => {
 
 export const validateUserInput = (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): void => {
   const { email, name } = req.body;
@@ -26,7 +26,7 @@ export const validateUserInput = (
 
 export const validateSignup = (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): void => {
   const { name, email, password } = req.body;
@@ -60,7 +60,7 @@ export const validateSignup = (
 
 export const validateSignin = (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): void => {
   const { email, password } = req.body;

@@ -118,16 +118,16 @@ class FindingController {
       severity,
       impact,
       likelihood,
-      remediation,
+      // remediation,
       recommendation,
       steps_to_reproduce,
       references,
       affected_target,
-      affected_component,
-      cvss_score,
-      cwe_id,
-      owasp_category,
-      proof_of_concept,
+      // affected_component,
+      // cvss_score,
+      // cwe_id,
+      // owasp_category,
+      // proof_of_concept,
       tags,
       finding_references,
       status,
@@ -653,7 +653,7 @@ class FindingController {
   });
 
   // Import findings from another project
-  static importFromProject = asyncHandler(async (req: AuthRequest, res: Response) => {
+  static importFromProject = asyncHandler<AuthRequest>(async (req: AuthRequest, res: Response) => {
     const { source_project_id, finding_ids, target_project_id } = req.body;
     const userId = req.user?.id;
 

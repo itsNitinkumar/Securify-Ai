@@ -108,7 +108,7 @@ class ProjectController {
   });
 
   // Get all projects
-  static getAllProjects = asyncHandler(async (req: Request, res: Response) => {
+  static getAllProjects = asyncHandler(async (_req: Request, res: Response) => {
     const projects = await ProjectModel.findAll();
 
     res.json({

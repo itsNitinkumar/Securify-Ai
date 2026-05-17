@@ -51,7 +51,7 @@ class RoleRequestController {
 
   // Manager reviews (approve/reject) request
   static reviewRoleRequest = asyncHandler(async (req: Request, res: Response) => {
-    const requestId = parseInt(req.params.id);
+    const requestId = parseInt(req.params.id as string);
     const { status, review_notes } = req.body;
     const reviewer = (req as any).user;
 
@@ -79,7 +79,7 @@ class RoleRequestController {
     const status = Array.isArray(req.query.status) 
       ? req.query.status[0] 
       : req.query.status as string | undefined;
-    const requests = await RoleRequestService.getAllRequests(status);
+    const requests = await RoleRequestService.getAllRequests(status as string | undefined);
     ApiResponse.success(res, 200, 'Role requests retrieved successfully', requests);
   });
 }

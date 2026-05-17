@@ -17,10 +17,10 @@ const logosDir = path.join(uploadsDir, 'logos');
 
 // Storage configuration for evidence files
 const evidenceStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: (_req, _file, cb) => {
     cb(null, evidenceDir);
   },
-  filename: (req, file, cb) => {
+  filename: (_req, file, cb) => {
     const uniqueSuffix = crypto.randomBytes(16).toString('hex');
     const ext = path.extname(file.originalname);
     cb(null, `evidence-${Date.now()}-${uniqueSuffix}${ext}`);
@@ -29,10 +29,10 @@ const evidenceStorage = multer.diskStorage({
 
 // Storage configuration for logos
 const logoStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: (_req, _file, cb) => {
     cb(null, logosDir);
   },
-  filename: (req, file, cb) => {
+  filename: (_req, file, cb) => {
     const uniqueSuffix = crypto.randomBytes(16).toString('hex');
     const ext = path.extname(file.originalname);
     cb(null, `logo-${Date.now()}-${uniqueSuffix}${ext}`);
@@ -40,7 +40,7 @@ const logoStorage = multer.diskStorage({
 });
 
 // File filter for evidence (images, PDFs, text files, logs)
-const evidenceFileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const evidenceFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedTypes = [
     'image/jpeg',
     'image/jpg',
@@ -63,7 +63,7 @@ const evidenceFileFilter = (req: any, file: Express.Multer.File, cb: multer.File
 };
 
 // File filter for logos (images only)
-const logoFileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const logoFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/svg+xml'];
 
   if (allowedTypes.includes(file.mimetype)) {

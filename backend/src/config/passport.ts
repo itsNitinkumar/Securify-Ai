@@ -11,7 +11,7 @@ passport.use(
       callbackURL: config.google.callbackUrl,
       passReqToCallback: false,
     },
-    async (accessToken, refreshToken, profile, done) => {
+    async (_accessToken, _refreshToken, profile, done) => {
       try {
         console.log('🔍 Google OAuth callback received for:', profile.displayName);
         

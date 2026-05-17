@@ -27,7 +27,7 @@ class AuthController {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
     
-    ApiResponse.success(res, 201, 'User registered successfully', {
+    return ApiResponse.success(res, 201, 'User registered successfully', {
       user: result.user,
     });
   });
@@ -78,7 +78,7 @@ class AuthController {
       return ApiResponse.error(res, 401, 'No active session');
     }
 
-    ApiResponse.success(res, 200, 'Session info retrieved', {
+    return ApiResponse.success(res, 200, 'Session info retrieved', {
       session: {
         ...sessionInfo,
         timeout: config.session.timeout,
