@@ -10,7 +10,7 @@ class AuthController {
   static signup = asyncHandler(async (req: Request, res: Response) => {
     const { name, email, password } = req.body;
     const result = await AuthService.signup(name, email, password);
-    
+
     // Don't set cookie for pending users - they can't login yet
     if (result.user.status === 'pending') {
       return ApiResponse.success(res, 201, 'Account created successfully. Please wait for manager approval.', {
@@ -18,7 +18,7 @@ class AuthController {
         requiresApproval: true,
       });
     }
-    
+
     // Set httpOnly cookie for active users
     res.cookie('token', result.token, {
       httpOnly: true,
@@ -26,7 +26,7 @@ class AuthController {
       sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
-    
+
     return ApiResponse.success(res, 201, 'User registered successfully', {
       user: result.user,
     });
@@ -35,7 +35,7 @@ class AuthController {
   static signin = asyncHandler(async (req: Request, res: Response) => {
     const { email, password } = req.body;
     const result = await AuthService.signin(email, password);
-    
+
     // Set httpOnly cookie
     res.cookie('token', result.token, {
       httpOnly: true,
@@ -43,7 +43,7 @@ class AuthController {
       sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
-    
+
     ApiResponse.success(res, 200, 'Login successful', {
       user: result.user,
     });
@@ -54,7 +54,7 @@ class AuthController {
     if (req.user?.id) {
       clearSessionActivity(req.user.id);
     }
-    
+
     res.clearCookie('token');
     ApiResponse.success(res, 200, 'Logout successful');
   });
@@ -67,13 +67,13 @@ class AuthController {
 
   static getSessionInfo = asyncHandler<AuthRequest>(async (req: AuthRequest, res: Response) => {
     const userId = req.user?.id;
-    
+
     if (!userId) {
       return ApiResponse.error(res, 401, 'Not authenticated');
     }
 
     const sessionInfo = getSessionInfo(userId);
-    
+
     if (!sessionInfo) {
       return ApiResponse.error(res, 401, 'No active session');
     }

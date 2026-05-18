@@ -158,10 +158,18 @@ const StepEditor = ({ steps, onChange }: StepEditorProps) => {
         const file = items[i].getAsFile();
         if (file) {
           e.preventDefault();
+          e.stopPropagation();
           await handleImageUpload(index, file);
           break;
         }
       }
+    }
+  };
+
+  const handleDropzoneClick = (index: number, e: React.MouseEvent) => {
+    // Only open file dialog if clicking directly on the dropzone, not when focusing for paste
+    if (e.target === e.currentTarget || (e.target as HTMLElement).closest('.dropzone-content')) {
+      document.getElementById(`image-upload-${index}`)?.click();
     }
   };
 
@@ -291,7 +299,7 @@ const StepEditor = ({ steps, onChange }: StepEditorProps) => {
                       onDragOver={handleImageDragOver}
                       onDrop={(e) => handleImageDrop(index, e)}
                       onPaste={(e) => handleImagePaste(index, e)}
-                      onClick={() => document.getElementById(`image-upload-${index}`)?.click()}
+                      onClick={(e) => handleDropzoneClick(index, e)}
                       role="button"
                       aria-label="Upload, drag and drop, or paste image"
                     >
@@ -305,13 +313,13 @@ const StepEditor = ({ steps, onChange }: StepEditorProps) => {
                         className="hidden"
                         id={`image-upload-${index}`}
                       />
-                      <div className="pointer-events-none flex flex-col items-center gap-2">
+                      <div className="dropzone-content flex flex-col items-center gap-2">
                         <div className="p-3 bg-surface rounded-full">
                           <Upload className="w-6 h-6 text-on-surface-variant" />
                         </div>
                         <div className="text-on-surface-variant">
-                          <p className="text-sm font-medium">Click to upload</p>
-                          <p className="text-xs mt-1">or paste (Ctrl+V), drag & drop</p>
+                          <p className="text-sm font-medium">Click to upload or paste here (Ctrl+V)</p>
+                          <p className="text-xs mt-1">You can also drag & drop</p>
                         </div>
                       </div>
                     </div>

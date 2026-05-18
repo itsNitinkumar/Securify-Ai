@@ -23,7 +23,7 @@ const GenerateFindingAIPage = () => {
   const navigate = useNavigate();
   const parsedProjectId = projectId ? Number.parseInt(projectId, 10) : undefined;
   const [loading, setLoading] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingSteps, setUploadingSteps] = useState<Set<number>>(new Set());
   const [step, setStep] = useState<'input' | 'review'>('input');
   const [draftFindingId, setDraftFindingId] = useState<number | null>(null);
   const [generatedFinding, setGeneratedFinding] = useState<any>(null);
@@ -202,7 +202,7 @@ const GenerateFindingAIPage = () => {
 
   const handleImageUpload = async (index: number, file: File) => {
     try {
-      setUploadingImage(true);
+      setUploadingSteps(prev => new Set([...prev, index]));
       const response = await uploadApi.uploadStepImage(file);
       if (response.data) {
         // Store ONLY imageKey in database (S3 key)
@@ -216,7 +216,11 @@ const GenerateFindingAIPage = () => {
       console.error('Failed to upload image:', error);
       toast.error('Failed to upload image');
     } finally {
-      setUploadingImage(false);
+      setUploadingSteps(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(index);
+        return newSet;
+      });
     }
   };
 
@@ -228,11 +232,19 @@ const GenerateFindingAIPage = () => {
           const file = items[i].getAsFile();
           if (file) {
             e.preventDefault();
+            e.stopPropagation();
             await handleImageUpload(index, file);
             break;
           }
         }
       }
+    }
+  };
+
+  const handleDropzoneClick = (index: number, e: React.MouseEvent) => {
+    // Only open file dialog if clicking directly on the dropzone, not when focusing for paste
+    if (e.target === e.currentTarget || (e.target as HTMLElement).closest('.dropzone-content')) {
+      document.getElementById(`step-image-${index}`)?.click();
     }
   };
 
@@ -494,7 +506,7 @@ const GenerateFindingAIPage = () => {
                           />
                           <div>
                             <label className="text-xs text-on-surface-variant mb-2 block">Image (Optional)</label>
-                            {uploadingImage ? (
+                            {uploadingSteps.has(index) ? (
                               <div className="border-2 border-dashed border-primary rounded-lg p-8 text-center">
                                 <Loader2 className="w-8 h-8 text-primary mx-auto mb-2 animate-spin" />
                                 <p className="text-xs text-on-surface-variant">Uploading image...</p>
@@ -523,7 +535,7 @@ const GenerateFindingAIPage = () => {
                                 onDragOver={handleDragOver}
                                 onDrop={(e) => handleDrop(index, e)}
                                 onPaste={(e) => handleImagePaste(index, e)}
-                                onClick={() => document.getElementById(`step-image-${index}`)?.click()}
+                                onClick={(e) => handleDropzoneClick(index, e)}
                                 role="button"
                                 aria-label="Upload, drag and drop, or paste image"
                               >
@@ -534,11 +546,11 @@ const GenerateFindingAIPage = () => {
                                   id={`step-image-${index}`}
                                   onChange={(e) => e.target.files?.[0] && handleImageUpload(index, e.target.files[0])}
                                 />
-                                <div className="pointer-events-none flex flex-col items-center gap-2">
+                                <div className="dropzone-content flex flex-col items-center gap-2">
                                   <UploadIcon className="w-6 h-6 text-on-surface-variant" />
                                   <div className="text-on-surface-variant">
-                                    <p className="text-sm font-medium">Click to upload</p>
-                                    <p className="text-xs mt-1">or paste (Ctrl+V), drag & drop</p>
+                                    <p className="text-sm font-medium">Click to upload or paste here (Ctrl+V)</p>
+                                    <p className="text-xs mt-1">You can also drag & drop</p>
                                   </div>
                                 </div>
                               </div>
@@ -623,17 +635,17 @@ const GenerateFindingAIPage = () => {
               <Button type="button" variant="outline" onClick={() => navigate(`/projects/${projectId}`)} className="border-outline text-on-surface-variant">
                 Back to Project
               </Button>
-              <Button type="button" variant="ghost" onClick={handleRegenerate} disabled={loading || uploadingImage} className="text-on-surface">
+              <Button type="button" variant="ghost" onClick={handleRegenerate} disabled={loading || uploadingSteps.size > 0} className="text-on-surface">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Regenerate
               </Button>
-              <Button type="button" onClick={() => void handleAccept()} disabled={loading || uploadingImage} className="bg-primary text-surface hover:bg-primary/90">
+              <Button type="button" onClick={() => void handleAccept()} disabled={loading || uploadingSteps.size > 0} className="bg-primary text-surface hover:bg-primary/90">
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Saving...
                   </>
-                ) : uploadingImage ? (
+                ) : uploadingSteps.size > 0 ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Uploading image...
