@@ -33,7 +33,11 @@ class ProjectController {
       end_date,
       application_details,
       user_roles,
+      domains,
       include_out_of_scope_endpoints,
+      out_of_scope_endpoints,
+      template_id,
+      template_name,
     } = req.body;
     const user = (req as any).user;
 
@@ -86,7 +90,25 @@ class ProjectController {
         if (!r && !u) return null;
         return { role: r, username: u };
       }) ?? undefined,
+      domains: Array.isArray(domains)
+        ? (domains as any[])
+          .map((d) => String(d || '').trim())
+          .filter(Boolean)
+        : undefined,
       include_out_of_scope_endpoints: Boolean(include_out_of_scope_endpoints),
+      out_of_scope_endpoints: normalizeRows(out_of_scope_endpoints, (row) => {
+        const n = String(row?.name || '').trim();
+        const u = String(row?.url || '').trim();
+        if (!n && !u) return null;
+        return { name: n, url: u };
+      }) ?? undefined,
+      template_id: template_id !== undefined && template_id !== null && String(template_id).trim() !== ''
+        ? (() => {
+          const idNum = Number.parseInt(String(template_id), 10);
+          return Number.isFinite(idNum) ? idNum : undefined;
+        })()
+        : undefined,
+      template_name: typeof template_name === 'string' && template_name.trim() ? template_name.trim() : undefined,
       created_by: user.id,
     });
 
@@ -161,9 +183,11 @@ class ProjectController {
       end_date,
       application_details,
       user_roles,
+      domains,
       out_of_scope_endpoints,
       include_out_of_scope_endpoints,
       template_id,
+      template_name,
     } = req.body;
     const user = (req as any).user;
 
@@ -235,6 +259,14 @@ class ProjectController {
       })
       : undefined;
 
+    const normalizedDomains = domains !== undefined
+      ? (Array.isArray(domains)
+        ? (domains as any[])
+          .map((d) => String(d || '').trim())
+          .filter(Boolean)
+        : null)
+      : undefined;
+
     const updatePayload: Record<string, any> = {
       name,
       description,
@@ -245,9 +277,11 @@ class ProjectController {
     if (end_date !== undefined) updatePayload.end_date = toDateOnly(end_date);
     if (normalizedApps !== undefined) updatePayload.application_details = normalizedApps;
     if (normalizedRoles !== undefined) updatePayload.user_roles = normalizedRoles;
+    if (normalizedDomains !== undefined) updatePayload.domains = normalizedDomains;
     if (normalizedOutOfScope !== undefined) updatePayload.out_of_scope_endpoints = normalizedOutOfScope;
     if (include_out_of_scope_endpoints !== undefined) updatePayload.include_out_of_scope_endpoints = Boolean(include_out_of_scope_endpoints);
     if (template_id !== undefined) updatePayload.template_id = template_id;
+    if (template_name !== undefined) updatePayload.template_name = template_name;
 
     const updated = await ProjectModel.update(parseInt(id), updatePayload);
 

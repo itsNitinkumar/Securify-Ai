@@ -7,6 +7,7 @@ import { projectApi, CreateProjectData } from '@/api/projectApi';
 import { findingApi } from '@/api/findingApi';
 import { clientApi, Client } from '@/api/clientApi';
 import { templateApi, Template } from '@/api/templateApi';
+import { templateKeyFromProject, templateKeyFromTemplate } from '@/reportTemplates/registry';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -26,6 +27,7 @@ type ProjectWithFindings = {
   user_roles?: Array<{ role: string; username: string }>;
   out_of_scope_endpoints?: Array<{ name: string; url: string }>;
   include_out_of_scope_endpoints?: boolean;
+  domains?: string[];
   template_id?: number;
   template_name?: string;
   status?: string;
@@ -60,6 +62,7 @@ const ProjectDetailPage = () => {
     user_roles: [{ role: '', username: '' }],
     out_of_scope_endpoints: [{ name: '', url: '' }],
     include_out_of_scope_endpoints: false,
+    domains: [''],
     template_id: undefined,
   });
 
@@ -136,6 +139,9 @@ const ProjectDetailPage = () => {
           ? normalized.out_of_scope_endpoints.map((r) => ({ name: r.name || '', url: r.url || '' }))
           : [{ name: '', url: '' }],
         include_out_of_scope_endpoints: Boolean((normalized as any).include_out_of_scope_endpoints),
+        domains: Array.isArray((normalized as any).domains) && (normalized as any).domains.length
+          ? (normalized as any).domains.map((d: any) => String(d || ''))
+          : [''],
         template_id: (normalized as any).template_id || undefined,
         template_name: (normalized as any).template_name || undefined,
       });
@@ -193,6 +199,17 @@ const ProjectDetailPage = () => {
     if (!q) return clients;
     return clients.filter((c) => c.name.toLowerCase().includes(q));
   }, [clients, clientQuery]);
+
+  const selectedTemplateForForm = useMemo(() => {
+    if (!templates.length) return null;
+    const t = templates.find((x) => x.id === editForm.template_id)
+      || templates.find((x) => x.id === (project as any)?.template_id);
+    return t || null;
+  }, [templates, editForm.template_id, project]);
+
+  const formTemplateKey = selectedTemplateForForm
+    ? templateKeyFromTemplate(selectedTemplateForForm)
+    : templateKeyFromProject(project);
 
   const updateApplicationRow = (idx: number, patch: Partial<{ name: string; url: string }>) => {
     setEditForm((current) => {
@@ -266,6 +283,29 @@ const ProjectDetailPage = () => {
     });
   };
 
+  const updateDomainRow = (idx: number, value: string) => {
+    setEditForm((current) => {
+      const rows = Array.isArray(current.domains) ? current.domains.slice() : [];
+      rows[idx] = value;
+      return { ...current, domains: rows };
+    });
+  };
+
+  const addDomainRow = () => {
+    setEditForm((current) => ({
+      ...current,
+      domains: [...(current.domains || []), ''],
+    }));
+  };
+
+  const removeDomainRow = (idx: number) => {
+    setEditForm((current) => {
+      const rows = (current.domains || []).slice();
+      rows.splice(idx, 1);
+      return { ...current, domains: rows.length ? rows : [''] };
+    });
+  };
+
   const requestClientChange = (next: { client_id: number | null; client_name: string }) => {
     if (!project) return;
     const currentId = project.client_id ?? null;
@@ -294,21 +334,35 @@ const ProjectDetailPage = () => {
     if (!project) return;
     try {
       setSaving(true);
+
+      const selectedTemplate = templates.find((t) => t.id === editForm.template_id) || null;
+      const key = selectedTemplate
+        ? templateKeyFromTemplate(selectedTemplate)
+        : templateKeyFromProject(project);
+
       const payload: Partial<CreateProjectData> = {
         name: editForm.name,
         description: editForm.description || undefined,
         start_date: editForm.start_date || undefined,
         end_date: editForm.end_date || undefined,
-        application_details: (editForm.application_details || []).filter((r) => (r.name || '').trim() || (r.url || '').trim()),
-        user_roles: (editForm.user_roles || []).filter((r) => (r.role || '').trim() || (r.username || '').trim()),
-        out_of_scope_endpoints: editForm.include_out_of_scope_endpoints
-          ? (editForm.out_of_scope_endpoints || []).filter((r) => (r.name || '').trim() || (r.url || '').trim())
-          : [],
-        include_out_of_scope_endpoints: Boolean(editForm.include_out_of_scope_endpoints),
         template_id: editForm.template_id || undefined,
+        template_name: selectedTemplate?.name || editForm.template_name,
         client_id: selectedClientId || undefined,
         client_name: !selectedClientId && clientQuery.trim() ? clientQuery.trim() : undefined,
       };
+
+      if (key === 'securify' || key === 'unknown') {
+        payload.application_details = (editForm.application_details || []).filter((r) => (r.name || '').trim() || (r.url || '').trim());
+        payload.user_roles = (editForm.user_roles || []).filter((r) => (r.role || '').trim() || (r.username || '').trim());
+        payload.include_out_of_scope_endpoints = Boolean(editForm.include_out_of_scope_endpoints);
+        payload.out_of_scope_endpoints = payload.include_out_of_scope_endpoints
+          ? (editForm.out_of_scope_endpoints || []).filter((r) => (r.name || '').trim() || (r.url || '').trim())
+          : [];
+      }
+
+      if (key === 'blueally') {
+        payload.domains = (editForm.domains || []).map((d) => String(d || '').trim()).filter(Boolean);
+      }
 
       await projectApi.updateProject(project.id, payload);
       toast.success('Project updated');
@@ -652,120 +706,11 @@ const ProjectDetailPage = () => {
                   </select>
                 </div>
 
-              <div>
-                <label className="text-sm font-medium text-on-surface mb-2 block">Application Details</label>
-                <div className="overflow-auto rounded-md border border-outline-variant">
-                  <table className="w-full text-sm">
-                    <thead className="bg-surface">
-                      <tr className="text-left">
-                        <th className="px-3 py-2 text-on-surface">Name</th>
-                        <th className="px-3 py-2 text-on-surface">URL</th>
-                        <th className="px-3 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-outline-variant bg-surface-high">
-                      {(editForm.application_details || []).map((row, idx) => (
-                        <tr key={idx}>
-                          <td className="px-3 py-2">
-                            <Input
-                              value={row.name}
-                              onChange={(e) => updateApplicationRow(idx, { name: e.target.value })}
-                              className="bg-surface border-outline text-on-surface"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <Input
-                              value={row.url}
-                              onChange={(e) => updateApplicationRow(idx, { url: e.target.value })}
-                              className="bg-surface border-outline text-on-surface"
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => removeApplicationRow(idx)}
-                              className="border-outline text-on-surface-variant"
-                            >
-                              Remove
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="pt-2">
-                  <Button type="button" variant="outline" onClick={addApplicationRow} className="border-outline text-on-surface-variant">
-                    Add Row
-                  </Button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-on-surface mb-2 block">User Role</label>
-                <div className="overflow-auto rounded-md border border-outline-variant">
-                  <table className="w-full text-sm">
-                    <thead className="bg-surface">
-                      <tr className="text-left">
-                        <th className="px-3 py-2 text-on-surface">Role</th>
-                        <th className="px-3 py-2 text-on-surface">Username/Email</th>
-                        <th className="px-3 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-outline-variant bg-surface-high">
-                      {(editForm.user_roles || []).map((row, idx) => (
-                        <tr key={idx}>
-                          <td className="px-3 py-2">
-                            <Input
-                              value={row.role}
-                              onChange={(e) => updateUserRoleRow(idx, { role: e.target.value })}
-                              className="bg-surface border-outline text-on-surface"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <Input
-                              value={row.username}
-                              onChange={(e) => updateUserRoleRow(idx, { username: e.target.value })}
-                              className="bg-surface border-outline text-on-surface"
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => removeUserRoleRow(idx)}
-                              className="border-outline text-on-surface-variant"
-                            >
-                              Remove
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="pt-2">
-                  <Button type="button" variant="outline" onClick={addUserRoleRow} className="border-outline text-on-surface-variant">
-                    Add Row
-                  </Button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-on-surface mb-2 block">Out of Scope Endpoints</label>
-                <label className="flex items-center gap-2 text-sm text-on-surface-variant">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(editForm.include_out_of_scope_endpoints)}
-                    onChange={(e) => setEditForm((c) => ({ ...c, include_out_of_scope_endpoints: e.target.checked }))}
-                  />
-                  Include Out of Scope Endpoints
-                </label>
-
-                {editForm.include_out_of_scope_endpoints ? (
-                  <>
-                    <div className="mt-3 overflow-auto rounded-md border border-outline-variant">
+              {(formTemplateKey === 'securify' || formTemplateKey === 'unknown') ? (
+                <>
+                  <div>
+                    <label className="text-sm font-medium text-on-surface mb-2 block">Application Details</label>
+                    <div className="overflow-auto rounded-md border border-outline-variant">
                       <table className="w-full text-sm">
                         <thead className="bg-surface">
                           <tr className="text-left">
@@ -775,19 +720,19 @@ const ProjectDetailPage = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-outline-variant bg-surface-high">
-                          {(editForm.out_of_scope_endpoints || []).map((row, idx) => (
+                          {(editForm.application_details || []).map((row, idx) => (
                             <tr key={idx}>
                               <td className="px-3 py-2">
                                 <Input
                                   value={row.name}
-                                  onChange={(e) => updateOutOfScopeRow(idx, { name: e.target.value })}
+                                  onChange={(e) => updateApplicationRow(idx, { name: e.target.value })}
                                   className="bg-surface border-outline text-on-surface"
                                 />
                               </td>
                               <td className="px-3 py-2">
                                 <Input
                                   value={row.url}
-                                  onChange={(e) => updateOutOfScopeRow(idx, { url: e.target.value })}
+                                  onChange={(e) => updateApplicationRow(idx, { url: e.target.value })}
                                   className="bg-surface border-outline text-on-surface"
                                 />
                               </td>
@@ -795,7 +740,7 @@ const ProjectDetailPage = () => {
                                 <Button
                                   type="button"
                                   variant="outline"
-                                  onClick={() => removeOutOfScopeRow(idx)}
+                                  onClick={() => removeApplicationRow(idx)}
                                   className="border-outline text-on-surface-variant"
                                 >
                                   Remove
@@ -807,13 +752,166 @@ const ProjectDetailPage = () => {
                       </table>
                     </div>
                     <div className="pt-2">
-                      <Button type="button" variant="outline" onClick={addOutOfScopeRow} className="border-outline text-on-surface-variant">
+                      <Button type="button" variant="outline" onClick={addApplicationRow} className="border-outline text-on-surface-variant">
                         Add Row
                       </Button>
                     </div>
-                  </>
-                ) : null}
-              </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-on-surface mb-2 block">User Role</label>
+                    <div className="overflow-auto rounded-md border border-outline-variant">
+                      <table className="w-full text-sm">
+                        <thead className="bg-surface">
+                          <tr className="text-left">
+                            <th className="px-3 py-2 text-on-surface">Role</th>
+                            <th className="px-3 py-2 text-on-surface">Username/Email</th>
+                            <th className="px-3 py-2" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-outline-variant bg-surface-high">
+                          {(editForm.user_roles || []).map((row, idx) => (
+                            <tr key={idx}>
+                              <td className="px-3 py-2">
+                                <Input
+                                  value={row.role}
+                                  onChange={(e) => updateUserRoleRow(idx, { role: e.target.value })}
+                                  className="bg-surface border-outline text-on-surface"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  value={row.username}
+                                  onChange={(e) => updateUserRoleRow(idx, { username: e.target.value })}
+                                  className="bg-surface border-outline text-on-surface"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => removeUserRoleRow(idx)}
+                                  className="border-outline text-on-surface-variant"
+                                >
+                                  Remove
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="pt-2">
+                      <Button type="button" variant="outline" onClick={addUserRoleRow} className="border-outline text-on-surface-variant">
+                        Add Row
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-on-surface mb-2 block">Out of Scope Endpoints</label>
+                    <label className="flex items-center gap-2 text-sm text-on-surface-variant">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(editForm.include_out_of_scope_endpoints)}
+                        onChange={(e) => setEditForm((c) => ({ ...c, include_out_of_scope_endpoints: e.target.checked }))}
+                      />
+                      Include Out of Scope Endpoints
+                    </label>
+
+                    {editForm.include_out_of_scope_endpoints ? (
+                      <>
+                        <div className="mt-3 overflow-auto rounded-md border border-outline-variant">
+                          <table className="w-full text-sm">
+                            <thead className="bg-surface">
+                              <tr className="text-left">
+                                <th className="px-3 py-2 text-on-surface">Name</th>
+                                <th className="px-3 py-2 text-on-surface">URL</th>
+                                <th className="px-3 py-2" />
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-outline-variant bg-surface-high">
+                              {(editForm.out_of_scope_endpoints || []).map((row, idx) => (
+                                <tr key={idx}>
+                                  <td className="px-3 py-2">
+                                    <Input
+                                      value={row.name}
+                                      onChange={(e) => updateOutOfScopeRow(idx, { name: e.target.value })}
+                                      className="bg-surface border-outline text-on-surface"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <Input
+                                      value={row.url}
+                                      onChange={(e) => updateOutOfScopeRow(idx, { url: e.target.value })}
+                                      className="bg-surface border-outline text-on-surface"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 text-right">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() => removeOutOfScopeRow(idx)}
+                                      className="border-outline text-on-surface-variant"
+                                    >
+                                      Remove
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="pt-2">
+                          <Button type="button" variant="outline" onClick={addOutOfScopeRow} className="border-outline text-on-surface-variant">
+                            Add Row
+                          </Button>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+
+              {formTemplateKey === 'blueally' ? (
+                <div>
+                  <label className="text-sm font-medium text-on-surface mb-2 block">Domains</label>
+                  <div className="overflow-auto rounded-md border border-outline-variant">
+                    <table className="w-full text-sm">
+                      <thead className="bg-surface">
+                        <tr className="text-left">
+                          <th className="px-3 py-2 text-on-surface">Domain</th>
+                          <th className="px-3 py-2" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant bg-surface-high">
+                        {(editForm.domains || []).map((d, idx) => (
+                          <tr key={idx}>
+                            <td className="px-3 py-2">
+                              <Input
+                                value={d}
+                                onChange={(e) => updateDomainRow(idx, e.target.value)}
+                                placeholder="https://example.com"
+                                className="bg-surface border-outline text-on-surface"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <Button type="button" variant="outline" onClick={() => removeDomainRow(idx)} className="border-outline text-on-surface-variant">
+                                Remove
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pt-2">
+                    <Button type="button" variant="outline" onClick={addDomainRow} className="border-outline text-on-surface-variant">
+                      Add Row
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="mt-4 space-y-4">
@@ -831,7 +929,7 @@ const ProjectDetailPage = () => {
                 </div>
               )}
 
-              {project.application_details && project.application_details.length > 0 && (
+              {(formTemplateKey === 'securify' || formTemplateKey === 'unknown') && project.application_details && project.application_details.length > 0 && (
                 <div className="p-3 rounded-lg bg-surface border border-outline-variant">
                   <div className="text-xs text-on-surface-variant mb-2">Application Details</div>
                   <div className="overflow-x-auto">
@@ -855,7 +953,7 @@ const ProjectDetailPage = () => {
                 </div>
               )}
 
-              {project.user_roles && project.user_roles.length > 0 && (
+              {(formTemplateKey === 'securify' || formTemplateKey === 'unknown') && project.user_roles && project.user_roles.length > 0 && (
                 <div className="p-3 rounded-lg bg-surface border border-outline-variant">
                   <div className="text-xs text-on-surface-variant mb-2">User Roles</div>
                   <div className="overflow-x-auto">
@@ -879,6 +977,28 @@ const ProjectDetailPage = () => {
                 </div>
               )}
 
+              {formTemplateKey === 'blueally' && (project as any).domains && Array.isArray((project as any).domains) && (project as any).domains.length > 0 && (
+                <div className="p-3 rounded-lg bg-surface border border-outline-variant">
+                  <div className="text-xs text-on-surface-variant mb-2">Domains</div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-surface-high">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-on-surface">Domain</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant">
+                        {((project as any).domains as any[]).map((d: any, idx: number) => (
+                          <tr key={idx}>
+                            <td className="px-3 py-2 text-on-surface">{String(d || '')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {(project.start_date || project.end_date) && (
                 <div className="p-3 rounded-lg bg-surface border border-outline-variant">
                   <div className="text-xs text-on-surface-variant mb-1">Assessment Window</div>
@@ -888,7 +1008,7 @@ const ProjectDetailPage = () => {
                 </div>
               )}
 
-              {(project as any).include_out_of_scope_endpoints && project.out_of_scope_endpoints && project.out_of_scope_endpoints.length > 0 && (
+              {(formTemplateKey === 'securify' || formTemplateKey === 'unknown') && (project as any).include_out_of_scope_endpoints && project.out_of_scope_endpoints && project.out_of_scope_endpoints.length > 0 && (
                 <div className="p-3 rounded-lg bg-surface border border-outline-variant">
                   <div className="text-xs text-on-surface-variant mb-2">Out of Scope Endpoints</div>
                   <div className="overflow-x-auto">

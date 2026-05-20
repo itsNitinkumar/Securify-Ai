@@ -5,6 +5,7 @@ import { projectApi, CreateProjectData } from '@/api/projectApi';
 import { authApi } from '@/api/authApi';
 import { clientApi, Client } from '@/api/clientApi';
 import { templateApi, Template } from '@/api/templateApi';
+import { templateKeyFromTemplate } from '@/reportTemplates/registry';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -33,6 +34,13 @@ const CreateProjectPage = () => {
           client_id: undefined,
           template_id: undefined,
           template_name: undefined,
+          start_date: undefined,
+          end_date: undefined,
+          application_details: [{ name: '', url: '' }],
+          user_roles: [{ role: '', username: '' }],
+          out_of_scope_endpoints: [{ name: '', url: '' }],
+          include_out_of_scope_endpoints: false,
+          domains: [''],
         };
       }
     }
@@ -42,6 +50,13 @@ const CreateProjectPage = () => {
       client_id: undefined,
       template_id: undefined,
       template_name: undefined,
+      start_date: undefined,
+      end_date: undefined,
+      application_details: [{ name: '', url: '' }],
+      user_roles: [{ role: '', username: '' }],
+      out_of_scope_endpoints: [{ name: '', url: '' }],
+      include_out_of_scope_endpoints: false,
+      domains: [''],
     };
   });
 
@@ -215,6 +230,50 @@ const CreateProjectPage = () => {
     });
   };
 
+  const updateOutOfScopeRow = (idx: number, patch: Partial<{ name: string; url: string }>) => {
+    setFormData((current) => {
+      const rows = Array.isArray(current.out_of_scope_endpoints) ? current.out_of_scope_endpoints.slice() : [];
+      const prev = rows[idx] || { name: '', url: '' };
+      rows[idx] = { ...prev, ...patch };
+      return { ...current, out_of_scope_endpoints: rows };
+    });
+  };
+
+  const addOutOfScopeRow = () => {
+    setFormData((current) => ({
+      ...current,
+      out_of_scope_endpoints: [...(current.out_of_scope_endpoints || []), { name: '', url: '' }],
+    }));
+  };
+
+  const removeOutOfScopeRow = (idx: number) => {
+    setFormData((current) => {
+      const rows = (current.out_of_scope_endpoints || []).slice();
+      rows.splice(idx, 1);
+      return { ...current, out_of_scope_endpoints: rows.length ? rows : [{ name: '', url: '' }] };
+    });
+  };
+
+  const updateDomainRow = (idx: number, value: string) => {
+    setFormData((current) => {
+      const rows = Array.isArray(current.domains) ? current.domains.slice() : [];
+      rows[idx] = value;
+      return { ...current, domains: rows };
+    });
+  };
+
+  const addDomainRow = () => {
+    setFormData((current) => ({ ...current, domains: [...(current.domains || []), ''] }));
+  };
+
+  const removeDomainRow = (idx: number) => {
+    setFormData((current) => {
+      const rows = (current.domains || []).slice();
+      rows.splice(idx, 1);
+      return { ...current, domains: rows.length ? rows : [''] };
+    });
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedTemplate) {
@@ -230,7 +289,23 @@ const CreateProjectPage = () => {
         client_name: !selectedClientId && clientQuery.trim() ? clientQuery.trim() : undefined,
         template_id: selectedTemplate.id,
         template_name: selectedTemplate.name,
+        start_date: formData.start_date,
+        end_date: formData.end_date,
       };
+
+       const key = templateKeyFromTemplate(selectedTemplate);
+       if (key === 'securify') {
+         payload.application_details = (formData.application_details || []).filter((r) => (r.name || '').trim() || (r.url || '').trim());
+         payload.user_roles = (formData.user_roles || []).filter((r) => (r.role || '').trim() || (r.username || '').trim());
+         payload.include_out_of_scope_endpoints = Boolean(formData.include_out_of_scope_endpoints);
+         payload.out_of_scope_endpoints = payload.include_out_of_scope_endpoints
+           ? (formData.out_of_scope_endpoints || []).filter((r) => (r.name || '').trim() || (r.url || '').trim())
+           : [];
+       }
+
+       if (key === 'blueally') {
+         payload.domains = (formData.domains || []).map((d) => String(d || '').trim()).filter(Boolean);
+       }
 
       const response = await projectApi.createProject(payload);
       const created = (response as any)?.data || response;
@@ -301,6 +376,219 @@ const CreateProjectPage = () => {
               className="bg-surface border-outline text-on-surface"
             />
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-on-surface mb-2 block">Start Date</label>
+              <Input
+                type="date"
+                value={formData.start_date || ''}
+                onChange={(e) => setFormData((c) => ({ ...c, start_date: e.target.value || undefined }))}
+                className="bg-surface border-outline text-on-surface"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-on-surface mb-2 block">End Date</label>
+              <Input
+                type="date"
+                value={formData.end_date || ''}
+                onChange={(e) => setFormData((c) => ({ ...c, end_date: e.target.value || undefined }))}
+                className="bg-surface border-outline text-on-surface"
+              />
+            </div>
+          </div>
+
+          {templateKeyFromTemplate(selectedTemplate) === 'securify' ? (
+            <>
+              <div>
+                <label className="text-sm font-medium text-on-surface mb-2 block">Application Details</label>
+                <div className="overflow-auto rounded-md border border-outline-variant">
+                  <table className="w-full text-sm">
+                    <thead className="bg-surface">
+                      <tr className="text-left">
+                        <th className="px-3 py-2 text-on-surface">Name</th>
+                        <th className="px-3 py-2 text-on-surface">URL</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant bg-surface-high">
+                      {(formData.application_details || []).map((row, idx) => (
+                        <tr key={idx}>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={row.name}
+                              onChange={(e) => updateApplicationRow(idx, { name: e.target.value })}
+                              className="bg-surface border-outline text-on-surface"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={row.url}
+                              onChange={(e) => updateApplicationRow(idx, { url: e.target.value })}
+                              className="bg-surface border-outline text-on-surface"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Button type="button" variant="outline" onClick={() => removeApplicationRow(idx)} className="border-outline text-on-surface-variant">
+                              Remove
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="pt-2">
+                  <Button type="button" variant="outline" onClick={addApplicationRow} className="border-outline text-on-surface-variant">
+                    Add Row
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-on-surface mb-2 block">User Roles</label>
+                <div className="overflow-auto rounded-md border border-outline-variant">
+                  <table className="w-full text-sm">
+                    <thead className="bg-surface">
+                      <tr className="text-left">
+                        <th className="px-3 py-2 text-on-surface">Role</th>
+                        <th className="px-3 py-2 text-on-surface">Username/Email</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant bg-surface-high">
+                      {(formData.user_roles || []).map((row, idx) => (
+                        <tr key={idx}>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={row.role}
+                              onChange={(e) => updateUserRoleRow(idx, { role: e.target.value })}
+                              className="bg-surface border-outline text-on-surface"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={row.username}
+                              onChange={(e) => updateUserRoleRow(idx, { username: e.target.value })}
+                              className="bg-surface border-outline text-on-surface"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Button type="button" variant="outline" onClick={() => removeUserRoleRow(idx)} className="border-outline text-on-surface-variant">
+                              Remove
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="pt-2">
+                  <Button type="button" variant="outline" onClick={addUserRoleRow} className="border-outline text-on-surface-variant">
+                    Add Row
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-on-surface mb-2 block">Out of Scope Endpoints</label>
+                <label className="flex items-center gap-2 text-sm text-on-surface-variant">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(formData.include_out_of_scope_endpoints)}
+                    onChange={(e) => setFormData((c) => ({ ...c, include_out_of_scope_endpoints: e.target.checked }))}
+                  />
+                  Include Out of Scope Endpoints
+                </label>
+
+                {formData.include_out_of_scope_endpoints ? (
+                  <>
+                    <div className="mt-3 overflow-auto rounded-md border border-outline-variant">
+                      <table className="w-full text-sm">
+                        <thead className="bg-surface">
+                          <tr className="text-left">
+                            <th className="px-3 py-2 text-on-surface">Name</th>
+                            <th className="px-3 py-2 text-on-surface">URL</th>
+                            <th className="px-3 py-2" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-outline-variant bg-surface-high">
+                          {(formData.out_of_scope_endpoints || []).map((row, idx) => (
+                            <tr key={idx}>
+                              <td className="px-3 py-2">
+                                <Input
+                                  value={row.name}
+                                  onChange={(e) => updateOutOfScopeRow(idx, { name: e.target.value })}
+                                  className="bg-surface border-outline text-on-surface"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  value={row.url}
+                                  onChange={(e) => updateOutOfScopeRow(idx, { url: e.target.value })}
+                                  className="bg-surface border-outline text-on-surface"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <Button type="button" variant="outline" onClick={() => removeOutOfScopeRow(idx)} className="border-outline text-on-surface-variant">
+                                  Remove
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="pt-2">
+                      <Button type="button" variant="outline" onClick={addOutOfScopeRow} className="border-outline text-on-surface-variant">
+                        Add Row
+                      </Button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+
+          {templateKeyFromTemplate(selectedTemplate) === 'blueally' ? (
+            <div>
+              <label className="text-sm font-medium text-on-surface mb-2 block">Domains</label>
+              <div className="overflow-auto rounded-md border border-outline-variant">
+                <table className="w-full text-sm">
+                  <thead className="bg-surface">
+                    <tr className="text-left">
+                      <th className="px-3 py-2 text-on-surface">Domain</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant bg-surface-high">
+                    {(formData.domains || []).map((d, idx) => (
+                      <tr key={idx}>
+                        <td className="px-3 py-2">
+                          <Input
+                            value={d}
+                            onChange={(e) => updateDomainRow(idx, e.target.value)}
+                            placeholder="https://example.com"
+                            className="bg-surface border-outline text-on-surface"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <Button type="button" variant="outline" onClick={() => removeDomainRow(idx)} className="border-outline text-on-surface-variant">
+                            Remove
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="pt-2">
+                <Button type="button" variant="outline" onClick={addDomainRow} className="border-outline text-on-surface-variant">
+                  Add Row
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           <div>
             <label className="text-sm font-medium text-on-surface mb-2 block">Client Name</label>

@@ -10,6 +10,7 @@ interface Project {
   end_date?: string; // DATE in DB
   application_details?: Array<{ name: string; url: string }>;
   user_roles?: Array<{ role: string; username: string }>;
+  domains?: string[];
   template_id?: number;
   template_name?: string;
   out_of_scope_endpoints?: Array<{ name: string; url: string }>;
@@ -31,13 +32,14 @@ class ProjectModel {
          end_date,
          application_details,
          user_roles,
+         domains,
          template_id,
          template_name,
          out_of_scope_endpoints,
          include_out_of_scope_endpoints,
          created_by
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
        [
          data.name,
@@ -48,13 +50,14 @@ class ProjectModel {
          data.end_date ?? null,
          data.application_details ? JSON.stringify(data.application_details) : null,
          data.user_roles ? JSON.stringify(data.user_roles) : null,
+         data.domains ? JSON.stringify(data.domains) : null,
          data.template_id ?? null,
          data.template_name ?? null,
          data.out_of_scope_endpoints ? JSON.stringify(data.out_of_scope_endpoints) : null,
          data.include_out_of_scope_endpoints ?? false,
          data.created_by,
-       ]
-     );
+        ]
+      );
     return result.rows[0];
   }
 
@@ -86,6 +89,7 @@ if (data.name !== undefined) set('name', data.name);
       if (data.end_date !== undefined) set('end_date', data.end_date);
       if (data.application_details !== undefined) set('application_details', data.application_details ? JSON.stringify(data.application_details) : null);
       if (data.user_roles !== undefined) set('user_roles', data.user_roles ? JSON.stringify(data.user_roles) : null);
+      if (data.domains !== undefined) set('domains', data.domains ? JSON.stringify(data.domains) : null);
       if (data.template_id !== undefined) set('template_id', data.template_id);
       if (data.template_name !== undefined) set('template_name', data.template_name);
       if (data.out_of_scope_endpoints !== undefined) set('out_of_scope_endpoints', data.out_of_scope_endpoints ? JSON.stringify(data.out_of_scope_endpoints) : null);

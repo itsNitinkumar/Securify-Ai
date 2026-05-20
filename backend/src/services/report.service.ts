@@ -30,8 +30,10 @@ import { format as formatDate } from 'date-fns';
 import ReportModel, { ReportTemplate } from '../models/report.model';
 import ProjectModel from '../models/project.model';
 import FindingModel from '../models/finding.model';
+import EvidenceModel from '../models/evidence.model';
 import ApiError from '../utils/ApiError';
 import { ReportGeneratorService } from './report-generator.service';
+import { getRendererForTemplate, getTemplateKey } from '../report-templates/registry';
 
 interface ReportData {
   project: any;
@@ -52,7 +54,9 @@ interface PreviewResult {
 
 class ReportService {
   private static reportsDir = path.join(__dirname, '../../reports');
-  private static templatesDir = path.join(__dirname, '../templates');
+  // When running from TS (src/) __dirname points to src/services; when running from build (dist/)
+  // it points to dist/services. Use process.cwd() so both modes resolve to backend/src/templates.
+  private static templatesDir = path.join(process.cwd(), 'src', 'templates');
   private static execFileAsync = promisify(execFile);
 
   private static brand = {
@@ -120,6 +124,19 @@ class ReportService {
       ? approvedFindings.filter((finding) => findingIds.includes(finding.id))
       : approvedFindings;
 
+    // Enrich findings with evidence attachments so templates can render screenshots
+    // even when they are uploaded via EvidenceUploader (separate from steps_to_reproduce).
+    const enrichedFindings = await Promise.all(
+      findings.map(async (f: any) => {
+        try {
+          const evidence = await EvidenceModel.findByFindingId(f.id);
+          return { ...f, evidence };
+        } catch {
+          return { ...f, evidence: [] };
+        }
+      })
+    );
+
     if (Array.isArray(findingIds) && findingIds.length > 0 && findings.length === 0) {
       throw new ApiError(400, 'No approved findings matched the selected findings');
     }
@@ -142,7 +159,7 @@ class ReportService {
 
     return {
       project,
-      findings,
+      findings: enrichedFindings,
       template,
       metadata: {
         generatedBy: 'SecurifyAI',
@@ -154,6 +171,8 @@ class ReportService {
 
   private static renderReportHTML(data: ReportData, opts?: { inlineImages?: boolean }): string {
     const { project, findings, metadata } = data;
+
+     const templateKey = getTemplateKey(data.template);
 
     // Debug: Log findings data
     console.log('📊 Report findings data:', {
@@ -177,9 +196,8 @@ class ReportService {
       .replace(/{{PROJECT_NAME}}/g, project.name || 'Penetration Test Report')
       .replace(/{{DATE}}/g, metadata.generatedDate);
 
-    // Ensure a scope paragraph and tables exist across all templates so dynamic
-    // replacements work even if an older template file lacks them.
-    {
+    // Legacy Securify template expects these scope tables.
+    if (templateKey === 'securify' || templateKey === 'unknown') {
       const scopeParagraph = '<p>The assessment was conducted between Start Date and End Date. The re-assessment was conducted between Start Date and End Date. Testing was performed remotely.</p>';
       const appDetailsBlock = `
         <h2>Application Details</h2>
@@ -217,9 +235,8 @@ class ReportService {
 
     html = html.replace('{{FINDINGS_SECTION}}', findingsHTML);
 
-    // If templates contain the scope paragraph and tables, update them using project metadata.
-    // (This runs after findings injection because some templates may insert scope before findings.)
-    {
+    // Update Securify scope dates/tables using project metadata.
+    if (templateKey === 'securify' || templateKey === 'unknown') {
       const start = (project as any)?.start_date
         ? formatDate(new Date((project as any).start_date), 'MMMM dd, yyyy')
         : 'Start Date';
@@ -380,10 +397,27 @@ class ReportService {
 
       let docxBuffer = await this.generateDOCXBuffer(data);
 
+      // BlueAlly uses a DOCX-first template. LibreOffice PDF export has two recurring issues:
+      // 1) bullet glyph substitution (renders as oversized dots)
+      // 2) cover background image pagination (splits cover across 2 pages)
+      // Patch a PDF-only copy to keep DOCX output unchanged.
+      const templateKey = getTemplateKey(data.template);
+      console.log('[Report Service] Template key detected:', templateKey);
+      if (templateKey === 'blueally') {
+        console.log('[Report Service] Applying BlueAlly PDF patch...');
+        docxBuffer = this.patchBlueAllyDocxForLibreOfficePdf(docxBuffer);
+      } else {
+        console.log('[Report Service] Not applying BlueAlly patch (template key is:', templateKey, ')');
+      }
+
       // PDF conversion via LibreOffice can ignore paragraph-level run formatting on some template-derived
       // headings (notably around TOC/major sections). Patch those headings in a PDF-only copy so the
       // DOCX output remains unchanged.
-      docxBuffer = this.patchDocxHeadingsForLibreOfficePdf(docxBuffer);
+      // Only apply this patch for the legacy Securify/HTML-derived templates. BlueAlly uses a purpose-built
+      // DOCX and this patch can subtly disturb layout/list rendering in LibreOffice.
+      if (templateKey === 'securify' || templateKey === 'unknown') {
+        docxBuffer = this.patchDocxHeadingsForLibreOfficePdf(docxBuffer);
+      }
       fs.writeFileSync(inputPath, docxBuffer);
 
       await this.execFileAsync(sofficePath, [
@@ -620,6 +654,157 @@ class ReportService {
 
       return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
     } catch {
+      return docxBuffer;
+    }
+  }
+
+  private static patchBlueAllyDocxForLibreOfficePdf(docxBuffer: Buffer): Buffer {
+    let PizZip: any;
+    let cheerio: any;
+    try {
+      PizZip = require('pizzip');
+      cheerio = require('cheerio');
+    } catch {
+      return docxBuffer;
+    }
+
+    try {
+      const zip = new PizZip(docxBuffer);
+      console.log('[BlueAlly Patch] Starting patch for LibreOffice PDF conversion');
+
+      // 1) Fix bullet rendering by forcing a standard bullet glyph and a common font.
+      // LibreOffice can render "●" from symbol fonts as oversized dots.
+      const numberingPath = 'word/numbering.xml';
+      const numberingXml = zip.file(numberingPath)?.asText() || '';
+      if (numberingXml) {
+        console.log('[BlueAlly Patch] Found numbering.xml, patching bullets...');
+        const $n = cheerio.load(numberingXml, { xmlMode: true });
+        let bulletsPatchedCount = 0;
+        $n('w\\:lvl').each((_: number, lvl: any) => {
+          const fmt = $n(lvl).find('w\\:numFmt').attr('w:val');
+          if (fmt !== 'bullet') return;
+          const lvlText = $n(lvl).find('w\\:lvlText').first();
+          if (!lvlText.length) return;
+          const val = String(lvlText.attr('w:val') || '');
+          if (!val) return;
+          if (val !== '●' && val !== '○' && val !== 'o') return;
+
+          bulletsPatchedCount++;
+          console.log(`[BlueAlly Patch] Patching bullet from '${val}' to '•'`);
+          // Use standard bullet character.
+          lvlText.attr('w:val', '•');
+
+          // Ensure bullet run properties use a common font that exists on Linux.
+          let rPr = $n(lvl).children('w\\:rPr').first();
+          if (!rPr.length) {
+            $n(lvl).prepend('<w:rPr/>');
+            rPr = $n(lvl).children('w\\:rPr').first();
+          }
+          let rFonts = rPr.children('w\\:rFonts').first();
+          if (!rFonts.length) {
+            rPr.prepend('<w:rFonts/>');
+            rFonts = rPr.children('w\\:rFonts').first();
+          }
+          // Arial is typically unavailable in minimal Linux installs; Liberation Sans is a close substitute.
+          rFonts.attr('w:ascii', 'Liberation Sans');
+          rFonts.attr('w:hAnsi', 'Liberation Sans');
+          rFonts.attr('w:cs', 'Liberation Sans');
+          rFonts.attr('w:eastAsia', 'Liberation Sans');
+        });
+        console.log(`[BlueAlly Patch] Patched ${bulletsPatchedCount} bullet level(s)`);
+        zip.file(numberingPath, $n.xml());
+      } else {
+        console.log('[BlueAlly Patch] numbering.xml not found');
+      }
+
+      // 2) Cover background image: clamp the full-page background image to page size.
+      // The template uses a behindDoc anchor with a slightly oversized extent; LibreOffice sometimes
+      // paginates it onto a second page.
+      const docPath = 'word/document.xml';
+      const docXml = zip.file(docPath)?.asText() || '';
+      if (docXml) {
+        console.log('[BlueAlly Patch] Found document.xml, patching cover background...');
+        const $ = cheerio.load(docXml, { xmlMode: true });
+        // Page size in EMU for Letter (8.5x11): 7772400 x 10058400.
+        const pageCx = '7772400';
+        const pageCy = '10058400';
+
+        let coverPatchedCount = 0;
+        $('wp\\:anchor[behindDoc="1"]').each((_: number, a: any) => {
+          const extent = $(a).children('wp\\:extent').first();
+          if (!extent.length) return;
+          const cx = String(extent.attr('cx') || extent.attr('wp:cx') || extent.attr('w:cx') || '');
+          const cy = String(extent.attr('cy') || extent.attr('wp:cy') || extent.attr('w:cy') || '');
+          // Only touch the cover background image (very large).
+          const cxN = parseInt(cx || '0', 10);
+          const cyN = parseInt(cy || '0', 10);
+          console.log(`[BlueAlly Patch] Found behindDoc anchor with size: ${cxN} x ${cyN}`);
+          if (!(cxN > 7000000 && cyN > 9000000)) {
+            console.log(`[BlueAlly Patch] Size too small, skipping`);
+            return;
+          }
+
+          coverPatchedCount++;
+          console.log(`[BlueAlly Patch] Clamping cover image from ${cxN}x${cyN} to ${pageCx}x${pageCy}`);
+          extent.attr('cx', pageCx);
+          extent.attr('cy', pageCy);
+          // Also patch the picture extents if present.
+          $(a).find('a\\:ext').each((__: number, ex: any) => {
+            $(ex).attr('cx', pageCx);
+            $(ex).attr('cy', pageCy);
+          });
+        });
+        console.log(`[BlueAlly Patch] Patched ${coverPatchedCount} cover background anchor(s)`);
+
+        zip.file(docPath, $.xml());
+      } else {
+        console.log('[BlueAlly Patch] document.xml not found');
+      }
+
+      // 3) Header preservation: Force header drawing shapes to remain visible
+      // Header1 contains decorative shapes that LibreOffice might strip during PDF conversion.
+      // Ensure all wpg:grpSp (group shapes) and wps:wsp (individual shapes) have explicit properties.
+      const header1Path = 'word/header1.xml';
+      const header1Xml = zip.file(header1Path)?.asText() || '';
+      if (header1Xml) {
+        console.log('[BlueAlly Patch] Found header1.xml, preserving decorative shapes...');
+        const $h = cheerio.load(header1Xml, { xmlMode: true });
+        let shapesPreservedCount = 0;
+        
+        // Ensure all wps:wsp shapes have explicit visibility
+        $h('wps\\:wsp').each((_: number, shape: any) => {
+          const spPr = $h(shape).children('wps\\:spPr').first();
+          if (spPr.length) {
+            // Check for ln (line) element
+            const ln = $h(spPr).children('a\\:ln').first();
+            if (ln.length) {
+              const noFill = $h(ln).children('a\\:noFill').first();
+              // If line exists with noFill, it's a separator line - ensure it stays
+              if (noFill.length) {
+                shapesPreservedCount++;
+                console.log('[BlueAlly Patch] Preserved decorative separator line');
+              }
+            }
+            
+            // Check for solidFill elements
+            const solidFill = $h(spPr).children('a\\:solidFill').first();
+            if (solidFill.length) {
+              shapesPreservedCount++;
+              console.log('[BlueAlly Patch] Preserved shape with solid fill');
+            }
+          }
+        });
+        console.log(`[BlueAlly Patch] Checked ${shapesPreservedCount} shape(s) in header`);
+        zip.file(header1Path, $h.xml());
+      } else {
+        console.log('[BlueAlly Patch] header1.xml not found');
+      }
+
+      const patched = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+      console.log('[BlueAlly Patch] Patch complete, returned patched buffer');
+      return patched;
+    } catch (error) {
+      console.error('[BlueAlly Patch] Error during patching:', error);
       return docxBuffer;
     }
   }
@@ -3201,6 +3386,14 @@ class ReportService {
 
   private static async generateDOCXBuffer(data: ReportData): Promise<Buffer> {
     const templatePath = this.resolveDocxTemplatePath(data.template);
+
+    // Template-specific renderers (e.g. BlueAlly) override the default generation.
+    if (templatePath) {
+      const renderer = getRendererForTemplate(data.template);
+      if (renderer) {
+        return await renderer.generateDocxBuffer({ templatePath, data });
+      }
+    }
     if (templatePath) {
       let PizZip: any;
       let Docxtemplater: any;
