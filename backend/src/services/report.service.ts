@@ -405,7 +405,7 @@ class ReportService {
       console.log('[Report Service] Template key detected:', templateKey);
       if (templateKey === 'blueally') {
         console.log('[Report Service] Applying BlueAlly PDF patch...');
-        docxBuffer = this.patchBlueAllyDocxForLibreOfficePdf(docxBuffer);
+        docxBuffer = await this.patchBlueAllyDocxForLibreOfficePdf(docxBuffer);
       } else {
         console.log('[Report Service] Not applying BlueAlly patch (template key is:', templateKey, ')');
       }
@@ -420,22 +420,33 @@ class ReportService {
       }
       fs.writeFileSync(inputPath, docxBuffer);
 
-      await this.execFileAsync(sofficePath, [
-        '--headless',
-        '--convert-to',
-        'pdf:writer_pdf_Export',
-        '--outdir',
-        tempDir,
-        inputPath,
-      ], {
-        timeout: 120000,
-      });
+       await this.execFileAsync(sofficePath, [
+         '--headless',
+         '--convert-to',
+         'pdf:writer_pdf_Export',
+         '--outdir',
+         tempDir,
+         inputPath,
+       ], {
+         timeout: 120000,
+       });
 
       if (!fs.existsSync(outputPath)) {
         throw new ApiError(500, 'DOCX to PDF conversion failed: output PDF was not created');
       }
 
-      return fs.readFileSync(outputPath);
+       // BlueAlly: post-process PDF to fix LO cover pagination.
+       if (templateKey === 'blueally') {
+         try {
+           const finalPdf = await this.postProcessBlueAllyPdf(outputPath, docxBuffer, tempDir, data);
+           return finalPdf;
+         } catch (e: any) {
+           console.warn('[Report Service] BlueAlly PDF post-process failed, returning raw LO PDF:', e?.message || e);
+           return fs.readFileSync(outputPath);
+         }
+       }
+
+       return fs.readFileSync(outputPath);
     } catch (error: any) {
       if (error instanceof ApiError) throw error;
       throw new ApiError(500, `Failed to convert DOCX to PDF: ${error?.message || 'Unknown error'}`);
@@ -446,6 +457,93 @@ class ReportService {
         // Ignore temp cleanup failures.
       }
     }
+  }
+
+  private static async postProcessBlueAllyPdf(
+    loPdfPath: string,
+    docxBuffer: Buffer,
+    tempDir: string,
+    data: ReportData
+  ): Promise<Buffer> {
+    // LibreOffice tends to split the cover background image onto an extra page.
+    // Strategy:
+    // 1) Create a synthetic 1-page cover PDF.
+    // 2) Extract pages 3..end from LO output (TOC and onward).
+    // 3) Concatenate: cover + (pages 3..end).
+    const coverPdfPath = path.join(tempDir, 'blueally-cover.pdf');
+    const restPdfPath = path.join(tempDir, 'blueally-rest.pdf');
+    const mergedPdfPath = path.join(tempDir, 'blueally-merged.pdf');
+
+    await this.createBlueAllyCoverPdf(docxBuffer, data, coverPdfPath);
+
+    // Extract pages starting from 3 (page 2 is the cover background spill page).
+    await this.execFileAsync('qpdf', ['--empty', '--pages', loPdfPath, '3-z', '--', restPdfPath], { timeout: 120000 });
+    // Merge using qpdf (more robust than pdfunite for LO-generated PDFs).
+    await this.execFileAsync('qpdf', ['--empty', '--pages', coverPdfPath, '1', restPdfPath, '1-z', '--', mergedPdfPath], { timeout: 120000 });
+
+    return fs.readFileSync(mergedPdfPath);
+  }
+
+  private static async createBlueAllyCoverPdf(docxBuffer: Buffer, data: ReportData, outPath: string): Promise<void> {
+    let PizZip: any;
+    let PDFDocument: any;
+    try {
+      PizZip = require('pizzip');
+      PDFDocument = require('pdfkit');
+    } catch {
+      // Best-effort: if deps missing, skip cover synthesis.
+      throw new Error('Missing deps for BlueAlly cover synthesis');
+    }
+
+    const zip = new PizZip(docxBuffer);
+    const bg = zip.file('word/media/image1.jpg')?.asNodeBuffer?.();
+    const logo = zip.file('word/media/image27.png')?.asNodeBuffer?.();
+    if (!bg || !logo) {
+      throw new Error('Cover assets not found in DOCX (image1.jpg / image27.png)');
+    }
+
+    const { project } = data as any;
+    const clientName = String(project?.client_name || project?.clientName || 'N/A');
+    const startDate = project?.start_date ? formatDate(new Date(project.start_date), 'MMMM dd, yyyy') : null;
+    const originalTest = startDate ? `Original Test: ${startDate}` : 'Original Test: N/A';
+
+    const doc = new PDFDocument({ size: 'LETTER', margin: 0 });
+    await new Promise<void>((resolve, reject) => {
+      const stream = fs.createWriteStream(outPath);
+      stream.on('error', reject);
+      doc.on('error', reject);
+      stream.on('finish', () => resolve());
+      doc.pipe(stream);
+
+      const pageW = 612;
+
+      // Background image matches Letter aspect ratio; draw it full-bleed.
+      doc.image(bg, 0, 0, { width: 612, height: 792 });
+
+      // Top URL (white, top-right)
+      doc.fillColor('#ffffff').fontSize(12).font('Times-Bold');
+      doc.text('blueally.com', 48, 28, { width: pageW - 96, align: 'right' });
+
+      // Logo (3-leaf flower). Reduce width and move lower so it sits on the white area
+      // instead of overlapping the sky-blue curve. These values were tuned against
+      // the provided screenshots.
+      const logoW = 220; // smaller than before
+      const logoX = (pageW - logoW) / 2;
+      const logoY = 250; // push down slightly
+      doc.image(logo, logoX, logoY, { width: logoW });
+
+      // Middle texts
+      doc.fillColor('#001278').font('Times-Bold').fontSize(24);
+      doc.text('blueAlly', 0, 415, { width: pageW, align: 'center' });
+
+      doc.fontSize(16);
+      doc.text(`Prepared for: ${clientName}`, 0, 460, { width: pageW, align: 'center' });
+
+      doc.font('Times-Roman').fontSize(16);
+      doc.text(originalTest, 0, 505, { width: pageW, align: 'center' });
+
+      doc.end();
+    });
   }
 
   private static patchDocxHeadingsForLibreOfficePdf(docxBuffer: Buffer): Buffer {
@@ -658,12 +756,14 @@ class ReportService {
     }
   }
 
-  private static patchBlueAllyDocxForLibreOfficePdf(docxBuffer: Buffer): Buffer {
+  private static async patchBlueAllyDocxForLibreOfficePdf(docxBuffer: Buffer): Promise<Buffer> {
     let PizZip: any;
     let cheerio: any;
+    let sharp: any;
     try {
       PizZip = require('pizzip');
       cheerio = require('cheerio');
+      sharp = require('sharp');
     } catch {
       return docxBuffer;
     }
@@ -672,132 +772,351 @@ class ReportService {
       const zip = new PizZip(docxBuffer);
       console.log('[BlueAlly Patch] Starting patch for LibreOffice PDF conversion');
 
-      // 1) Fix bullet rendering by forcing a standard bullet glyph and a common font.
-      // LibreOffice can render "●" from symbol fonts as oversized dots.
-      const numberingPath = 'word/numbering.xml';
-      const numberingXml = zip.file(numberingPath)?.asText() || '';
-      if (numberingXml) {
-        console.log('[BlueAlly Patch] Found numbering.xml, patching bullets...');
-        const $n = cheerio.load(numberingXml, { xmlMode: true });
-        let bulletsPatchedCount = 0;
-        $n('w\\:lvl').each((_: number, lvl: any) => {
-          const fmt = $n(lvl).find('w\\:numFmt').attr('w:val');
-          if (fmt !== 'bullet') return;
-          const lvlText = $n(lvl).find('w\\:lvlText').first();
-          if (!lvlText.length) return;
-          const val = String(lvlText.attr('w:val') || '');
-          if (!val) return;
-          if (val !== '●' && val !== '○' && val !== 'o') return;
+      // 0) LibreOffice can drop bullet glyphs entirely for some Word-style bullet lists.
+      // As a PDF-only workaround, convert *bullet* list paragraphs to plain paragraphs with an explicit "• ".
+      // IMPORTANT: Do not touch numbered headings/TOC, otherwise headings like "1. Introduction" become bulleted.
+      {
+        const numberingPath = 'word/numbering.xml';
+        const numberingXml = zip.file(numberingPath)?.asText() || '';
+        const docPath = 'word/document.xml';
+        const docXml = zip.file(docPath)?.asText() || '';
+        if (numberingXml && docXml) {
+          const $n = cheerio.load(numberingXml, { xmlMode: true });
+          const $d = cheerio.load(docXml, { xmlMode: true });
 
-          bulletsPatchedCount++;
-          console.log(`[BlueAlly Patch] Patching bullet from '${val}' to '•'`);
-          // Use standard bullet character.
-          lvlText.attr('w:val', '•');
+          // Build a mapping: numId -> abstractNumId
+          const numIdToAbstract = new Map<string, string>();
+          $n('w\\:num').each((_: number, num: any) => {
+            const numId = String($n(num).attr('w:numId') || $n(num).attr('numId') || '');
+            const abs = String($n(num).find('w\\:abstractNumId').first().attr('w:val') || '');
+            if (numId && abs) numIdToAbstract.set(numId, abs);
+          });
 
-          // Ensure bullet run properties use a common font that exists on Linux.
-          let rPr = $n(lvl).children('w\\:rPr').first();
-          if (!rPr.length) {
-            $n(lvl).prepend('<w:rPr/>');
-            rPr = $n(lvl).children('w\\:rPr').first();
-          }
-          let rFonts = rPr.children('w\\:rFonts').first();
-          if (!rFonts.length) {
-            rPr.prepend('<w:rFonts/>');
-            rFonts = rPr.children('w\\:rFonts').first();
-          }
-          // Arial is typically unavailable in minimal Linux installs; Liberation Sans is a close substitute.
-          rFonts.attr('w:ascii', 'Liberation Sans');
-          rFonts.attr('w:hAnsi', 'Liberation Sans');
-          rFonts.attr('w:cs', 'Liberation Sans');
-          rFonts.attr('w:eastAsia', 'Liberation Sans');
-        });
-        console.log(`[BlueAlly Patch] Patched ${bulletsPatchedCount} bullet level(s)`);
-        zip.file(numberingPath, $n.xml());
-      } else {
-        console.log('[BlueAlly Patch] numbering.xml not found');
+          // Build a mapping: abstractNumId -> (ilvl -> numFmt)
+          const absToLvlFmt = new Map<string, Map<string, string>>();
+          $n('w\\:abstractNum').each((_: number, abs: any) => {
+            const absId = String($n(abs).attr('w:abstractNumId') || $n(abs).attr('abstractNumId') || '');
+            if (!absId) return;
+            const lvlMap = new Map<string, string>();
+            $n(abs)
+              .find('w\\:lvl')
+              .each((__: number, lvl: any) => {
+                const ilvl = String($n(lvl).attr('w:ilvl') || $n(lvl).attr('ilvl') || '');
+                const fmt = String($n(lvl).find('w\\:numFmt').first().attr('w:val') || '');
+                if (ilvl && fmt) lvlMap.set(ilvl, fmt);
+              });
+            absToLvlFmt.set(absId, lvlMap);
+          });
+
+          const isHeadingOrTocPara = (p: any): boolean => {
+            const pPr = $d(p).children('w\\:pPr').first();
+            const pStyle = String(pPr.find('w\\:pStyle').first().attr('w:val') || '');
+            if (/^Heading\d+$/.test(pStyle)) return true;
+            if (/^TOC/.test(pStyle)) return true;
+            // Field-based TOC entries.
+            if ($d(p).find('w\\:instrText').toArray().some((t: any) => /\bTOC\b/i.test($d(t).text()))) return true;
+            return false;
+          };
+
+          let bulletsConverted = 0;
+          $d('w\\:p').each((_: number, p: any) => {
+            const pPr = $d(p).children('w\\:pPr').first();
+            if (!pPr.length) return;
+            const numPr = pPr.children('w\\:numPr').first();
+            if (!numPr.length) return;
+            if (isHeadingOrTocPara(p)) return;
+
+            const numId = String(numPr.find('w\\:numId').first().attr('w:val') || '');
+            const ilvl = String(numPr.find('w\\:ilvl').first().attr('w:val') || '0');
+            const absId = numIdToAbstract.get(numId);
+            const fmt = absId ? absToLvlFmt.get(absId)?.get(ilvl) : undefined;
+            if (fmt !== 'bullet') return;
+
+            // Remove numbering so LO won't attempt list layout.
+            numPr.remove();
+
+            // Ensure wrapped lines align with the text (not under the bullet).
+            // We emulate a standard hanging indent list: bullet at 0.25", text at 0.5".
+            let ind = pPr.children('w\\:ind').first();
+            if (!ind.length) {
+              pPr.append('<w:ind/>');
+              ind = pPr.children('w\\:ind').first();
+            }
+            ind.attr('w:left', '720');
+            ind.attr('w:hanging', '360');
+
+            // Use a tab after the bullet so the first line's text starts at the same position
+            // as wrapped lines.
+            const bulletRun = '<w:r><w:t xml:space="preserve">•\t</w:t></w:r>';
+
+            // Insert explicit bullet run at the beginning.
+            // Important: keep <w:pPr> first, otherwise some renderers reorder nodes strangely.
+            const firstR = $d(p).children('w\\:r').first();
+            if (firstR.length) {
+              firstR.before(bulletRun);
+            } else {
+              const pPrNode = pPr.get(0);
+              if (pPrNode) $d(pPrNode).after(bulletRun);
+              else $d(p).prepend(bulletRun);
+            }
+
+            bulletsConverted++;
+          });
+
+          console.log(`[BlueAlly Patch] Converted ${bulletsConverted} bullet list paragraph(s) to explicit bullets`);
+          zip.file(docPath, $d.xml());
+        } else {
+          console.log('[BlueAlly Patch] numbering.xml or document.xml missing; skipping bullet workaround');
+        }
       }
 
-      // 2) Cover background image: clamp the full-page background image to page size.
-      // The template uses a behindDoc anchor with a slightly oversized extent; LibreOffice sometimes
-      // paginates it onto a second page.
-      const docPath = 'word/document.xml';
-      const docXml = zip.file(docPath)?.asText() || '';
-      if (docXml) {
-        console.log('[BlueAlly Patch] Found document.xml, patching cover background...');
-        const $ = cheerio.load(docXml, { xmlMode: true });
-        // Page size in EMU for Letter (8.5x11): 7772400 x 10058400.
-        const pageCx = '7772400';
-        const pageCy = '10058400';
+      // Additionally: add explicit bullets to reference paragraphs in the PDF-only DOCX copy.
+      // Reference paragraphs are those that come after a "Reference:" label and contain hyperlinks.
+      // We add an explicit bullet run so the PDF shows "• link" instead of just "link".
+      try {
+        const $d2 = cheerio.load(zip.file(docPath)?.asText() || '', { xmlMode: true });
+        let added = 0;
 
-        let coverPatchedCount = 0;
-        $('wp\\:anchor[behindDoc="1"]').each((_: number, a: any) => {
-          const extent = $(a).children('wp\\:extent').first();
-          if (!extent.length) return;
-          const cx = String(extent.attr('cx') || extent.attr('wp:cx') || extent.attr('w:cx') || '');
-          const cy = String(extent.attr('cy') || extent.attr('wp:cy') || extent.attr('w:cy') || '');
-          // Only touch the cover background image (very large).
-          const cxN = parseInt(cx || '0', 10);
-          const cyN = parseInt(cy || '0', 10);
-          console.log(`[BlueAlly Patch] Found behindDoc anchor with size: ${cxN} x ${cyN}`);
-          if (!(cxN > 7000000 && cyN > 9000000)) {
-            console.log(`[BlueAlly Patch] Size too small, skipping`);
+        const paraText = (pEl: any): string => {
+          const parts: string[] = [];
+          $d2(pEl)
+            .find('w\\:t')
+            .each((_: number, t: any) => {
+              const v = $d2(t).text();
+              if (v) parts.push(v);
+            });
+          return parts.join('').trim();
+        };
+
+        // Find "Reference:" label paragraphs and mark paragraphs after them as being in the reference section.
+        let inReferenceSection = false;
+        let referenceMarkEnd = false;
+        $d2('w\\:p').each((_: number, p: any) => {
+          const $p = $d2(p);
+          const txt = paraText(p);
+
+          // Detect end of reference section (typically "Back to Summary" or a new section heading).
+          if (inReferenceSection && (txt === 'Back to Summary' || txt === 'Back to summary' || /^Back\s+to/i.test(txt) || /^Recommendation/i.test(txt))) {
+            inReferenceSection = false;
+            referenceMarkEnd = true;
             return;
           }
 
-          coverPatchedCount++;
-          console.log(`[BlueAlly Patch] Clamping cover image from ${cxN}x${cyN} to ${pageCx}x${pageCy}`);
-          extent.attr('cx', pageCx);
-          extent.attr('cy', pageCy);
-          // Also patch the picture extents if present.
-          $(a).find('a\\:ext').each((__: number, ex: any) => {
-            $(ex).attr('cx', pageCx);
-            $(ex).attr('cy', pageCy);
-          });
-        });
-        console.log(`[BlueAlly Patch] Patched ${coverPatchedCount} cover background anchor(s)`);
+          // Detect start of reference section.
+          if (/^Reference/i.test(txt) || txt === 'References:') {
+            inReferenceSection = true;
+            referenceMarkEnd = false;
+            return;
+          }
 
+          // If we're in the reference section, add a bullet to this paragraph if it contains a hyperlink
+          // and doesn't already have a bullet.
+          if (inReferenceSection && !referenceMarkEnd) {
+            // Skip if inside a table cell or already has numbering.
+            if ($p.parents('w\\:tc').length) return;
+            const pPr = $p.children('w\\:pPr').first();
+            if (pPr.find('w\\:numPr').length) return;
+
+            // If this paragraph contains a hyperlink, add a bullet.
+            if ($p.find('w\\:hyperlink').length) {
+              // Avoid double-inserting if already starts with a bullet.
+              const firstTxt = $p.find('w\\:t').first().text() || '';
+              if (/^\s*\u2022\s*/.test(firstTxt)) return;
+
+              // Ensure pPr exists and set hanging indent for wrapped lines.
+              if (!pPr.length) { $p.prepend('<w:pPr/>'); }
+              const pPr2 = $p.children('w\\:pPr').first();
+              pPr2.find('w\\:numPr').remove();
+              pPr2.find('w\\:ind').remove();
+              pPr2.append('<w:ind w:left="720" w:hanging="360"/>');
+
+              const bulletRun = '<w:r><w:t xml:space="preserve">\u2022\t</w:t></w:r>';
+              // Insert bullet before the first hyperlink.
+              const firstHyper = $p.children('w\\:hyperlink').first();
+              if (firstHyper.length) {
+                firstHyper.before(bulletRun);
+              } else {
+                const firstR = $p.children('w\\:r').first();
+                if (firstR.length) {
+                  firstR.before(bulletRun);
+                } else {
+                  const pPrNode = pPr2.get(0);
+                  if (pPrNode) $d2(pPrNode).after(bulletRun);
+                  else $p.prepend(bulletRun);
+                }
+              }
+              added++;
+            }
+          }
+        });
+
+        if (added) {
+          console.log(`[BlueAlly Patch] Inserted explicit bullets for ${added} reference hyperlink(s)`);
+          zip.file(docPath, $d2.xml());
+        }
+      } catch (err) {
+        console.log('[BlueAlly Patch] Failed to insert explicit bullets for reference paragraphs:', err?.message || err);
+      }
+
+      // 1) Bullet rendering: do not patch numbering.xml.
+      // The template's bullets render acceptably in LibreOffice PDF, and modifying numbering.xml
+      // has caused bullets to disappear entirely in some environments.
+
+      // 2) Cover background image: LibreOffice frequently paginates the cover background onto
+      // a separate page during DOCX→PDF export. We handle the cover as a PDF post-process step
+      // (replace the first 2 pages with a synthetic single-page cover) so keep DOCX patching minimal
+      // here.
+      const docPath = 'word/document.xml';
+      const docXml = zip.file(docPath)?.asText() || '';
+      if (docXml) {
+        console.log('[BlueAlly Patch] Found document.xml, patching scope table shading for PDF fidelity...');
+        const $ = cheerio.load(docXml, { xmlMode: true });
+        // 2a) Scope table shading: ensure only the header row is blue, body rows unshaded.
+        let scopeTablesPatched = 0;
+        $('w\\:tbl').each((_: number, tbl: any) => {
+          const $tbl = $(tbl);
+          const firstCellText = $tbl.find('w\\:tr').first().find('w\\:tc').first().find('w\\:t').text();
+          if (!String(firstCellText || '').toLowerCase().includes('domain')) return;
+
+          const rows = $tbl.find('w\\:tr').toArray();
+          if (rows.length < 2) return;
+
+          const setCellFill = (tc: any, fill: string | null) => {
+            let tcPr = $(tc).children('w\\:tcPr').first();
+            if (!tcPr.length) {
+              $(tc).prepend('<w:tcPr/>');
+              tcPr = $(tc).children('w\\:tcPr').first();
+            }
+          const shd = tcPr.children('w\\:shd').first();
+          if (fill) {
+            if (shd.length) {
+              shd.attr('w:val', 'clear');
+              shd.attr('w:color', 'auto');
+              shd.attr('w:fill', fill);
+            } else {
+              tcPr.append(`<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`);
+            }
+          } else {
+              // Remove shading entirely so default table background applies.
+              if (shd.length) shd.remove();
+            }
+          };
+
+          // Header row dark blue, remaining rows no fill.
+          $(rows[0]).find('w\\:tc').toArray().forEach((tc: any) => setCellFill(tc, '002060'));
+          for (let i = 1; i < rows.length; i++) {
+            $(rows[i]).find('w\\:tc').toArray().forEach((tc: any) => setCellFill(tc, null));
+          }
+
+          scopeTablesPatched++;
+        });
+
+        console.log(`[BlueAlly Patch] Patched ${scopeTablesPatched} scope table(s)`);
         zip.file(docPath, $.xml());
       } else {
         console.log('[BlueAlly Patch] document.xml not found');
       }
 
-      // 3) Header preservation: Force header drawing shapes to remain visible
-      // Header1 contains decorative shapes that LibreOffice might strip during PDF conversion.
-      // Ensure all wpg:grpSp (group shapes) and wps:wsp (individual shapes) have explicit properties.
+      // 3) Header decorative line: LibreOffice strips wps:wsp shapes from headers during PDF export.
+      // Convert the decorative shapes to raster images in a PDF-only DOCX copy.
       const header1Path = 'word/header1.xml';
+      const header1RelsPath = 'word/_rels/header1.xml.rels';
       const header1Xml = zip.file(header1Path)?.asText() || '';
-      if (header1Xml) {
-        console.log('[BlueAlly Patch] Found header1.xml, preserving decorative shapes...');
+      const header1RelsXml = zip.file(header1RelsPath)?.asText() || '';
+      if (header1Xml && header1RelsXml) {
+        console.log('[BlueAlly Patch] Found header1.xml, patching decorative shapes for LO PDF...');
+
         const $h = cheerio.load(header1Xml, { xmlMode: true });
-        let shapesPreservedCount = 0;
-        
-        // Ensure all wps:wsp shapes have explicit visibility
-        $h('wps\\:wsp').each((_: number, shape: any) => {
-          const spPr = $h(shape).children('wps\\:spPr').first();
-          if (spPr.length) {
-            // Check for ln (line) element
-            const ln = $h(spPr).children('a\\:ln').first();
-            if (ln.length) {
-              const noFill = $h(ln).children('a\\:noFill').first();
-              // If line exists with noFill, it's a separator line - ensure it stays
-              if (noFill.length) {
-                shapesPreservedCount++;
-                console.log('[BlueAlly Patch] Preserved decorative separator line');
-              }
-            }
-            
-            // Check for solidFill elements
-            const solidFill = $h(spPr).children('a\\:solidFill').first();
-            if (solidFill.length) {
-              shapesPreservedCount++;
-              console.log('[BlueAlly Patch] Preserved shape with solid fill');
-            }
+        const $hr = cheerio.load(header1RelsXml, { xmlMode: true });
+
+        const nextRelId = (): string => {
+          const ids = new Set<string>();
+          $hr('Relationship').each((_: number, r: any) => {
+            const id = String($hr(r).attr('Id') || '');
+            if (id) ids.add(id);
+          });
+          let n = 1;
+          while (ids.has(`rId${n}`)) n++;
+          return `rId${n}`;
+        };
+
+        const addImageRel = (target: string): string => {
+          const id = nextRelId();
+          $hr('Relationships').first().append(
+            `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${target}"/>`
+          );
+          return id;
+        };
+
+        const ensurePng = async (width: number, height: number, hex: string): Promise<Buffer> => {
+          // sharp expects #RRGGBB.
+          const rgb = String(hex).replace('#', '');
+          return await sharp({
+            create: {
+              width,
+              height,
+              channels: 3,
+              background: `#${rgb}`,
+            },
+          })
+            .png()
+            .toBuffer();
+        };
+
+        // Create raster assets.
+        // Accent6 (orange) and Accent1 (blue) are the intended template colors.
+        const orangeLine = await ensurePng(1200, 6, 'F28C28');
+        const blueBar = await ensurePng(600, 16, '4472C4');
+
+        const mediaLineName = `blueally-header-line-${Date.now()}.png`;
+        const mediaBarName = `blueally-header-bar-${Date.now()}.png`;
+        zip.file(`word/media/${mediaLineName}`, orangeLine);
+        zip.file(`word/media/${mediaBarName}`, blueBar);
+
+        const rIdLine = addImageRel(`media/${mediaLineName}`);
+        const rIdBar = addImageRel(`media/${mediaBarName}`);
+
+        // LibreOffice strips the wps:wsp shape (mc:Choice) during PDF export.
+        // Force fallback rendering by replacing <mc:AlternateContent> with its <mc:Fallback> children.
+        $h('mc\\:AlternateContent').each((_: number, ac: any) => {
+          const fb = $h(ac).children('mc\\:Fallback').first();
+          if (!fb.length) return;
+          // Replace AlternateContent node with fallback content.
+          $h(ac).replaceWith(fb.children());
+        });
+
+        // Now patch the fallback picture blips.
+        let linePatched = 0;
+        let barPatched = 0;
+
+        $h('wp\\:anchor').each((_: number, a: any) => {
+          const extent = $h(a).children('wp\\:extent').first();
+          const cx = Number.parseInt(String(extent.attr('cx') || '0'), 10);
+          const cy = Number.parseInt(String(extent.attr('cy') || '0'), 10);
+          if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+
+          const blip = $h(a).find('pic\\:blipFill a\\:blip').first();
+          if (!blip.length) return;
+
+          // Long thin line: cy ~ 25400
+          if (cy <= 30000 && cx >= 5500000) {
+            blip.attr('r:embed', rIdLine);
+            linePatched++;
+            return;
+          }
+          // Thick bar: cy ~ 64135
+          if (cy >= 50000 && cy <= 90000 && cx >= 2000000 && cx <= 4000000) {
+            blip.attr('r:embed', rIdBar);
+            barPatched++;
           }
         });
-        console.log(`[BlueAlly Patch] Checked ${shapesPreservedCount} shape(s) in header`);
+
+        console.log(`[BlueAlly Patch] Header decorative raster: line=${linePatched}, bar=${barPatched}`);
+
         zip.file(header1Path, $h.xml());
+        zip.file(header1RelsPath, $hr.xml());
       } else {
-        console.log('[BlueAlly Patch] header1.xml not found');
+        console.log('[BlueAlly Patch] header1.xml or its rels not found');
       }
 
       const patched = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
@@ -2916,7 +3235,19 @@ class ReportService {
               color: opts?.color,
               underline: opts?.underline,
             });
-            sectionDoc(beforeNode).before(sectionDoc.xml(p));
+            // Ensure the inserted paragraph does not inherit numbering/bullets or hanging indents
+            // from the source template which would render as a bullet in PDF exports.
+            try {
+              const $p = cheerio.load(sectionDoc.xml(p), { xmlMode: true, decodeEntities: false });
+              let pPr = $p('w\\:pPr').first();
+              if (!pPr.length) { $p('w\\:p').prepend('<w:pPr/>'); pPr = $p('w\\:pPr').first(); }
+              pPr.find('w\\:numPr').remove();
+              pPr.find('w\\:ind').remove();
+              sectionDoc(beforeNode).before($p.root().children().first().toString());
+            } catch (e) {
+              // Fallback to original insertion if sanitization fails for any reason
+              sectionDoc(beforeNode).before(sectionDoc.xml(p));
+            }
           };
 
           const appendSectionSplitParagraph = (
@@ -3367,7 +3698,13 @@ class ReportService {
           const refs = toLines(refsArray);
           console.log(`   - Inserting ${refs.length} references`);
           for (let ri = 0; ri < refs.length; ri++) {
-            appendSectionParagraph(backPara || titlePara, refTemplate, refs[ri], { color: '1155CC', underline: 'single' });
+            let refText = String(refs[ri] || '').trim();
+            // If it's a URL-like reference that ends with a dot (common when authors paste
+            // links inside sentences), remove the trailing dot so PDF shows no extraneous '.'
+            if (/^(https?:\/\/|www\.)/i.test(refText) && refText.endsWith('.')) {
+              refText = refText.replace(/\.+$/g, '');
+            }
+            appendSectionParagraph(backPara || titlePara, refTemplate, refText, { color: '1155CC', underline: 'single' });
           }
 
           if (backPara) sectionDoc(backPara).remove();

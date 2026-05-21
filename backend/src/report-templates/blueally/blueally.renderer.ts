@@ -132,6 +132,15 @@ export const BlueAllyRenderer: TemplateRenderer = {
       return id;
     };
 
+    const addHyperlinkRelationship = (url: string): string => {
+      const id = nextRelId();
+      const root = $rels('Relationships').first();
+      root.append(
+        `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${url}" TargetMode="External"/>`
+      );
+      return id;
+    };
+
     const emuPerInch = 914400;
     const pxPerInch = 96;
     const pxToEmu = (px: number) => Math.max(1, Math.round((px / pxPerInch) * emuPerInch));
@@ -559,40 +568,94 @@ export const BlueAllyRenderer: TemplateRenderer = {
         const tblText = $(tbl).find('w\\:t').toArray().map((t: any) => $(t).text()).join(' ');
         if (!/\bDomain\b/.test(tblText)) continue;
 
-        const rows = $(tbl).find('w\\:tr').toArray();
-        if (rows.length < 2) continue;
+        let headerRow = $(tbl).find('w\\:tr').first();
+        if (!headerRow.length) continue;
 
-        const header = rows[0];
-        const dataRowTpl = rows[1];
-
-        // Remove existing data rows.
-        rows.slice(1).forEach((r: any) => $(r).remove());
-
-        for (const d of domains) {
-          const rowXml = $.xml(dataRowTpl);
-          const $r = cheerio.load(rowXml, { xmlMode: true });
-          // The template's data row includes multiple paragraphs (some empty) which creates large vertical gaps.
-          // Keep only the first paragraph per cell.
-          $r('w\\:tc').each((_: number, tc: any) => {
-            const ps = $r(tc).find('w\\:p').toArray();
-            ps.slice(1).forEach((p: any) => $r(p).remove());
-            const firstP = $r(tc).find('w\\:p').first();
-            if (firstP.length) {
-              let pPr = firstP.children('w\\:pPr').first();
-              if (!pPr.length) { firstP.prepend('<w:pPr/>'); pPr = firstP.children('w\\:pPr').first(); }
-              let spacing = pPr.children('w\\:spacing').first();
-              if (!spacing.length) { pPr.append('<w:spacing/>'); spacing = pPr.children('w\\:spacing').first(); }
-              spacing.attr('w:before', '0');
-              spacing.attr('w:after', '0');
-              spacing.attr('w:line', '240');
-              spacing.attr('w:lineRule', 'auto');
+        // Ensure the header row is shaded dark blue with white bold text.
+        {
+          const headerXml = $.xml(headerRow.get(0));
+          const $hrow = cheerio.load(headerXml, { xmlMode: true });
+          $hrow('w\\:tc').each((_: number, tc: any) => {
+            let tcPr = $hrow(tc).children('w\\:tcPr').first();
+            if (!tcPr.length) { $hrow(tc).prepend('<w:tcPr/>'); tcPr = $hrow(tc).children('w\\:tcPr').first(); }
+            let shd = tcPr.children('w\\:shd').first();
+            if (!shd.length) {
+              tcPr.append('<w:shd w:val="clear" w:color="auto" w:fill="002060"/>');
+            } else {
+              shd.attr('w:val', 'clear');
+              shd.attr('w:color', 'auto');
+              shd.attr('w:fill', '002060');
             }
+            $hrow(tc)
+              .find('w\\:r')
+              .each((__: number, r: any) => {
+                let rPr = $hrow(r).children('w\\:rPr').first();
+                if (!rPr.length) { $hrow(r).prepend('<w:rPr/>'); rPr = $hrow(r).children('w\\:rPr').first(); }
+                if (!rPr.children('w\\:b').length) rPr.append('<w:b w:val="1"/>');
+                let color = rPr.children('w\\:color').first();
+                if (!color.length) rPr.append('<w:color w:val="FFFFFF"/>');
+                else color.attr('w:val', 'FFFFFF');
+              });
           });
-          // Clear all text nodes in row then set first one.
-          $r('w\\:t').each((_: number, t: any) => $r(t).text(''));
-          const firstT = $r('w\\:t').first();
-          if (firstT.length) firstT.text(d);
-          $(header).after($r.root().children().first());
+          headerRow.replaceWith($hrow.root().children().first());
+          headerRow = $(tbl).find('w\\:tr').first();
+        }
+
+        // Remove existing data rows (keep header only).
+        $(tbl).find('w\\:tr').toArray().slice(1).forEach((r: any) => $(r).remove());
+
+        // Add a single body row with multiple hyperlink paragraphs.
+        {
+          const headerXml = $.xml(headerRow.get(0));
+          const $r = cheerio.load(headerXml, { xmlMode: true });
+
+          // Body row is not a repeating header.
+          $r('w\\:tblHeader').remove();
+
+          // Remove any cell shading.
+          $r('w\\:tcPr').each((_: number, tcPr: any) => {
+            $r(tcPr).children('w\\:shd').remove();
+          });
+
+          // Replace all cell paragraphs with our domain list.
+          $r('w\\:tc').each((_: number, tc: any) => {
+            // Keep tcPr, drop everything else.
+            const tcPr = $r(tc).children('w\\:tcPr').first();
+            $r(tc).children().each((__: number, child: any) => {
+              if (child.tagName !== 'w:tcPr') $r(child).remove();
+            });
+
+            const mkPara = (inner: string) =>
+              `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr>${inner}</w:p>`;
+
+            const paras: string[] = [];
+            for (const d of domains) {
+              const url = String(d || '').trim();
+              if (!url) continue;
+              const rid = addHyperlinkRelationship(url);
+              const safeText = url.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+               paras.push(
+                 mkPara(
+                   // Use an explicit run style + color + underline so LibreOffice reliably
+                   // renders the link as blue and underlined in PDF output.
+                   `<w:hyperlink r:id="${rid}"><w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:color w:val="1155CC"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${safeText}</w:t></w:r></w:hyperlink>`
+                 )
+               );
+            }
+
+            // If there are no domains, keep an empty paragraph.
+            const bodyXml = paras.length ? paras.join('') : mkPara('<w:r/>');
+            if (tcPr.length) tcPr.after(bodyXml);
+            else $r(tc).append(bodyXml);
+          });
+
+          // Slightly taller body row.
+          if (!$r('w\\:trPr').length) $r('w\\:tr').prepend('<w:trPr/>');
+          const trPr = $r('w\\:trPr').first();
+          trPr.find('w\\:trHeight').remove();
+          trPr.append('<w:trHeight w:val="400" w:hRule="atLeast"/>');
+
+          headerRow.after($r.root().children().first());
         }
 
         // Reduce excessive vertical spacing in the domain table rows.
@@ -604,7 +667,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
             $(h).attr('w:hRule', 'atLeast');
           });
 
-        // Requested: remove ONLY inner lines (keep the outer border).
+        // Keep outer border and a separator line between header/body.
         {
           let tblPr = $(tbl).children('w\\:tblPr').first();
           if (!tblPr.length) {
@@ -627,10 +690,12 @@ export const BlueAllyRenderer: TemplateRenderer = {
           ensureSide('bottom');
           ensureSide('right');
 
-          // Kill inner grid lines.
+          // Horizontal separator line between header and body.
           borders.children('w\\:insideH').remove();
+          borders.append('<w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/>');
+
+          // No vertical separators (single column).
           borders.children('w\\:insideV').remove();
-          borders.append('<w:insideH w:val="nil"/>');
           borders.append('<w:insideV w:val="nil"/>');
 
           // Tighten paragraph spacing inside the table cells.
@@ -647,6 +712,36 @@ export const BlueAllyRenderer: TemplateRenderer = {
         }
         break;
       }
+    }
+
+    // 3.A) Ensure all table header rows stay dark blue in PDF.
+    // LibreOffice can drop style-based shading and render headers as gray.
+    {
+      const headerFill = '002060';
+      $('w\\:tbl').each((_: number, tbl: any) => {
+        const headerRow = $(tbl).find('w\\:tr').toArray().find((tr: any) => $(tr).find('w\\:tblHeader[w\\:val="1"], w\\:tblHeader').length > 0);
+        if (!headerRow) return;
+
+        const rowXml = $.xml(headerRow);
+        const $hr = cheerio.load(rowXml, { xmlMode: true });
+        $hr('w\\:tc').each((__: number, tc: any) => {
+          let tcPr = $hr(tc).children('w\\:tcPr').first();
+          if (!tcPr.length) { $hr(tc).prepend('<w:tcPr/>'); tcPr = $hr(tc).children('w\\:tcPr').first(); }
+          let shd = tcPr.children('w\\:shd').first();
+          if (!shd.length) tcPr.append(`<w:shd w:val="clear" w:color="auto" w:fill="${headerFill}"/>`);
+          else { shd.attr('w:val', 'clear'); shd.attr('w:color', 'auto'); shd.attr('w:fill', headerFill); }
+
+          // White text in header row.
+          $hr(tc).find('w\\:r').each((___: number, r: any) => {
+            let rPr = $hr(r).children('w\\:rPr').first();
+            if (!rPr.length) { $hr(r).prepend('<w:rPr/>'); rPr = $hr(r).children('w\\:rPr').first(); }
+            let color = rPr.children('w\\:color').first();
+            if (!color.length) rPr.append('<w:color w:val="FFFFFF"/>');
+            else color.attr('w:val', 'FFFFFF');
+          });
+        });
+        $(headerRow).replaceWith($hr.root().children().first());
+      });
     }
 
     // 3.1) Web Application Findings table: use selected findings, remove Status column.
@@ -756,16 +851,26 @@ export const BlueAllyRenderer: TemplateRenderer = {
 
         const cloneNodeXml = (node: any) => cheerio.load($.xml(node), { xmlMode: true }).root().children().first();
 
-        const clearAndSetParagraphText = (pNode: any, text: string) => {
-          const $p = cheerio.load($.xml(pNode), { xmlMode: true });
-          $p('w\\:t').each((_: number, t: any) => $p(t).text(''));
-          const first = $p('w\\:t').first();
-          if (first.length) first.text(text);
-          // Ensure we don't carry template highlights.
-          $p('w\\:highlight').remove();
-          $p('w\\:shd[w\\:fill="ffff00"], w\\:shd[w\\:fill="FFFF00"]').remove();
-          return $p.root().children().first();
-        };
+    const clearAndSetParagraphText = (pNode: any, text: string) => {
+      const $p = cheerio.load($.xml(pNode), { xmlMode: true });
+      $p('w\\:t').each((_: number, t: any) => $p(t).text(''));
+      const first = $p('w\\:t').first();
+      if (first.length) first.text(text);
+      // Ensure we don't carry template highlights.
+      $p('w\\:highlight').remove();
+      $p('w\\:shd[w\\:fill="ffff00"], w\\:shd[w\\:fill="FFFF00"]').remove();
+      return $p.root().children().first();
+    };
+
+    // Remove numbering and indent properties from a paragraph node so it won't render as a list.
+    const sanitizeParagraphNoNumbering = (pNode: any) => {
+      const $p = cheerio.load($.xml(pNode), { xmlMode: true });
+      let pPr = $p('w\\:pPr').first();
+      if (!pPr.length) { $p('w\\:p').prepend('<w:pPr/>'); pPr = $p('w\\:pPr').first(); }
+      pPr.find('w\\:numPr').remove();
+      pPr.find('w\\:ind').remove();
+      return $p.root().children().first();
+    };
 
         const severityColor = (sev: any): string => {
           const k = severityKey(sev);
@@ -1094,10 +1199,23 @@ export const BlueAllyRenderer: TemplateRenderer = {
             : typeof (f?.references || f?.finding_references) === 'string'
               ? String(f.references || f.finding_references).split(/\n+/)
               : [];
-          const refLines = refs.map((r: any) => (typeof r === 'string' ? r : (r?.url || r?.title || ''))).map((s: any) => String(s || '').trim()).filter(Boolean);
+          const refLines = refs
+            .map((r: any) => (typeof r === 'string' ? r : (r?.url || r?.title || '')))
+            .map((s: any) => String(s || '').trim())
+            .filter(Boolean);
+
+          // Insert references. Trim an accidental trailing dot when the reference is a URL
+          // (many editors or sources append a period to the end of a sentence which then
+          // appears after the link in PDF output). Preserve non-URL reference punctuation.
           if (refLines.length && tplRefText && (tplRefText as any).length) {
             refLines.forEach((line: string) => {
-              anchor = insertAfter(anchor, tightenParagraphSpacing(clearAndSetParagraphText(tplRefText, line), { before: 0, after: 120 }));
+              let text = String(line || '').trim();
+              if (/^(https?:\/\/|www\.)/i.test(text) && text.endsWith('.')) {
+                text = text.replace(/\.+$/g, '');
+              }
+              const pNode = clearAndSetParagraphText(tplRefText, text);
+              const clean = sanitizeParagraphNoNumbering(pNode);
+              anchor = insertAfter(anchor, tightenParagraphSpacing(clean, { before: 0, after: 120 }));
             });
           }
 
