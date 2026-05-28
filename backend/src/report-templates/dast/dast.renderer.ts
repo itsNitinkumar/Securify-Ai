@@ -150,6 +150,20 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
     }
   }
 
+  // --- Enable auto-update of fields (TOC page numbers) on open ---
+  {
+    const settingsXml = templateZip.file('word/settings.xml')?.async('string');
+    if (settingsXml) {
+      const settingsStr = await settingsXml;
+      const $settings = cheerioLoad(settingsStr);
+      const settingsEl = $settings('w\\:settings').first();
+      if (settingsEl.length && !settingsEl.find('w\\:updateFields').length) {
+        settingsEl.prepend('<w:updateFields w:val="true"/>');
+        templateZip.file('word/settings.xml', Buffer.from($settings.xml()));
+      }
+    }
+  }
+
   // --- Replace placeholders ---
   const clientName = String(data.project?.client_name || 'Client');
   const startDate = data.project?.start_date ? formatDate(new Date(data.project.start_date), 'MMMM dd, yyyy') : '';
@@ -203,6 +217,121 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
       if (!rPr.find('w\\:bCs').length) rPr.prepend('<w:bCs/>');
     });
   });
+
+  // --- Regenerate TOC entries based on actual findings ---
+  const tpFindingsToc = (data.findings || []).filter((f: any) => String(f.finding_type || '') !== 'false_positive');
+  const fpFindingsToc = (data.findings || []).filter((f: any) => String(f.finding_type || '') === 'false_positive');
+  const tocEntries = [
+    'Scope', 'Application Details', 'User Roles', 'Tools',
+    'Assessment Limitation', 'Vulnerabilities', 'Summary',
+    'Detailed Vulnerabilities',
+  ];
+  if (tpFindingsToc.length) tocEntries.push('True Positive');
+  for (const f of tpFindingsToc) tocEntries.push(cleanTitle(f.title, false));
+  if (fpFindingsToc.length) tocEntries.push('False Positive');
+  for (const f of fpFindingsToc) tocEntries.push(cleanTitle(f.title, true));
+
+  // Find TOC field paragraph and Scope heading using nextUntil-style traversal
+  const tocFieldP = body.find('w\\:instrText').filter((_: number, el: any) => {
+    return $(el).text().includes('TOC');
+  }).first().closest('w\\:p');
+
+  const scopeP = body.find('w\\:p').filter((_: number, p: any) => {
+    const ps = $(p).find('w\\:pPr w\\:pStyle');
+    return ps.length === 1 && String(ps.attr('w:val')) === 'Heading1' && paraText($, p).toLowerCase() === 'scope';
+  }).first();
+
+  if (tocFieldP.length > 0 && scopeP.length > 0) {
+    // Find template entry (first non-empty paragraph between tocFieldP and scopeP)
+    let tocTemplateP: any = null;
+    let iter = tocFieldP.next();
+    while (iter.length > 0 && !iter.is(scopeP)) {
+      if (paraText($, iter).length > 0) {
+        tocTemplateP = cloneNode($, iter.get(0));
+        break;
+      }
+      iter = iter.next();
+    }
+
+    // Remove old TOC entries (non-empty paragraphs only)
+    iter = tocFieldP.next();
+    while (iter.length > 0 && !iter.is(scopeP)) {
+      const nextP = iter.next();
+      if (paraText($, iter).length > 0) iter.remove();
+      iter = nextP;
+    }
+
+    // Insert new TOC entries with hyperlinks and PAGEREF fields for page
+    // numbers (so Word resolves correct page numbers automatically).
+    if (tocTemplateP) {
+      let anchor = tocFieldP.get(0);
+      const topLevelTitles = ['Scope', 'Vulnerabilities', 'True Positive', 'False Positive'];
+
+      tocEntries.forEach((title: string) => {
+        const newP = cloneNode($, tocTemplateP);
+
+        // Find the hyperlink element (contains the title/ tab/ page runs)
+        const hyperlink = newP.find('w\\:hyperlink');
+        const bookmarkName = hyperlink.attr('w:anchor') || '';
+
+        // Find the run inside the hyperlink (it contains w:t, w:tab, w:t)
+        const hlRun = hyperlink.children('w\\:r').first();
+        if (!hlRun.length) return;
+
+        // Replace the title text (first w:t)
+        const allT = hlRun.find('w\\:t');
+        if (allT.length > 0) {
+          allT.first().replaceWith(`<w:t xml:space="preserve">${escapeXmlText(title)}</w:t>`);
+        }
+
+        // Remove the page-number w:t (the second one) — we'll replace with
+        // a PAGEREF field that Word resolves on open.
+        if (allT.length > 1) allT.last().remove();
+
+        // Copy the rPr from the title run for the PAGEREF placeholder run
+        const rPrXml = hlRun.find('w\\:rPr').length
+          ? $.xml(hlRun.find('w\\:rPr').first()) : '';
+
+        // Build the PAGEREF field codes: Word resolves this to the correct
+        // page number when the document is opened (updateFields is true).
+        const pageFieldXml =
+          `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+          `<w:r><w:instrText xml:space="preserve"> PAGEREF ${bookmarkName} \\h </w:instrText></w:r>` +
+          `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
+          `<w:r>${rPrXml}<w:t xml:space="preserve">1</w:t></w:r>` +
+          `<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+
+        hlRun.after(pageFieldXml);
+
+        // Apply bold/light + indent for sub-entries
+        const isTopLevel = topLevelTitles.includes(title);
+        if (!isTopLevel) {
+          newP.find('w\\:b').remove();
+          newP.find('w\\:bCs').remove();
+          let pPr = newP.find('w\\:pPr').first();
+          if (!pPr.length) {
+            newP.prepend('<w:pPr/>');
+            pPr = newP.find('w\\:pPr').first();
+          }
+          if (!pPr.find('w\\:ind').length) {
+            pPr.append('<w:ind w:left="720"/>');
+          }
+        }
+
+        $(anchor).after(newP);
+        anchor = newP.get(0);
+      });
+    }
+
+    // Also clear the stale page-number text in the TOC field paragraph's
+    // own hyperlink (the "Table of Contents 2" heading text).
+    const tocFieldHyperlinkT = tocFieldP.find('w\\:hyperlink w\\:t');
+    if (tocFieldHyperlinkT.length > 0) {
+      for (let ti = 1; ti < tocFieldHyperlinkT.length; ti++) {
+        tocFieldHyperlinkT.eq(ti).text('');
+      }
+    }
+  }
 
   // Remove yellow highlights
   body.find('w\\:highlight').remove();
@@ -297,6 +426,18 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
           } else {
             setParaText($summaryTbl, cells[2], String(finding.severity || ''));
             newRow.find('w\\:tc').eq(2).find('w\\:shd').attr('w:fill', severityFill(finding.severity));
+          }
+        }
+        if (isFP) {
+          newRow.find('w\\:shd').remove();
+          const statusCell = newRow.find('w\\:tc').eq(1);
+          const statusRun = statusCell.find('w\\:r').first();
+          if (statusRun.length) {
+            let rPr = statusRun.find('w\\:rPr').first();
+            if (!rPr.length) { statusRun.prepend('<w:rPr/>'); rPr = statusRun.find('w\\:rPr').first(); }
+            let color = rPr.find('w\\:color').first();
+            if (!color.length) { rPr.append('<w:color w:val="4ebc22"/>'); }
+            else { color.attr('w:val', '4ebc22'); }
           }
         }
         $summaryTbl('w\\:tbl').append(newRow);
@@ -634,6 +775,15 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
               p.find('w\\:br[w\\:type="page"]').remove();
               const pPrP = p.find('w\\:pPr').first();
               if (pPrP.length) pPrP.find('w\\:pageBreakBefore').remove();
+              // Add spacing after each step for breathing room
+              const stPPr = p.find('w\\:pPr').first();
+              if (!stPPr.length) {
+                p.prepend('<w:pPr><w:spacing w:after="120"/></w:pPr>');
+              } else {
+                let stSp = stPPr.find('w\\:spacing').first();
+                if (!stSp.length) { stPPr.append('<w:spacing w:after="120"/>'); }
+                else { stSp.attr('w:after', '120'); }
+              }
               const runs = sd(p).find('w\\:r').toArray();
               let labelRun: any = null;
               let descRun: any = null;
