@@ -418,7 +418,8 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
         }
         if (cells[2]) {
           if (isFP) {
-            setParaText($summaryTbl, cells[2], 'N/A');
+            setParaText($summaryTbl, cells[2], '');
+            $summaryTbl(cells[2]).find('w\\:shd').remove();
           } else {
             setParaText($summaryTbl, cells[2], String(finding.severity || ''));
             newRow.find('w\\:tc').eq(2).find('w\\:shd').attr('w:fill', severityFill(finding.severity));
@@ -438,6 +439,15 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
         }
         $summaryTbl('w\\:tbl').append(newRow);
       }
+
+      $summaryTbl('w\\:tr').each((_: number, tr: any) => {
+        const status = paraText($summaryTbl, $summaryTbl(tr).find('w\\:tc').eq(1)).toLowerCase();
+        if (status === 'false-positive') {
+          const riskCell = $summaryTbl(tr).find('w\\:tc').eq(2);
+          setParaText($summaryTbl, riskCell, '');
+          riskCell.find('w\\:shd').remove();
+        }
+      });
     }
     $(summaryTbl).replaceWith($summaryTbl('w\\:tbl'));
   }
@@ -640,7 +650,14 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
       return sd.xml(plain || contentItems[0]);
     };
 
-    const removeBetweenLabels = (sd: any, sr: any, labelEl: any, newItems: string[], customTemplateXml?: string) => {
+    const removeBetweenLabels = (
+      sd: any,
+      sr: any,
+      labelEl: any,
+      newItems: string[],
+      customTemplateXml?: string,
+      opts?: { bullet?: boolean }
+    ) => {
       if (!labelEl) return;
       const kids = sr.children().toArray();
       const startIdx = kids.indexOf(labelEl);
@@ -659,8 +676,31 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
         const p = cheerio.load(templateXml, { xmlMode: true }).root().children().first();
         const tNodes = sd(p).find('w\\:t').toArray();
         if (tNodes.length > 0) {
+          // Remove any stray bullet glyphs from the template content so the new
+          // bullet stays at the front of the paragraph, not the end.
+          for (const tNode of tNodes) {
+            const cleaned = String(sd(tNode).text() || '').replace(/•/g, '').trimStart();
+            sd(tNode).text(cleaned);
+          }
           sd(tNodes[0]).replaceWith(`<w:t xml:space="preserve">${escapeXmlText(String(item ?? ''))}</w:t>`);
           for (let ri = 1; ri < tNodes.length; ri++) sd(tNodes[ri]).text('');
+        }
+
+        if (opts?.bullet) {
+          const pPr = p.children('w\\:pPr').first();
+          if (pPr.length) {
+            pPr.find('w\\:numPr').remove();
+            let ind = pPr.find('w\\:ind').first();
+            if (!ind.length) {
+              pPr.append('<w:ind w:left="720" w:hanging="360"/>');
+            } else {
+              ind.attr('w:left', '720');
+              ind.attr('w:hanging', '360');
+            }
+          }
+          const bulletRun = '<w:r><w:rPr><w:color w:val="4ebc22"/></w:rPr><w:t xml:space="preserve">•\t</w:t></w:r>';
+          if (pPr.length) pPr.after(bulletRun);
+          else p.prepend(bulletRun);
         }
         sd(insertAnchor).after(p);
         insertAnchor = p.get(0);
@@ -748,7 +788,7 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
           if (Array.isArray(finding.affected_urls)) urls.push(...finding.affected_urls.map((u: any) => String(u.url || u)));
           else if (finding.affected_url) urls.push(String(finding.affected_url));
           else if (finding.affected_target) urls.push(String(finding.affected_target));
-          removeBetweenLabels(sd, sr, urlLabel, urls.length ? urls : ['N/A']);
+          removeBetweenLabels(sd, sr, urlLabel, urls.length ? urls : ['N/A'], undefined, { bullet: true });
         }
         // Handle combined "Impact & Likelihood:" with bold labels
         const impactLikeLabel = sectionFindByText(sd, 'Impact & Likelihood:') || sectionFindByText(sd, 'Impact and Likelihood:');
@@ -948,7 +988,13 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
         if (refLabel) {
           const refs = Array.isArray(finding.references || finding.finding_references)
             ? (finding.references || finding.finding_references) : [];
-          removeBetweenLabels(sd, sr, refLabel, refs.map((r: any) => String(r || '')), refTemplate || undefined);
+          const refTemplateXml = refTemplate || undefined;
+          if (refTemplateXml) {
+            const cleanRefTemplateXml = refTemplateXml.replace(/<w:t[^>]*>\s*•\s*<\/w:t>/g, '');
+            removeBetweenLabels(sd, sr, refLabel, refs.map((r: any) => String(r || '')), cleanRefTemplateXml, { bullet: true });
+          } else {
+            removeBetweenLabels(sd, sr, refLabel, refs.map((r: any) => String(r || '')), undefined, { bullet: true });
+          }
         }
 
         // Wrap finding title paragraph with bookmark (deferred: after insertion into main $)
@@ -983,6 +1029,8 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
     if (fpBodyProto && fpFindings.length > 0) {
       if (fpHeadingEl) {
         const fpBmName = bookmarkNameMap.get('False Positive') || '_false_positive';
+        const pageBreakP = $('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+        $(insertTarget).before($.xml(pageBreakP));
         $(insertTarget).before($.xml(fpHeadingEl));
         const insertedFp = body.find('w\\:p').filter((_: number, el: any) => {
           return paraText($, el) === 'False Positive' && $(el).find('w\\:pStyle[w\\:val="Heading1"]').length > 0;
@@ -1023,7 +1071,7 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
           if (Array.isArray(finding.affected_urls)) urls.push(...finding.affected_urls.map((u: any) => String(u.url || u)));
           else if (finding.affected_url) urls.push(String(finding.affected_url));
           else if (finding.affected_target) urls.push(String(finding.affected_target));
-          removeBetweenLabels(sd, sr, urlLabel, urls.length ? urls : ['N/A']);
+          removeBetweenLabels(sd, sr, urlLabel, urls.length ? urls : ['N/A'], undefined, { bullet: true });
         }
 
         // Remove impact/likelihood/steps/recs/refs from FP

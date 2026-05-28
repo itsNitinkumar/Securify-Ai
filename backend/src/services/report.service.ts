@@ -885,15 +885,15 @@ class ReportService {
             // Remove any existing tblBorders
             tblPr.find('w\\:tblBorders').remove();
 
-            // Add proper visible borders
+            // Add subtle borders so the PDF matches the softer DOCX table grid.
             const borderXml = [
               '<w:tblBorders>',
-              '  <w:top w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
-              '  <w:bottom w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
-              '  <w:left w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
-              '  <w:right w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
-              '  <w:insideH w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
-              '  <w:insideV w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
+              '  <w:top w:val="single" w:sz="2" w:space="0" w:color="d9f6ce"/>',
+              '  <w:bottom w:val="single" w:sz="2" w:space="0" w:color="d9f6ce"/>',
+              '  <w:left w:val="single" w:sz="2" w:space="0" w:color="d9f6ce"/>',
+              '  <w:right w:val="single" w:sz="2" w:space="0" w:color="d9f6ce"/>',
+              '  <w:insideH w:val="single" w:sz="2" w:space="0" w:color="d9f6ce"/>',
+              '  <w:insideV w:val="single" w:sz="2" w:space="0" w:color="d9f6ce"/>',
               '</w:tblBorders>',
             ].join('');
             tblPr.prepend(borderXml);
