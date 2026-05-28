@@ -110,6 +110,33 @@ function formatDate(date: Date, fmt: string): string {
   return fmt.replace('MMMM', m).replace('dd', String(d).padStart(2, '0')).replace('yyyy', String(y));
 }
 
+function slugifyBookmark(title: string, suffix?: string | number): string {
+  let s = '_' + String(title)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+  if (suffix !== undefined) s += `_${suffix}`;
+  if (s.length > 40) s = s.slice(0, 40);
+  if (s === '_') s = '_bookmark';
+  return s;
+}
+
+function wrapWithBookmark($: any, el: any, name: string, id: number): void {
+  const safeName = String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const bmStart = $('<w:bookmarkStart/>').attr('w:id', String(id)).attr('w:name', safeName);
+  const bmEnd = $('<w:bookmarkEnd/>').attr('w:id', String(id));
+  const pPr = $(el).children('w\\:pPr').first();
+  if (pPr.length) {
+    pPr.after(bmStart);
+  } else {
+    $(el).prepend(bmStart);
+  }
+  $(el).append(bmEnd);
+  console.log(`[TOC DEBUG] Bookmarked paragraph: name="${safeName}", id=${id}`);
+}
+
+
 async function generateDocxBuffer(args: { templatePath: string; data: DastRendererData }): Promise<Buffer> {
   const { templatePath, data } = args;
   const templateBuf = fs.readFileSync(templatePath);
@@ -218,6 +245,17 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
     });
   });
 
+  // --- Initialize bookmark ID counter ---
+  let maxBmId = -1;
+  body.find('w\\:bookmarkStart, w\\:bookmarkEnd').each((_: number, el: any) => {
+    const id = parseInt(String($(el).attr('w:id') || '-1'), 10);
+    if (id > maxBmId) maxBmId = id;
+  });
+  let nextBmId = maxBmId + 1;
+
+  // Map: TOC entry title -> bookmark name
+  const bookmarkNameMap = new Map<string, string>();
+
   // --- Regenerate TOC entries based on actual findings ---
   const tpFindingsToc = (data.findings || []).filter((f: any) => String(f.finding_type || '') !== 'false_positive');
   const fpFindingsToc = (data.findings || []).filter((f: any) => String(f.finding_type || '') === 'false_positive');
@@ -231,106 +269,64 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
   if (fpFindingsToc.length) tocEntries.push('False Positive');
   for (const f of fpFindingsToc) tocEntries.push(cleanTitle(f.title, true));
 
-  // Find TOC field paragraph and Scope heading using nextUntil-style traversal
-  const tocFieldP = body.find('w\\:instrText').filter((_: number, el: any) => {
-    return $(el).text().includes('TOC');
-  }).first().closest('w\\:p');
+  // --- Wrap static section headings with unique bookmarks ---
+  // These headings exist in the template body and won't be removed.
+  const staticBookmarkTitles = [
+    'Scope', 'Application Details', 'User Roles', 'Tools',
+    'Assessment Limitation', 'Vulnerabilities', 'Summary', 'Detailed Vulnerabilities',
+  ];
+  for (const title of staticBookmarkTitles) {
+    const p = body.find('w\\:p').filter((_: number, el: any) => {
+      return paraText($, el).toLowerCase() === title.toLowerCase();
+    }).first();
+    if (p.length) {
+      const bmName = slugifyBookmark(title);
+      const bmId = nextBmId++;
+      wrapWithBookmark($, p.get(0), bmName, bmId);
+      bookmarkNameMap.set(title, bmName);
+      console.log(`[DAST TOC] Bookmarked heading "${title}" → ${bmName} (id=${bmId})`);
+    } else {
+      console.warn(`[DAST TOC] Could not find heading paragraph for "${title}"`);
+    }
+  }
 
-  const scopeP = body.find('w\\:p').filter((_: number, p: any) => {
-    const ps = $(p).find('w\\:pPr w\\:pStyle');
-    return ps.length === 1 && String(ps.attr('w:val')) === 'Heading1' && paraText($, p).toLowerCase() === 'scope';
+  // Pre-generate bookmark names for all TOC entries
+  for (const title of tocEntries) {
+    if (!bookmarkNameMap.has(title)) {
+      const bmName = slugifyBookmark(title);
+      bookmarkNameMap.set(title, bmName);
+      console.log(`[DAST TOC] Generated bookmark name for "${title}" → ${bmName}`);
+    }
+  }
+
+  // --- Clear stale TOC entries (rebuild later with calculated page numbers) ---
+  const tocSdt = body.find('w\\:sdt').filter((_: number, el: any) => {
+    return $(el).find('w\\:sdtPr w\\:docPartObj w\\:docPartGallery').length > 0;
   }).first();
 
-  if (tocFieldP.length > 0 && scopeP.length > 0) {
-    // Find template entry (first non-empty paragraph between tocFieldP and scopeP)
-    let tocTemplateP: any = null;
-    let iter = tocFieldP.next();
-    while (iter.length > 0 && !iter.is(scopeP)) {
-      if (paraText($, iter).length > 0) {
-        tocTemplateP = cloneNode($, iter.get(0));
-        break;
+  let $template: any = null;
+
+  if (tocSdt.length) {
+    const sdtContent = tocSdt.find('w\\:sdtContent').first();
+
+    let templateEntryEl: any = null;
+    sdtContent.find('w\\:p').each((_: number, p: any) => {
+      const hasInstrText = $(p).find('w\\:instrText').length > 0;
+      if (!hasInstrText && !templateEntryEl) {
+        templateEntryEl = p;
       }
-      iter = iter.next();
+    });
+
+    if (templateEntryEl) {
+      $template = $(templateEntryEl).clone();
     }
 
-    // Remove old TOC entries (non-empty paragraphs only)
-    iter = tocFieldP.next();
-    while (iter.length > 0 && !iter.is(scopeP)) {
-      const nextP = iter.next();
-      if (paraText($, iter).length > 0) iter.remove();
-      iter = nextP;
-    }
+    sdtContent.find('w\\:p').each((_: number, p: any) => {
+      const hasInstrText = $(p).find('w\\:instrText').length > 0;
+      if (!hasInstrText) $(p).remove();
+    });
 
-    // Insert new TOC entries with hyperlinks and PAGEREF fields for page
-    // numbers (so Word resolves correct page numbers automatically).
-    if (tocTemplateP) {
-      let anchor = tocFieldP.get(0);
-      const topLevelTitles = ['Scope', 'Vulnerabilities', 'True Positive', 'False Positive'];
-
-      tocEntries.forEach((title: string) => {
-        const newP = cloneNode($, tocTemplateP);
-
-        // Find the hyperlink element (contains the title/ tab/ page runs)
-        const hyperlink = newP.find('w\\:hyperlink');
-        const bookmarkName = hyperlink.attr('w:anchor') || '';
-
-        // Find the run inside the hyperlink (it contains w:t, w:tab, w:t)
-        const hlRun = hyperlink.children('w\\:r').first();
-        if (!hlRun.length) return;
-
-        // Replace the title text (first w:t)
-        const allT = hlRun.find('w\\:t');
-        if (allT.length > 0) {
-          allT.first().replaceWith(`<w:t xml:space="preserve">${escapeXmlText(title)}</w:t>`);
-        }
-
-        // Remove the page-number w:t (the second one) — we'll replace with
-        // a PAGEREF field that Word resolves on open.
-        if (allT.length > 1) allT.last().remove();
-
-        // Copy the rPr from the title run for the PAGEREF placeholder run
-        const rPrXml = hlRun.find('w\\:rPr').length
-          ? $.xml(hlRun.find('w\\:rPr').first()) : '';
-
-        // Build the PAGEREF field codes: Word resolves this to the correct
-        // page number when the document is opened (updateFields is true).
-        const pageFieldXml =
-          `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
-          `<w:r><w:instrText xml:space="preserve"> PAGEREF ${bookmarkName} \\h </w:instrText></w:r>` +
-          `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
-          `<w:r>${rPrXml}<w:t xml:space="preserve">1</w:t></w:r>` +
-          `<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
-
-        hlRun.after(pageFieldXml);
-
-        // Apply bold/light + indent for sub-entries
-        const isTopLevel = topLevelTitles.includes(title);
-        if (!isTopLevel) {
-          newP.find('w\\:b').remove();
-          newP.find('w\\:bCs').remove();
-          let pPr = newP.find('w\\:pPr').first();
-          if (!pPr.length) {
-            newP.prepend('<w:pPr/>');
-            pPr = newP.find('w\\:pPr').first();
-          }
-          if (!pPr.find('w\\:ind').length) {
-            pPr.append('<w:ind w:left="720"/>');
-          }
-        }
-
-        $(anchor).after(newP);
-        anchor = newP.get(0);
-      });
-    }
-
-    // Also clear the stale page-number text in the TOC field paragraph's
-    // own hyperlink (the "Table of Contents 2" heading text).
-    const tocFieldHyperlinkT = tocFieldP.find('w\\:hyperlink w\\:t');
-    if (tocFieldHyperlinkT.length > 0) {
-      for (let ti = 1; ti < tocFieldHyperlinkT.length; ti++) {
-        tocFieldHyperlinkT.eq(ti).text('');
-      }
-    }
+    console.log('[DAST TOC] Cleared stale entries from SDT, template saved');
   }
 
   // Remove yellow highlights
@@ -539,12 +535,47 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
     const tpHeadingEl = tpHeading >= 0 ? detailNodes[tpHeading] : null;
     const fpHeadingEl = fpHeading >= 0 ? detailNodes[fpHeading] : null;
 
+    // Force Heading1 style on TP heading element
+    if (tpHeadingEl) {
+      let pPr = $(tpHeadingEl).children('w\\:pPr').first();
+      if (!pPr.length) {
+        $(tpHeadingEl).prepend('<w:pPr/>');
+        pPr = $(tpHeadingEl).children('w\\:pPr').first();
+      }
+      const pStyle = pPr.find('w\\:pStyle');
+      if (pStyle.length) {
+        pStyle.attr('w:val', 'Heading1');
+      } else {
+        pPr.prepend('<w:pStyle w:val="Heading1"/>');
+      }
+    }
+
+    // Force Heading1 style on FP heading element
+    if (fpHeadingEl) {
+      let pPr = $(fpHeadingEl).children('w\\:pPr').first();
+      if (!pPr.length) {
+        $(fpHeadingEl).prepend('<w:pPr/>');
+        pPr = $(fpHeadingEl).children('w\\:pPr').first();
+      }
+      const pStyle = pPr.find('w\\:pStyle');
+      if (pStyle.length) {
+        pStyle.attr('w:val', 'Heading1');
+      } else {
+        pPr.prepend('<w:pStyle w:val="Heading1"/>');
+      }
+    }
+
     // Find sectPr before removing detail nodes
     const sectPrFromDetail = detailNodes.find((el: any) => el.tagName === 'w:sectPr');
 
-    // Remove all detail nodes (except sectPr)
+    // Find the bookmarkEnd for "Detailed Vulnerabilities" so we don't orphan its bookmarkStart
+    const dvBmStart = body.find('w\\:bookmarkStart[w\\:name="_detailed_vulnerabilities"]').first();
+    const dvBmId = dvBmStart.length ? parseInt(String($(dvBmStart).attr('w:id')), 10) : -1;
+
+    // Remove all detail nodes (except sectPr and the bookmarkEnd for Detailed Vulnerabilities)
     for (const el of detailNodes) {
       if (el === sectPrFromDetail) continue;
+      if (el.tagName === 'w:bookmarkEnd' && parseInt(String($(el).attr('w:id')), 10) === dvBmId) continue;
       $(el).remove();
     }
 
@@ -648,7 +679,18 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
 
     // Insert "True Positive" heading once, then TP findings
     if (tpBodyProto && tpFindings.length > 0) {
-      if (tpHeadingEl) $(insertTarget).before($.xml(cloneNode($, tpHeadingEl)));
+      if (tpHeadingEl) {
+        const tpBmName = bookmarkNameMap.get('True Positive') || '_true_positive';
+        $(insertTarget).before($.xml(tpHeadingEl));
+        const insertedTp = body.find('w\\:p').filter((_: number, el: any) => {
+          return paraText($, el) === 'True Positive' && $(el).find('w\\:pStyle[w\\:val="Heading1"]').length > 0;
+        }).first();
+        if (insertedTp.length) {
+          const tpBmId = nextBmId++;
+          wrapWithBookmark($, insertedTp.get(0), tpBmName, tpBmId);
+          console.log(`[DAST TOC] Inserted "True Positive" heading with bookmark → ${tpBmName} (id=${tpBmId})`);
+        }
+      }
       for (let i = 0; i < tpFindings.length; i++) {
         const finding = tpFindings[i];
         const sd = makeSectionDoc(tpBodyProto);
@@ -669,7 +711,18 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
         const recLabel = sectionFindByText(sd, 'Recommendations:');
         const refLabel = sectionFindByText(sd, 'References:');
 
-        if (titlePara) sectionSetText(sd, titlePara, cleanTitle(finding.title, false));
+        if (titlePara) {
+          sectionSetText(sd, titlePara, cleanTitle(finding.title, false));
+          // Apply Heading2 so finding appears as sub-entry under TP in TOC
+          let tpPPr = sd(titlePara).children('w\\:pPr').first();
+          if (!tpPPr.length) {
+            sd(titlePara).prepend('<w:pPr/>');
+            tpPPr = sd(titlePara).children('w\\:pPr').first();
+          }
+          if (!tpPPr.find('w\\:pStyle').length) {
+            tpPPr.prepend('<w:pStyle w:val="Heading2"/>');
+          }
+        }
 
         if (riskPara) {
           const severity = String(finding.severity || '');
@@ -898,14 +951,48 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
           removeBetweenLabels(sd, sr, refLabel, refs.map((r: any) => String(r || '')), refTemplate || undefined);
         }
 
+        // Wrap finding title paragraph with bookmark (deferred: after insertion into main $)
+        const tpFindingTitle = cleanTitle(finding.title, false);
+        const tpFindingBmName = bookmarkNameMap.get(tpFindingTitle);
+        if (!tpFindingBmName && titlePara) {
+          console.warn(`[DAST TOC] No bookmark name found for TP finding "${tpFindingTitle}"`);
+        }
+
+        // Apply bookmark in sd context BEFORE serialization so it survives the round-trip
+        if (tpFindingBmName && titlePara) {
+          const bmId = nextBmId++;
+          wrapWithBookmark(sd, titlePara, tpFindingBmName, bmId);
+        }
+
         const sectionXml = sr.children().toArray().map((el: any) => sd.xml(el)).join('');
         $(insertTarget).before(sectionXml);
+
+        // Verify bookmark was created (no need to re-apply - it traveled with the XML)
+        if (tpFindingBmName) {
+          const bmCheck = body.find(`w\\:bookmarkStart[w\\:name="${tpFindingBmName}"]`).first();
+          if (bmCheck.length) {
+            console.log(`[DAST TOC] Verified TP bookmark "${tpFindingTitle}" → ${tpFindingBmName}`);
+          } else {
+            console.warn(`[DAST TOC] TP bookmark "${tpFindingTitle}" → ${tpFindingBmName} NOT found after insertion`);
+          }
+        }
       }
     }
 
     // Insert "False Positive" heading once, then FP findings
     if (fpBodyProto && fpFindings.length > 0) {
-      if (fpHeadingEl) $(insertTarget).before($.xml(cloneNode($, fpHeadingEl)));
+      if (fpHeadingEl) {
+        const fpBmName = bookmarkNameMap.get('False Positive') || '_false_positive';
+        $(insertTarget).before($.xml(fpHeadingEl));
+        const insertedFp = body.find('w\\:p').filter((_: number, el: any) => {
+          return paraText($, el) === 'False Positive' && $(el).find('w\\:pStyle[w\\:val="Heading1"]').length > 0;
+        }).first();
+        if (insertedFp.length) {
+          const fpBmId = nextBmId++;
+          wrapWithBookmark($, insertedFp.get(0), fpBmName, fpBmId);
+          console.log(`[DAST TOC] Inserted "False Positive" heading with bookmark → ${fpBmName} (id=${fpBmId})`);
+        }
+      }
       for (let i = 0; i < fpFindings.length; i++) {
         const finding = fpFindings[i];
         const sd = makeSectionDoc(fpBodyProto);
@@ -914,7 +1001,18 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
         const descLabel = sectionFindByText(sd, 'Description:');
         const urlLabel = sectionFindByText(sd, 'Affected URL:') || sectionFindByText(sd, 'Affected Target:');
 
-        if (titlePara) sectionSetText(sd, titlePara, cleanTitle(finding.title, true));
+        if (titlePara) {
+          sectionSetText(sd, titlePara, cleanTitle(finding.title, true));
+          // Apply Heading2 so finding appears as sub-entry under FP in TOC
+          let fpPPr = sd(titlePara).children('w\\:pPr').first();
+          if (!fpPPr.length) {
+            sd(titlePara).prepend('<w:pPr/>');
+            fpPPr = sd(titlePara).children('w\\:pPr').first();
+          }
+          if (!fpPPr.find('w\\:pStyle').length) {
+            fpPPr.prepend('<w:pStyle w:val="Heading2"/>');
+          }
+        }
 
         if (descLabel) {
           const desc = String(finding.description || finding.detail || '');
@@ -1013,9 +1111,104 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
           }
         }
 
+        // Wrap FP finding title paragraph with bookmark (deferred: after insertion into main $)
+        const fpFindingTitle = cleanTitle(finding.title, true);
+        const fpFindingBmName = bookmarkNameMap.get(fpFindingTitle);
+        if (!fpFindingBmName && titlePara) {
+          console.warn(`[DAST TOC] No bookmark name found for FP finding "${fpFindingTitle}"`);
+        }
+
+        if (fpFindingBmName && titlePara) {
+          const bmId = nextBmId++;
+          wrapWithBookmark(sd, titlePara, fpFindingBmName, bmId);
+        }
+
         const sectionXml = sr.children().toArray().map((el: any) => sd.xml(el)).join('');
         $(insertTarget).before(sectionXml);
+
+        if (fpFindingBmName) {
+          const bmCheck = body.find(`w\\:bookmarkStart[w\\:name="${fpFindingBmName}"]`).first();
+          if (bmCheck.length) {
+            console.log(`[DAST TOC] Verified FP bookmark "${fpFindingTitle}" → ${fpFindingBmName}`);
+          } else {
+            console.warn(`[DAST TOC] FP bookmark "${fpFindingTitle}" → ${fpFindingBmName} NOT found after insertion`);
+          }
+        }
       }
+    }
+  }
+
+  // --- Late phase: Rebuild TOC with static page numbers (Google Docs compatible) ---
+  if (tocSdt.length && $template) {
+    const bmNameToTitle = new Map<string, string>();
+    for (const [title, bmName] of bookmarkNameMap.entries()) {
+      bmNameToTitle.set(bmName, title);
+    }
+
+    const tocTitlePage = new Map<string, number>();
+    let currentPage = 2;
+    const level1Titles = new Set([
+      'Scope', 'Vulnerabilities', 'True Positive', 'False Positive',
+    ]);
+
+    body.children().each((_: number, el: any) => {
+      const tag = (el.tagName || '').toLowerCase();
+      if (tag === 'w:sectpr') { currentPage++; return; }
+      if (tag !== 'w:p') return;
+
+      const $p = $(el);
+      if ($p.find('w\\:pPr w\\:pageBreakBefore').length > 0) currentPage++;
+      if ($p.find('w\\:br[w\\:type="page"]').length > 0) currentPage++;
+
+      $p.find('w\\:bookmarkStart').each((__: number, bm: any) => {
+        const name = String($(bm).attr('w:name') || '');
+        if (!name) return;
+        const title = bmNameToTitle.get(name);
+        if (title && !tocTitlePage.has(title)) {
+          tocTitlePage.set(title, currentPage);
+        }
+      });
+    });
+
+    const sdtContent = tocSdt.find('w\\:sdtContent').first();
+    const firstP = sdtContent.find('w\\:p').first();
+    sdtContent.find('w\\:p').each((_: number, p: any) => {
+      if (p !== firstP.get(0)) $(p).remove();
+    });
+
+    for (const title of tocEntries) {
+      const bmName = bookmarkNameMap.get(title) || slugifyBookmark(title);
+      const pageNum = tocTitlePage.get(title) || 1;
+
+      const newEntry = $template.clone();
+      const hyperlink = newEntry.find('w\\:hyperlink');
+      if (hyperlink.length) hyperlink.attr('w:anchor', bmName);
+
+      const tNodes = newEntry.find('w\\:t').toArray();
+      if (tNodes.length >= 2) {
+        $(tNodes[0]).text(title);
+        $(tNodes[tNodes.length - 1]).text(String(pageNum));
+      } else if (tNodes.length === 1) {
+        $(tNodes[0]).text(title + '\t' + pageNum);
+      }
+
+      if (level1Titles.has(title)) {
+        newEntry.find('w\\:b, w\\:bCs').attr('w:val', '1');
+        newEntry.find('w\\:ind').remove();
+      } else {
+        newEntry.find('w\\:b, w\\:bCs').attr('w:val', '0');
+        let pPr = newEntry.find('w\\:pPr').first();
+        if (!pPr.length) { newEntry.prepend('<w:pPr/>'); pPr = newEntry.find('w\\:pPr').first(); }
+        let ind = pPr.find('w\\:ind');
+        if (!ind.length) {
+          pPr.append('<w:ind w:left="720" w:firstLine="0"/>');
+        } else {
+          ind.attr('w:left', '720');
+          ind.attr('w:firstLine', '0');
+        }
+      }
+
+      sdtContent.append(newEntry);
     }
   }
 

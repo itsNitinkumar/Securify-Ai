@@ -407,8 +407,11 @@ class ReportService {
       if (templateKey === 'blueally') {
         console.log('[Report Service] Applying BlueAlly PDF patch...');
         docxBuffer = await this.patchBlueAllyDocxForLibreOfficePdf(docxBuffer);
+      } else if (templateKey === 'dast') {
+        console.log('[Report Service] Applying DAST PDF patch...');
+        docxBuffer = await this.patchDastDocxForLibreOfficePdf(docxBuffer);
       } else {
-        console.log('[Report Service] Not applying BlueAlly patch (template key is:', templateKey, ')');
+        console.log('[Report Service] Not applying BlueAlly/DAST patch (template key is:', templateKey, ')');
       }
 
       // PDF conversion via LibreOffice can ignore paragraph-level run formatting on some template-derived
@@ -753,6 +756,241 @@ class ReportService {
 
       return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
     } catch {
+      return docxBuffer;
+    }
+  }
+
+  private static async patchDastDocxForLibreOfficePdf(docxBuffer: Buffer): Promise<Buffer> {
+    let PizZip: any;
+    let cheerio: any;
+    try {
+      PizZip = require('pizzip');
+      cheerio = require('cheerio');
+    } catch {
+      return docxBuffer;
+    }
+
+    try {
+      const zip = new PizZip(docxBuffer);
+      console.log('[DAST Patch] Starting patch for LibreOffice PDF conversion');
+
+      // 1) Bullet list fix: LibreOffice incorrectly renders Word-native bullet glyphs
+      // (● U+25CF) as oversized green dots. Convert bullet list paragraphs to use an
+      // explicit "•" character with proper hanging indent.
+      {
+        const numberingPath = 'word/numbering.xml';
+        const numberingXml = zip.file(numberingPath)?.asText() || '';
+        const docPath = 'word/document.xml';
+        const docXml = zip.file(docPath)?.asText() || '';
+        if (numberingXml && docXml) {
+          const $n = cheerio.load(numberingXml, { xmlMode: true });
+          const $d = cheerio.load(docXml, { xmlMode: true });
+
+          // Build numId -> abstractNumId mapping
+          const numIdToAbstract = new Map<string, string>();
+          $n('w\\:num').each((_: number, num: any) => {
+            const numId = String($n(num).attr('w:numId') || '');
+            const abs = String($n(num).find('w\\:abstractNumId').first().attr('w:val') || '');
+            if (numId && abs) numIdToAbstract.set(numId, abs);
+          });
+
+          // Build abstractNumId -> (ilvl -> numFmt) mapping
+          const absToLvlFmt = new Map<string, Map<string, string>>();
+          $n('w\\:abstractNum').each((_: number, abs: any) => {
+            const absId = String($n(abs).attr('w:abstractNumId') || '');
+            if (!absId) return;
+            const lvlMap = new Map<string, string>();
+            $n(abs).find('w\\:lvl').each((__: number, lvl: any) => {
+              const ilvl = String($n(lvl).attr('w:ilvl') || '');
+              const fmt = String($n(lvl).find('w\\:numFmt').first().attr('w:val') || '');
+              if (ilvl && fmt) lvlMap.set(ilvl, fmt);
+            });
+            absToLvlFmt.set(absId, lvlMap);
+          });
+
+          // Skip heading/TOC paragraphs
+          const isHeadingOrTocPara = (p: any): boolean => {
+            const pPr = $d(p).children('w\\:pPr').first();
+            const pStyle = String(pPr.find('w\\:pStyle').first().attr('w:val') || '');
+            if (/^Heading\d+$/.test(pStyle)) return true;
+            if (/^TOC/i.test(pStyle)) return true;
+            if ($d(p).find('w\\:instrText').toArray().some((t: any) => /\bTOC\b/i.test($d(t).text()))) return true;
+            return false;
+          };
+
+          let bulletsConverted = 0;
+          $d('w\\:p').each((_: number, p: any) => {
+            const pPr = $d(p).children('w\\:pPr').first();
+            if (!pPr.length) return;
+            const numPr = pPr.children('w\\:numPr').first();
+            if (!numPr.length) return;
+            if (isHeadingOrTocPara(p)) return;
+
+            const numId = String(numPr.find('w\\:numId').first().attr('w:val') || '');
+            const ilvl = String(numPr.find('w\\:ilvl').first().attr('w:val') || '0');
+            const absId = numIdToAbstract.get(numId);
+            const fmt = absId ? absToLvlFmt.get(absId)?.get(ilvl) : undefined;
+            // Only convert bullet lists (not numbered lists)
+            if (fmt !== 'bullet') return;
+
+            numPr.remove();
+
+            let ind = pPr.children('w\\:ind').first();
+            if (!ind.length) {
+              pPr.append('<w:ind/>');
+              ind = pPr.children('w\\:ind').first();
+            }
+            ind.attr('w:left', '720');
+            ind.attr('w:hanging', '360');
+
+            const bulletRun = '<w:r><w:rPr><w:color w:val="4EBc22"/></w:rPr><w:t xml:space="preserve">•\t</w:t></w:r>';
+            const firstR = $d(p).children('w\\:r').first();
+            if (firstR.length) {
+              firstR.before(bulletRun);
+            } else {
+              const pPrNode = pPr.get(0);
+              if (pPrNode) $d(pPrNode).after(bulletRun);
+              else $d(p).prepend(bulletRun);
+            }
+            bulletsConverted++;
+          });
+
+          console.log(`[DAST Patch] Converted ${bulletsConverted} bullet list paragraph(s) to explicit bullets`);
+          zip.file(docPath, $d.xml());
+        } else {
+          console.log('[DAST Patch] numbering.xml or document.xml missing; skipping bullet workaround');
+        }
+      }
+
+      // 2) Table shading hardening: DAST template tables have white borders (color=ffffff)
+      // that appear invisible in LibreOffice PDF export. Set proper visible borders
+      // and ensure header rows have proper colored shading.
+      {
+        const docPath = 'word/document.xml';
+        const docXml = zip.file(docPath)?.asText() || '';
+        if (docXml) {
+          const $ = cheerio.load(docXml, { xmlMode: true });
+          let tablesPatched = 0;
+
+          $('w\\:tbl').each((_: number, tbl: any) => {
+            const rows = $(tbl).find('> w\\:tr').toArray();
+            if (rows.length < 1) return;
+
+            // Set visible borders on the table (dark gray, single, 4pt)
+            let tblPr = $(tbl).children('w\\:tblPr').first();
+            if (!tblPr.length) {
+              $(tbl).prepend('<w:tblPr/>');
+              tblPr = $(tbl).children('w\\:tblPr').first();
+            }
+            // Remove any existing tblBorders
+            tblPr.find('w\\:tblBorders').remove();
+
+            // Add proper visible borders
+            const borderXml = [
+              '<w:tblBorders>',
+              '  <w:top w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
+              '  <w:bottom w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
+              '  <w:left w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
+              '  <w:right w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
+              '  <w:insideH w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
+              '  <w:insideV w:val="single" w:sz="4" w:space="0" w:color="666666"/>',
+              '</w:tblBorders>',
+            ].join('');
+            tblPr.prepend(borderXml);
+
+            // Force table width to 100% of page
+            let tblW = tblPr.find('w\\:tblW').first();
+            if (tblW.length) {
+              tblW.attr('w:type', 'pct');
+              tblW.attr('w:w', '5000');
+            } else {
+              tblPr.prepend('<w:tblW w:type="pct" w:w="5000"/>');
+            }
+
+            // Ensure header row has proper dark shading with white text
+            $(rows[0]).find('> w\\:tc').each((__: number, tc: any) => {
+              let tcPr = $(tc).children('w\\:tcPr').first();
+              if (!tcPr.length) {
+                $(tc).prepend('<w:tcPr/>');
+                tcPr = $(tc).children('w\\:tcPr').first();
+              }
+              // Set header fill color (green, matching DOCX template)
+              let shd = tcPr.children('w\\:shd').first();
+              if (shd.length) {
+                shd.attr('w:val', 'clear');
+                shd.attr('w:color', 'auto');
+                shd.attr('w:fill', '4EBc22');
+              } else {
+                tcPr.append('<w:shd w:val="clear" w:color="auto" w:fill="4EBc22"/>');
+              }
+              // White text on header
+              $(tc).find('w\\:r').each((___: number, r: any) => {
+                let rPr = $(r).children('w\\:rPr').first();
+                if (!rPr.length) {
+                  $(r).prepend('<w:rPr/>');
+                  rPr = $(r).children('w\\:rPr').first();
+                }
+                let colorNode = rPr.children('w\\:color').first();
+                if (!colorNode.length) {
+                  rPr.append('<w:color w:val="FFFFFF"/>');
+                } else {
+                  colorNode.attr('w:val', 'FFFFFF');
+                }
+              });
+            });
+
+            // Body rows: alternating light green shading (matching DOCX template)
+            for (let ri = 1; ri < rows.length; ri++) {
+              const bodyFill = ri % 2 === 0 ? 'eafde3' : 'd9f6ce';
+              $(rows[ri]).find('> w\\:tc').each((__: number, tc: any) => {
+                let tcPr = $(tc).children('w\\:tcPr').first();
+                if (!tcPr.length) {
+                  $(tc).prepend('<w:tcPr/>');
+                  tcPr = $(tc).children('w\\:tcPr').first();
+                }
+                let shd = tcPr.children('w\\:shd').first();
+                if (shd.length) {
+                  shd.attr('w:val', 'clear');
+                  shd.attr('w:color', 'auto');
+                  shd.attr('w:fill', bodyFill);
+                } else {
+                  tcPr.append(`<w:shd w:val="clear" w:color="auto" w:fill="${bodyFill}"/>`);
+                }
+                // Ensure body text is dark
+                $(tc).find('w\\:r').each((___: number, r: any) => {
+                  let rPr = $(r).children('w\\:rPr').first();
+                  if (!rPr.length) {
+                    $(r).prepend('<w:rPr/>');
+                    rPr = $(r).children('w\\:rPr').first();
+                  }
+                  let colorNode = rPr.children('w\\:color').first();
+                  if (!colorNode.length) {
+                    rPr.append('<w:color w:val="121212"/>');
+                  } else {
+                    // Only force dark if it was white (stray template styling)
+                    const cur = String(colorNode.attr('w:val') || '').toLowerCase();
+                    if (cur === 'ffffff' || cur === 'fff') {
+                      colorNode.attr('w:val', '121212');
+                    }
+                  }
+                });
+              });
+            }
+            tablesPatched++;
+          });
+
+          console.log(`[DAST Patch] Patched ${tablesPatched} table(s) with visible borders and shading`);
+          zip.file(docPath, $.xml());
+        } else {
+          console.log('[DAST Patch] document.xml not found');
+        }
+      }
+
+      const patched = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+      console.log('[DAST Patch] Patch complete');
+      return patched;
+    } catch (error) {
+      console.error('[DAST Patch] Error during patching:', error);
       return docxBuffer;
     }
   }
