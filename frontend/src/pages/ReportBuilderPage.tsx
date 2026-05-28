@@ -42,6 +42,7 @@ const ReportBuilderPage = () => {
       Medium: [],
       Low: [],
       Informational: [],
+      None: [],
     };
     allFindingsSorted.forEach(f => {
       if (groups[f.severity]) {
@@ -211,12 +212,16 @@ const ReportBuilderPage = () => {
                   Medium: 'bg-yellow-500 text-surface',
                   Low: 'bg-blue-500 text-surface',
                   Informational: 'bg-gray-500 text-surface',
+                  None: 'bg-purple-500 text-surface',
+                };
+                const sevLabels: Record<string, string> = {
+                  None: 'False Positive',
                 };
                 return (
                   <div key={severity}>
                     <div className="flex items-center gap-2 mb-2">
                       <span className={`inline-flex rounded px-2.5 py-1 text-xs font-bold ${sevColors[severity]}`}>
-                        {severity}
+                        {sevLabels[severity] || severity}
                       </span>
                       <span className="text-sm text-on-surface-variant">{severityFindings.length} finding(s)</span>
                     </div>

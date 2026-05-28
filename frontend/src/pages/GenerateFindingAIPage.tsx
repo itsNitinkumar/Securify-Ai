@@ -1,10 +1,11 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, RefreshCw, Sparkles, Upload as UploadIcon, FileText, Shield, AlertTriangle, Plus, Trash2, Image as ImageIcon, Save, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import S3Image from '@/components/common/S3Image';
 import { findingApi } from '@/api/findingApi';
 import { uploadApi } from '@/api/uploadApi';
+import EvidenceItemEditor from '@/components/findings/EvidenceItemEditor';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -21,12 +22,16 @@ interface StepData {
 const GenerateFindingAIPage = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const parsedProjectId = projectId ? Number.parseInt(projectId, 10) : undefined;
   const [loading, setLoading] = useState(false);
   const [uploadingSteps, setUploadingSteps] = useState<Set<number>>(new Set());
   const [step, setStep] = useState<'input' | 'review'>('input');
+  const initialType = searchParams.get('type') === 'false_positive' ? 'false_positive' : 'true_positive';
+  const [findingType, setFindingType] = useState<'true_positive' | 'false_positive'>(initialType);
   const [draftFindingId, setDraftFindingId] = useState<number | null>(null);
   const [generatedFinding, setGeneratedFinding] = useState<any>(null);
+  const [evidenceItems, setEvidenceItems] = useState<Array<{ imageKey?: string; caption?: string }>>([]);
   const [editableSteps, setEditableSteps] = useState<StepData[]>([]);
   const [formData, setFormData] = useState({
     title: '',
@@ -47,6 +52,8 @@ const GenerateFindingAIPage = () => {
           setFormData(draft.formData || formData);
           setGeneratedFinding(draft.generatedFinding || null);
           setEditableSteps(draft.editableSteps || []);
+          setEvidenceItems(draft.evidenceItems || []);
+          setFindingType(draft.findingType || 'true_positive');
           setStep(draft.step || 'input');
           if (draft.generatedFinding) {
             toast.success('Draft restored');
@@ -66,12 +73,14 @@ const GenerateFindingAIPage = () => {
         formData,
         generatedFinding,
         editableSteps,
+        evidenceItems,
+        findingType,
         step,
         timestamp: Date.now(),
       };
       localStorage.setItem(draftKey, JSON.stringify(draft));
     }
-  }, [projectId, formData, generatedFinding, editableSteps, step]);
+  }, [projectId, formData, generatedFinding, editableSteps, evidenceItems, findingType, step]);
 
   // Clear draft from localStorage
   const clearDraft = () => {
@@ -121,12 +130,21 @@ const GenerateFindingAIPage = () => {
 
     try {
       setLoading(true);
-      const response = await findingApi.generateContent({
-        evidence: evidencePayload,
-        severity: formData.severity,
-        project_id: parsedProjectId,
-      });
-      const generated = response.data.data;
+      let generated;
+      if (findingType === 'false_positive') {
+        const response = await findingApi.generateFalsePositiveContent({
+          evidence: evidencePayload,
+          finding_name: formData.title || undefined,
+        });
+        generated = response.data.data;
+      } else {
+        const response = await findingApi.generateContent({
+          evidence: evidencePayload,
+          severity: formData.severity,
+          project_id: parsedProjectId,
+        });
+        generated = response.data.data;
+      }
       setGeneratedFinding(generated);
       initializeEditableSteps(generated?.steps_to_reproduce || []);
       setStep('review');
@@ -148,19 +166,27 @@ const GenerateFindingAIPage = () => {
 
       console.log('Saving finding with steps:', validSteps);
 
-      const response = await findingApi.create({
+      const payload: any = {
         title: generatedFinding.title || formData.title,
-        severity: formData.severity,
         description: generatedFinding.description,
         affected_target: generatedFinding.affected_target,
-        likelihood: generatedFinding.likelihood,
-        impact: generatedFinding.impact,
-        steps_to_reproduce: validSteps,
-        recommendation: generatedFinding.recommendation,
-        references: generatedFinding.references,
         project_id: parsedProjectId,
         status: 'draft',
-      });
+        finding_type: findingType,
+      };
+
+      if (findingType === 'true_positive') {
+        payload.severity = formData.severity;
+        payload.likelihood = generatedFinding.likelihood;
+        payload.impact = generatedFinding.impact;
+        payload.steps_to_reproduce = validSteps;
+        payload.recommendation = generatedFinding.recommendation;
+        payload.references = generatedFinding.references;
+      } else {
+        payload.evidence_items = evidenceItems;
+      }
+
+      const response = await findingApi.create(payload);
       const newId = response.data.data?.id;
       clearDraft(); // Clear draft after successful save
       toast.success('Finding saved successfully');
@@ -313,6 +339,27 @@ const GenerateFindingAIPage = () => {
       <Card className="p-6 bg-surface-high border-outline">
         {step === 'input' ? (
           <div className="space-y-6">
+            {/* Finding Type Toggle */}
+            <div>
+              <label className="text-sm font-medium text-on-surface mb-3 block">
+                Finding Type <span className="text-error">*</span>
+              </label>
+              <div className="flex gap-2">
+                <Badge
+                  className={`cursor-pointer px-4 py-2 ${findingType === 'true_positive' ? 'bg-primary/10 text-primary border-primary/20' : 'bg-surface border-outline-variant'}`}
+                  onClick={() => setFindingType('true_positive')}
+                >
+                  True Positive
+                </Badge>
+                <Badge
+                  className={`cursor-pointer px-4 py-2 ${findingType === 'false_positive' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-surface border-outline-variant'}`}
+                  onClick={() => setFindingType('false_positive')}
+                >
+                  False Positive
+                </Badge>
+              </div>
+            </div>
+
             <div>
               <label className="text-sm font-medium text-on-surface mb-2 block">
                 Finding Title <span className="text-error">*</span>
@@ -321,37 +368,41 @@ const GenerateFindingAIPage = () => {
                 required
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="e.g., SQL Injection in Login Form"
+                placeholder={findingType === 'true_positive' ? 'e.g., SQL Injection in Login Form' : 'e.g., [FP] Potential XSS in Search'}
                 className="bg-surface border-outline text-on-surface"
               />
             </div>
 
-            <div>
-              <label className="text-sm font-medium text-on-surface mb-3 block">
-                Severity <span className="text-error">*</span>
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                {severities.map((sev) => (
-                  <Badge
-                    key={sev.value}
-                    className={`cursor-pointer px-4 py-2 ${formData.severity === sev.value ? sev.color : 'bg-surface border-outline-variant'}`}
-                    onClick={() => setFormData({ ...formData, severity: sev.value })}
-                  >
-                    {sev.value}
-                  </Badge>
-                ))}
-              </div>
-            </div>
+            {findingType === 'true_positive' ? (
+              <>
+                <div>
+                  <label className="text-sm font-medium text-on-surface mb-3 block">
+                    Severity <span className="text-error">*</span>
+                  </label>
+                  <div className="flex gap-2 flex-wrap">
+                    {severities.map((sev) => (
+                      <Badge
+                        key={sev.value}
+                        className={`cursor-pointer px-4 py-2 ${formData.severity === sev.value ? sev.color : 'bg-surface border-outline-variant'}`}
+                        onClick={() => setFormData({ ...formData, severity: sev.value })}
+                      >
+                        {sev.value}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
 
-            <div>
-              <label className="text-sm font-medium text-on-surface mb-2 block">Vulnerability Type</label>
-              <Input
-                value={formData.vulnerabilityType}
-                onChange={(e) => setFormData({ ...formData, vulnerabilityType: e.target.value })}
-                placeholder="e.g., SQL Injection, XSS, CSRF"
-                className="bg-surface border-outline text-on-surface"
-              />
-            </div>
+                <div>
+                  <label className="text-sm font-medium text-on-surface mb-2 block">Vulnerability Type</label>
+                  <Input
+                    value={formData.vulnerabilityType}
+                    onChange={(e) => setFormData({ ...formData, vulnerabilityType: e.target.value })}
+                    placeholder="e.g., SQL Injection, XSS, CSRF"
+                    className="bg-surface border-outline text-on-surface"
+                  />
+                </div>
+              </>
+            ) : null}
 
             <div>
               <label className="text-sm font-medium text-on-surface mb-2 block">Affected Endpoint/IP</label>
@@ -386,7 +437,7 @@ const GenerateFindingAIPage = () => {
                 type="button"
                 onClick={() => void handleGenerate()}
                 disabled={loading || !formData.title || !formData.evidence}
-                className="bg-primary text-surface hover:bg-primary/90"
+                className={`${findingType === 'false_positive' ? 'bg-purple-500 hover:bg-purple-500/90' : 'bg-primary hover:bg-primary/90'} text-surface`}
               >
                 {loading ? (
                   <>
@@ -396,7 +447,7 @@ const GenerateFindingAIPage = () => {
                 ) : (
                   <>
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Generate with AI
+                    {findingType === 'false_positive' ? 'Generate False Positive' : 'Generate True Positive'}
                   </>
                 )}
               </Button>
@@ -433,146 +484,160 @@ const GenerateFindingAIPage = () => {
                   </p>
                 </div>
 
-                {/* Likelihood & Impact */}
-                <div className="pb-4 border-b border-outline-variant">
-                  <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3">Risk Assessment</h4>
-                  <div className="space-y-4">
-                    {generatedFinding.likelihood && (
-                      <div className="bg-surface-low p-4 rounded-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-semibold text-on-surface uppercase">Likelihood:</span>
-                          <Badge className={`${generatedFinding.likelihood.severity === 'High' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                              generatedFinding.likelihood.severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
-                                'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                            }`}>
-                            {generatedFinding.likelihood.severity || 'N/A'}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-on-surface-variant leading-relaxed">
-                          {generatedFinding.likelihood.detail || 'N/A'}
-                        </p>
-                      </div>
-                    )}
-
-                    {generatedFinding.impact && (
-                      <div className="bg-surface-low p-4 rounded-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <AlertTriangle className="w-4 h-4 text-on-surface" />
-                          <span className="text-xs font-semibold text-on-surface uppercase">Impact:</span>
-                          <Badge className={`${generatedFinding.impact.severity === 'High' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                              generatedFinding.impact.severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
-                                'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                            }`}>
-                            {generatedFinding.impact.severity || 'N/A'}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-on-surface-variant leading-relaxed">
-                          {generatedFinding.impact.detail || 'N/A'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Steps to Reproduce */}
-                <div className="pb-4 border-b border-outline-variant">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Steps to Reproduce</h4>
-                    <Button type="button" variant="ghost" size="sm" onClick={addStep} className="text-primary hover:text-primary/80">
-                      <Plus className="w-4 h-4 mr-1" /> Add Step
-                    </Button>
-                  </div>
-                  <div className="space-y-4">
-                    {editableSteps.map((step, index) => {
-                      // imageKey is stored in DB, we'll fetch signed URL when needed
-                      const imageUrl = step.imageKey || '';
-
-                      return (
-                        <div key={index} className="bg-surface-low p-4 rounded-lg border border-outline-variant space-y-4">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-semibold text-primary">Step {step.stepNumber}</span>
-                            {editableSteps.length > 1 && (
-                              <Button type="button" variant="ghost" size="sm" onClick={() => removeStep(index)} className="text-error hover:text-error/80">
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
+                {/* True Positive: Likelihood & Impact */}
+                {findingType === 'true_positive' && (
+                  <div className="pb-4 border-b border-outline-variant">
+                    <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3">Risk Assessment</h4>
+                    <div className="space-y-4">
+                      {generatedFinding.likelihood && (
+                        <div className="bg-surface-low p-4 rounded-lg">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs font-semibold text-on-surface uppercase">Likelihood:</span>
+                            <Badge className={`${generatedFinding.likelihood.severity === 'High' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                                generatedFinding.likelihood.severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                                  'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                              }`}>
+                              {generatedFinding.likelihood.severity || 'N/A'}
+                            </Badge>
                           </div>
-                          <textarea
-                            value={step.description}
-                            onChange={(e) => updateStep(index, 'description', e.target.value)}
-                            placeholder="Describe this step..."
-                            rows={2}
-                            className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface text-sm resize-none"
-                          />
-                          <div>
-                            <label className="text-xs text-on-surface-variant mb-2 block">Image (Optional)</label>
-                            {uploadingSteps.has(index) ? (
-                              <div className="border-2 border-dashed border-primary rounded-lg p-8 text-center">
-                                <Loader2 className="w-8 h-8 text-primary mx-auto mb-2 animate-spin" />
-                                <p className="text-xs text-on-surface-variant">Uploading image...</p>
-                              </div>
-                            ) : imageUrl ? (
-                              <div className="relative rounded-lg overflow-hidden border border-outline-variant bg-surface">
-                                <S3Image
-                                  imageKey={imageUrl}
-                                  alt={`Step ${step.stepNumber}`}
-                                  className="w-full max-h-80 object-contain"
-                                />
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => updateStep(index, 'imageKey', '')}
-                                  className="absolute top-2 right-2 bg-surface/90 text-error hover:bg-error/20 rounded-full p-1.5 z-10"
-                                >
-                                  <X className="w-4 h-4" />
+                          <p className="text-sm text-on-surface-variant leading-relaxed">
+                            {generatedFinding.likelihood.detail || 'N/A'}
+                          </p>
+                        </div>
+                      )}
+
+                      {generatedFinding.impact && (
+                        <div className="bg-surface-low p-4 rounded-lg">
+                          <div className="flex items-center gap-2 mb-2">
+                            <AlertTriangle className="w-4 h-4 text-on-surface" />
+                            <span className="text-xs font-semibold text-on-surface uppercase">Impact:</span>
+                            <Badge className={`${generatedFinding.impact.severity === 'High' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                                generatedFinding.impact.severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                                  'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                              }`}>
+                              {generatedFinding.impact.severity || 'N/A'}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-on-surface-variant leading-relaxed">
+                            {generatedFinding.impact.detail || 'N/A'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* True Positive: Steps to Reproduce */}
+                {findingType === 'true_positive' && (
+                  <div className="pb-4 border-b border-outline-variant">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Steps to Reproduce</h4>
+                      <Button type="button" variant="ghost" size="sm" onClick={addStep} className="text-primary hover:text-primary/80">
+                        <Plus className="w-4 h-4 mr-1" /> Add Step
+                      </Button>
+                    </div>
+                    <div className="space-y-4">
+                      {editableSteps.map((step, index) => {
+                        const imageUrl = step.imageKey || '';
+
+                        return (
+                          <div key={index} className="bg-surface-low p-4 rounded-lg border border-outline-variant space-y-4">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-semibold text-primary">Step {step.stepNumber}</span>
+                              {editableSteps.length > 1 && (
+                                <Button type="button" variant="ghost" size="sm" onClick={() => removeStep(index)} className="text-error hover:text-error/80">
+                                  <Trash2 className="w-4 h-4" />
                                 </Button>
-                              </div>
-                            ) : (
-                              <div
-                                tabIndex={0}
-                                className="border-2 border-dashed border-outline-variant rounded-lg p-6 text-center hover:border-primary/50 focus:border-primary focus:outline-none transition-colors cursor-pointer"
-                                onDragOver={handleDragOver}
-                                onDrop={(e) => handleDrop(index, e)}
-                                onPaste={(e) => handleImagePaste(index, e)}
-                                onClick={(e) => handleDropzoneClick(index, e)}
-                                role="button"
-                                aria-label="Upload, drag and drop, or paste image"
-                              >
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  id={`step-image-${index}`}
-                                  onChange={(e) => e.target.files?.[0] && handleImageUpload(index, e.target.files[0])}
-                                />
-                                <div className="dropzone-content flex flex-col items-center gap-2">
-                                  <UploadIcon className="w-6 h-6 text-on-surface-variant" />
-                                  <div className="text-on-surface-variant">
-                                    <p className="text-sm font-medium">Click to upload or paste here (Ctrl+V)</p>
-                                    <p className="text-xs mt-1">You can also drag & drop</p>
+                              )}
+                            </div>
+                            <textarea
+                              value={step.description}
+                              onChange={(e) => updateStep(index, 'description', e.target.value)}
+                              placeholder="Describe this step..."
+                              rows={2}
+                              className="w-full px-3 py-2 bg-surface border border-outline rounded-md text-on-surface text-sm resize-none"
+                            />
+                            <div>
+                              <label className="text-xs text-on-surface-variant mb-2 block">Image (Optional)</label>
+                              {uploadingSteps.has(index) ? (
+                                <div className="border-2 border-dashed border-primary rounded-lg p-8 text-center">
+                                  <Loader2 className="w-8 h-8 text-primary mx-auto mb-2 animate-spin" />
+                                  <p className="text-xs text-on-surface-variant">Uploading image...</p>
+                                </div>
+                              ) : imageUrl ? (
+                                <div className="relative rounded-lg overflow-hidden border border-outline-variant bg-surface">
+                                  <S3Image
+                                    imageKey={imageUrl}
+                                    alt={`Step ${step.stepNumber}`}
+                                    className="w-full max-h-80 object-contain"
+                                  />
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => updateStep(index, 'imageKey', '')}
+                                    className="absolute top-2 right-2 bg-surface/90 text-error hover:bg-error/20 rounded-full p-1.5 z-10"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div
+                                  tabIndex={0}
+                                  className="border-2 border-dashed border-outline-variant rounded-lg p-6 text-center hover:border-primary/50 focus:border-primary focus:outline-none transition-colors cursor-pointer"
+                                  onDragOver={handleDragOver}
+                                  onDrop={(e) => handleDrop(index, e)}
+                                  onPaste={(e) => handleImagePaste(index, e)}
+                                  onClick={(e) => handleDropzoneClick(index, e)}
+                                  role="button"
+                                  aria-label="Upload, drag and drop, or paste image"
+                                >
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    id={`step-image-${index}`}
+                                    onChange={(e) => e.target.files?.[0] && handleImageUpload(index, e.target.files[0])}
+                                  />
+                                  <div className="dropzone-content flex flex-col items-center gap-2">
+                                    <UploadIcon className="w-6 h-6 text-on-surface-variant" />
+                                    <div className="text-on-surface-variant">
+                                      <p className="text-sm font-medium">Click to upload or paste here (Ctrl+V)</p>
+                                      <p className="text-xs mt-1">You can also drag & drop</p>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
+                            <div>
+                              <label className="text-xs text-on-surface-variant mb-1 block">Caption</label>
+                              <Input
+                                value={step.caption || ''}
+                                onChange={(e) => updateStep(index, 'caption', e.target.value)}
+                                placeholder="Add a caption for this image..."
+                                className="bg-surface border-outline text-on-surface text-sm"
+                              />
+                            </div>
                           </div>
-                          <div>
-                            <label className="text-xs text-on-surface-variant mb-1 block">Caption</label>
-                            <Input
-                              value={step.caption || ''}
-                              onChange={(e) => updateStep(index, 'caption', e.target.value)}
-                              placeholder="Add a caption for this image..."
-                              className="bg-surface border-outline text-on-surface text-sm"
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Recommendations */}
-                {generatedFinding.recommendation && generatedFinding.recommendation.length > 0 && (
+                {/* False Positive: Evidence Items */}
+                {findingType === 'false_positive' && (
+                  <div className="pb-4 border-b border-outline-variant">
+                    <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3">Evidence Items</h4>
+                    <EvidenceItemEditor
+                      items={evidenceItems}
+                      onChange={setEvidenceItems}
+                    />
+                  </div>
+                )}
+
+                {/* True Positive: Recommendations */}
+                {findingType === 'true_positive' && generatedFinding.recommendation && generatedFinding.recommendation.length > 0 && (
                   <div className="pb-4 border-b border-outline-variant">
                     <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3 flex items-center gap-2">
                       <Shield className="w-4 h-4" />
@@ -598,8 +663,8 @@ const GenerateFindingAIPage = () => {
                   </div>
                 )}
 
-                {/* References */}
-                {generatedFinding.references && generatedFinding.references.length > 0 && (
+                {/* True Positive: References */}
+                {findingType === 'true_positive' && generatedFinding.references && generatedFinding.references.length > 0 && (
                   <div>
                     <h4 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3">References</h4>
                     <ul className="space-y-2">
@@ -624,7 +689,7 @@ const GenerateFindingAIPage = () => {
 
             <Card className="p-4 bg-green-500/10 border-green-500/20">
               <p className="text-sm text-green-400">
-                ✓ Finding generated successfully! Review the details above and click "Accept & Save" to add it to your project.
+                ✓ {findingType === 'false_positive' ? 'False positive' : 'Finding'} generated successfully! Review the details above and click "Accept & Save" to add it to your project.
               </p>
               <p className="text-xs text-green-400/70 mt-1">
                 💾 Draft auto-saved. You can safely close this page and return later.

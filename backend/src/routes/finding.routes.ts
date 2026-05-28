@@ -11,6 +11,9 @@ router.use(protect);
 // Generate AI content only (no finding creation) - Analyst, Reviewer, Manager (with AI rate limit)
 router.post('/generate-content', requireRole('analyst', 'reviewer', 'manager'), aiGenerationLimiter, FindingController.generateContent);
 
+// Generate false positive content using AI - Analyst, Reviewer, Manager (with AI rate limit)
+router.post('/generate-false-positive-content', requireRole('analyst', 'reviewer', 'manager'), aiGenerationLimiter, FindingController.generateFalsePositiveContent);
+
 // Generate finding using AI - Analyst, Reviewer, Manager (with AI rate limit)
 router.post('/generate', requireRole('analyst', 'reviewer', 'manager'), aiGenerationLimiter, FindingController.generateFinding);
 

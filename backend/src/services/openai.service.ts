@@ -399,6 +399,7 @@ interface GenerateFindingInput {
   evidence: string;
   severity: string;
   role: string;
+  finding_name?: string;
 }
 
 interface FindingOutput {
@@ -707,6 +708,141 @@ ACCESS CONTROL RULES:
     }
 
     return JSON.parse(content);
+  }
+
+  // False Positive finding generation
+  static async generateFalsePositiveFinding(input: GenerateFindingInput): Promise<any> {
+    const FP_SYSTEM_PROMPT = `You are SecurifyAI-FP, a professional False Positive validation engine used in penetration testing engagements, vulnerability assessments, and security reporting.
+
+Your task is to convert raw scanner findings and manual validation evidence into structured, professional False Positive findings suitable for client security reports.
+
+You behave like a deterministic report generator, not a conversational assistant.
+
+STRICT RULES:
+
+1. Always return ONLY valid JSON.
+2. Never include markdown, explanations, comments, or additional text.
+3. Never classify a finding as a False Positive unless clearly supported by the provided evidence.
+4. Do NOT hallucinate technical details not present in the evidence.
+5. If a field cannot be confidently determined from the evidence, return "unknown".
+6. Follow professional penetration testing report writing standards.
+7. Maintain neutral, objective, and evidence-based security language.
+8. Do not speculate about hypothetical attacks.
+9. Do not include severity, impact, likelihood, recommendation, CVSS, CWE, or steps to reproduce sections.
+10. Output must match the JSON schema exactly.
+11. Do not add or remove fields.
+12. Clearly explain why the scanner detection is not a valid security issue.
+13. Mention the scanner observation and the manual validation outcome.
+14. State explicitly when the issue is considered a False Positive.
+
+WRITING GUIDELINES:
+
+Title:
+
+* Use concise vulnerability or scanner finding name.
+
+Description:
+
+* Start by describing what the scanner reported.
+* Explain what manual validation was performed.
+* Clearly explain why the reported behavior does not constitute a security vulnerability.
+* Maintain professional report language.
+* Explicitly state when the finding is considered a False Positive.
+
+Affected Target:
+
+* Extract affected host/URL/endpoint if possible.
+* Otherwise return "unknown".
+
+REFERENCES RULES:
+
+* Include references only if highly relevant.
+* Prefer:
+
+  * OWASP
+  * RFC
+  * Vendor/framework docs
+* Otherwise return empty array.
+
+OUTPUT FORMAT:
+{
+"title": "string",
+"description": "string",
+"affected_target": "string",
+"references": ["url"]
+}`;
+
+    try {
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+        systemInstruction: FP_SYSTEM_PROMPT,
+        generationConfig: {
+          temperature: 0.3,
+          responseMimeType: 'application/json',
+        },
+      });
+
+      const userPrompt = `TASK:
+Convert the provided penetration testing evidence into a structured False Positive finding.
+
+INPUT:
+Evidence:
+${input.evidence}
+
+Scanner Finding Name:
+${input.finding_name || "unknown"}
+
+User Role:
+${input.role || "unknown"}
+
+OUTPUT FORMAT (STRICT JSON):
+{
+"title": "",
+"description": "",
+"affected_target": "",
+"references": []
+}
+
+INSTRUCTIONS:
+
+* Generate concise professional title
+* Explain:
+
+  1. scanner observation
+  2. validation performed
+  3. why not exploitable
+  4. why considered False Positive
+* Do NOT include:
+
+  * severity
+  * impact
+  * likelihood
+  * recommendations
+  * CVSS
+  * CWE
+  * steps to reproduce
+* Do NOT hallucinate details
+* Use neutral pentest report language
+* References only if authoritative/relevant
+* Mention limitations if evidence incomplete`;
+
+      const result = await model.generateContent(userPrompt);
+      const content = result.response.text();
+
+      if (!content) {
+        throw new Error('No response from Gemini');
+      }
+
+      return JSON.parse(content);
+    } catch (error: any) {
+      console.error('❌ Gemini API Error (FP):', error);
+      return {
+        title: '[FP] Potential False Positive',
+        description: `The following potential vulnerability was investigated and determined to be a false positive.\n\nEvidence:\n${input.evidence}`,
+        affected_target: 'See evidence for details',
+        references: [],
+      };
+    }
   }
 }
 

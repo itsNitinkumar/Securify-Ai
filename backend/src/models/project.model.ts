@@ -120,6 +120,8 @@ if (data.name !== undefined) set('name', data.name);
             'title', f.title,
             'severity', f.severity,
             'status', f.status,
+            'finding_type', f.finding_type,
+            'validation_status', f.validation_status,
             'created_at', f.created_at
           ) ORDER BY f.severity, f.created_at
         ) FILTER (WHERE f.id IS NOT NULL) as findings

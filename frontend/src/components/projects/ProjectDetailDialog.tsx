@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Edit, Trash2, ExternalLink, AlertTriangle, CheckCircle, Plus, Sparkles } from 'lucide-react';
 import { Project, projectApi } from '@/api/projectApi';
 import { authApi } from '@/api/authApi';
+import { templateKeyFromProject } from '@/reportTemplates/registry';
 import CreateFindingDialog from '@/components/findings/CreateFindingDialog';
 import FindingViewer from '@/components/findings/FindingViewer';
 import {
@@ -191,14 +192,35 @@ const ProjectDetailDialog = ({
                         <Plus className="w-4 h-4 mr-2" />
                         Add Manually
                       </Button>
-                      <Button
-                        onClick={() => navigate(`/projects/${project.id}/findings/generate`)}
-                        size="sm"
-                        className="bg-primary text-surface hover:bg-primary/90"
-                      >
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Generate with AI
-                      </Button>
+                      {templateKeyFromProject(project) === 'dast' ? (
+                        <>
+                          <Button
+                            onClick={() => navigate(`/projects/${project.id}/findings/generate?type=true_positive`)}
+                            size="sm"
+                            className="bg-primary text-surface hover:bg-primary/90"
+                          >
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Generate True Positive
+                          </Button>
+                          <Button
+                            onClick={() => navigate(`/projects/${project.id}/findings/generate?type=false_positive`)}
+                            size="sm"
+                            className="bg-purple-500 text-surface hover:bg-purple-500/90"
+                          >
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Generate False Positive
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          onClick={() => navigate(`/projects/${project.id}/findings/generate`)}
+                          size="sm"
+                          className="bg-primary text-surface hover:bg-primary/90"
+                        >
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Generate with AI
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -241,6 +263,9 @@ const ProjectDetailDialog = ({
                             >
                               {finding.severity}
                             </Badge>
+                            {finding.finding_type === 'false_positive' && (
+                              <Badge className="text-xs bg-purple-500/10 text-purple-400 border-purple-500/20">FP</Badge>
+                            )}
                           </div>
                           <p className="text-xs text-on-surface-variant line-clamp-2">
                             {finding.description && finding.description.trim() !== '' && finding.description !== 'See evidence for details'
@@ -286,13 +311,32 @@ const ProjectDetailDialog = ({
                       <Plus className="w-4 h-4 mr-2" />
                       Add Manually
                     </Button>
-                    <Button
-                      onClick={() => navigate(`/projects/${project.id}/findings/generate`)}
-                      className="bg-primary text-surface hover:bg-primary/90"
-                    >
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Generate with AI
-                    </Button>
+                    {templateKeyFromProject(project) === 'dast' ? (
+                      <>
+                        <Button
+                          onClick={() => navigate(`/projects/${project.id}/findings/generate?type=true_positive`)}
+                          className="bg-primary text-surface hover:bg-primary/90"
+                        >
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Generate True Positive
+                        </Button>
+                        <Button
+                          onClick={() => navigate(`/projects/${project.id}/findings/generate?type=false_positive`)}
+                          className="bg-purple-500 text-surface hover:bg-purple-500/90"
+                        >
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Generate False Positive
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        onClick={() => navigate(`/projects/${project.id}/findings/generate`)}
+                        className="bg-primary text-surface hover:bg-primary/90"
+                      >
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Generate with AI
+                      </Button>
+                    )}
                   </div>
                 )}
               </Card>

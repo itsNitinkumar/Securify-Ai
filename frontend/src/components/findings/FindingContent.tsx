@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Save, X, AlertTriangle, Shield, FileText, Plus } from 'lucide-react';
 import StepEditor from './StepEditor';
+import EvidenceItemEditor from './EvidenceItemEditor';
 
 const findingSeverities = ['Critical', 'High', 'Medium', 'Low', 'Informational'] as const;
 const riskSeverities = ['High', 'Medium', 'Low'] as const;
@@ -45,6 +46,9 @@ const normalizeSteps = (steps: any): Step[] => {
   });
 };
 
+const isFalsePositive = (finding: Finding) =>
+  (finding as any).finding_type === 'false_positive';
+
 const FindingContent = ({
   finding,
   isEditing,
@@ -63,6 +67,7 @@ const FindingContent = ({
     impact_detail: (typeof finding.impact === 'object' ? finding.impact?.detail : '') || (typeof finding.impact === 'string' ? finding.impact : ''),
     likelihood_severity: (typeof finding.likelihood === 'object' ? finding.likelihood?.severity : '') || '',
     likelihood_detail: (typeof finding.likelihood === 'object' ? finding.likelihood?.detail : '') || (typeof finding.likelihood === 'string' ? finding.likelihood : ''),
+    evidence_items: (finding as any).evidence_items || [],
   });
   const [saving, setSaving] = useState(false);
 
@@ -99,6 +104,9 @@ const FindingContent = ({
           ? { severity: editData.likelihood_severity, detail: editData.likelihood_detail }
           : editData.likelihood_detail;
       }
+      if (isFalsePositive(finding) && editData.evidence_items) {
+        payload.evidence_items = editData.evidence_items;
+      }
       await findingApi.updateFinding(finding.id, payload);
       onUpdate();
       if (onCancelEdit) {
@@ -125,8 +133,8 @@ const FindingContent = ({
 
   return (
     <div className="space-y-6">
-      {/* Severity */}
-      {isEditing && (
+      {/* Severity - hide for false positives */}
+      {isEditing && !isFalsePositive(finding) && (
         <Card className="p-4 md:p-6 bg-surface-high border-outline">
           <h3 className="text-sm font-semibold text-on-surface mb-3">Severity</h3>
           <select
@@ -184,8 +192,8 @@ const FindingContent = ({
         </Card>
       )}
 
-      {/* Impact & Likelihood */}
-      {(finding.impact || finding.likelihood || isEditing) && (
+      {/* Impact & Likelihood - hide for false positives */}
+      {!isFalsePositive(finding) && (finding.impact || finding.likelihood || isEditing) && (
         <Card className="p-4 md:p-6 bg-surface-high border-outline">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2">
@@ -298,8 +306,8 @@ const FindingContent = ({
         </Card>
       )}
 
-      {/* Steps to Reproduce */}
-      {(finding.steps_to_reproduce || isEditing) && (
+      {/* Steps to Reproduce - for true positive findings */}
+      {!isFalsePositive(finding) && (finding.steps_to_reproduce || isEditing) && (
         <Card className="p-4 md:p-6 bg-surface-high border-outline">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-on-surface">Steps to Reproduce</h3>
@@ -325,7 +333,6 @@ const FindingContent = ({
               {Array.isArray(finding.steps_to_reproduce) ? (
                 finding.steps_to_reproduce.map((step: any, index: number) => {
                   const isNewFormat = typeof step === 'object' && step !== null;
-                  // Use signedUrl from backend if available, otherwise use imageKey
                   const imageUrl = isNewFormat ? (step.signedUrl || step.imageKey) : '';
                   
                   return (
@@ -367,8 +374,54 @@ const FindingContent = ({
         </Card>
       )}
 
-      {/* Recommendations (AI array) - View Mode Only */}
-      {finding.recommendation && !isEditing && (
+      {/* Evidence Items - for false positive findings */}
+      {isFalsePositive(finding) && ((finding as any).evidence_items?.length > 0 || isEditing) && (
+        <Card className="p-4 md:p-6 bg-surface-high border-outline">
+          <h3 className="text-sm font-semibold text-on-surface mb-4">Evidence Items</h3>
+          {isEditing ? (
+            <div className="text-sm text-on-surface-variant">
+              <EvidenceItemEditor
+                items={editData.evidence_items || []}
+                onChange={(items) => setEditData({ ...editData, evidence_items: items })}
+              />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {((finding as any).evidence_items || []).map((item: any, index: number) => {
+                const imageUrl = item.signedUrl || item.imageKey;
+                return (
+                  <div key={index} className="bg-surface-low p-4 rounded-lg border border-outline-variant space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded">
+                        Evidence #{index + 1}
+                      </span>
+                    </div>
+                    {imageUrl && (
+                      <div className="mt-2">
+                        <img
+                          src={imageUrl}
+                          alt={`Evidence ${index + 1}`}
+                          className="w-full max-h-80 object-contain rounded-lg border border-outline-variant bg-surface"
+                          onError={(e) => {
+                            console.error('Image failed to load:', imageUrl);
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                        {item.caption && (
+                          <p className="text-xs text-gray-400 mt-2 italic text-center">{item.caption}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Recommendations (AI array) - View Mode Only (hide for false positives) */}
+      {!isFalsePositive(finding) && finding.recommendation && !isEditing && (
         <Card className="p-4 md:p-6 bg-surface-high border-primary/20">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2">
@@ -410,8 +463,8 @@ const FindingContent = ({
         </Card>
       )}
 
-      {/* Recommendations - Edit Mode */}
-      {isEditing && (
+      {/* Recommendations - Edit Mode (hide for false positives) */}
+      {isEditing && !isFalsePositive(finding) && (
         <Card className="p-4 md:p-6 bg-surface-high border-primary/20">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2">
@@ -530,8 +583,8 @@ const FindingContent = ({
         </Card>
       )}
 
-      {/* References */}
-      {finding.references && finding.references.length > 0 && (
+      {/* References (hide for false positives) */}
+      {!isFalsePositive(finding) && finding.references && finding.references.length > 0 && (
         <Card className="p-4 md:p-6 bg-surface-high border-outline">
           <h3 className="text-sm font-semibold text-on-surface mb-4">References</h3>
           <div className="space-y-2">
@@ -575,6 +628,7 @@ const FindingContent = ({
                 impact_detail: (typeof finding.impact === 'object' ? finding.impact?.detail : '') || (typeof finding.impact === 'string' ? finding.impact : ''),
                 likelihood_severity: (typeof finding.likelihood === 'object' ? finding.likelihood?.severity : '') || '',
                 likelihood_detail: (typeof finding.likelihood === 'object' ? finding.likelihood?.detail : '') || (typeof finding.likelihood === 'string' ? finding.likelihood : ''),
+                evidence_items: (finding as any).evidence_items || [],
               });
             }}
             className="border-outline text-on-surface-variant"

@@ -294,7 +294,7 @@ const CreateProjectPage = () => {
       };
 
        const key = templateKeyFromTemplate(selectedTemplate);
-       if (key === 'securify') {
+       if (key === 'securify' || key === 'dast') {
          payload.application_details = (formData.application_details || []).filter((r) => (r.name || '').trim() || (r.url || '').trim());
          payload.user_roles = (formData.user_roles || []).filter((r) => (r.role || '').trim() || (r.username || '').trim());
          payload.include_out_of_scope_endpoints = Boolean(formData.include_out_of_scope_endpoints);
@@ -398,7 +398,7 @@ const CreateProjectPage = () => {
             </div>
           </div>
 
-          {templateKeyFromTemplate(selectedTemplate) === 'securify' ? (
+          {templateKeyFromTemplate(selectedTemplate) === 'securify' || templateKeyFromTemplate(selectedTemplate) === 'dast' ? (
             <>
               <div>
                 <label className="text-sm font-medium text-on-surface mb-2 block">Application Details</label>

@@ -1,6 +1,6 @@
 import type { ReportTemplate } from '../models/report.model';
 
-export type ReportTemplateKey = 'securify' | 'blueally' | 'unknown';
+export type ReportTemplateKey = 'securify' | 'blueally' | 'dast' | 'unknown';
 
 export interface TemplateRenderer {
   key: ReportTemplateKey;

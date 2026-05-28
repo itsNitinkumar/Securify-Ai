@@ -38,6 +38,13 @@ export interface Finding {
   reviewed_by?: number;
   created_at: string;
   updated_at: string;
+  finding_type?: 'true_positive' | 'false_positive';
+  validation_status?: 'confirmed' | 'false_positive' | 'inconclusive' | null;
+  evidence_items?: Array<{
+    imageKey?: string;
+    caption?: string;
+    signedUrl?: string;
+  }>;
 }
 
 export interface CreateFindingData {
@@ -59,12 +66,20 @@ export interface CreateFindingData {
   cvss_score?: number;
   cwe_id?: string;
   owasp_category?: string;
+  finding_type?: 'true_positive' | 'false_positive';
+  validation_status?: string;
+  evidence_items?: any[];
 }
 
 export interface GenerateFindingData {
   evidence: string;
   severity: string;
   project_id?: number;
+}
+
+export interface GenerateFalsePositiveData {
+  evidence: string;
+  finding_name?: string;
 }
 
 export const findingApi = {
@@ -100,6 +115,11 @@ export const findingApi = {
   generateContent: (data: GenerateFindingData) =>
     axiosInstance.post<ApiResponse<Partial<Finding>>>('/findings/generate-content', data, {
       timeout: 60000, // 60 seconds for AI generation
+    }),
+
+  generateFalsePositiveContent: (data: GenerateFalsePositiveData) =>
+    axiosInstance.post<ApiResponse<Partial<Finding>>>('/findings/generate-false-positive-content', data, {
+      timeout: 60000,
     }),
 
   generate: (data: GenerateFindingData) =>

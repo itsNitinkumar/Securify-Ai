@@ -33,7 +33,7 @@ type ProjectWithFindings = {
   status?: string;
   created_at: string;
   updated_at: string;
-  findings: Array<{ id: number; title: string; severity: string; status: string; created_at: string }>;
+  findings: Array<{ id: number; title: string; severity: string; status: string; finding_type?: string; validation_status?: string; created_at: string }>;
 };
 
 const ProjectDetailPage = () => {
@@ -351,7 +351,7 @@ const ProjectDetailPage = () => {
         client_name: !selectedClientId && clientQuery.trim() ? clientQuery.trim() : undefined,
       };
 
-      if (key === 'securify' || key === 'unknown') {
+      if (key === 'securify' || key === 'dast' || key === 'unknown') {
         payload.application_details = (editForm.application_details || []).filter((r) => (r.name || '').trim() || (r.url || '').trim());
         payload.user_roles = (editForm.user_roles || []).filter((r) => (r.role || '').trim() || (r.username || '').trim());
         payload.include_out_of_scope_endpoints = Boolean(editForm.include_out_of_scope_endpoints);
@@ -461,13 +461,32 @@ const ProjectDetailPage = () => {
                 <Plus className="mr-2 h-4 w-4" />
                 Add Finding
               </Button>
-              <Button
-                onClick={() => navigate(`/projects/${project.id}/findings/generate`)}
-                className="bg-primary text-surface hover:bg-primary/90"
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                Generate with AI
-              </Button>
+              {templateKeyFromProject(project) === 'dast' ? (
+                <>
+                  <Button
+                    onClick={() => navigate(`/projects/${project.id}/findings/generate?type=true_positive`)}
+                    className="bg-primary text-surface hover:bg-primary/90"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Generate True Positive
+                  </Button>
+                  <Button
+                    onClick={() => navigate(`/projects/${project.id}/findings/generate?type=false_positive`)}
+                    className="bg-purple-500 text-surface hover:bg-purple-500/90"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Generate False Positive
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  onClick={() => navigate(`/projects/${project.id}/findings/generate`)}
+                  className="bg-primary text-surface hover:bg-primary/90"
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Generate with AI
+                </Button>
+              )}
             </>
           ) : null}
           {(currentUserRole === 'manager' || currentUserRole === 'client') ? (
@@ -706,7 +725,7 @@ const ProjectDetailPage = () => {
                   </select>
                 </div>
 
-              {(formTemplateKey === 'securify' || formTemplateKey === 'unknown') ? (
+              {(formTemplateKey === 'securify' || formTemplateKey === 'dast' || formTemplateKey === 'unknown') ? (
                 <>
                   <div>
                     <label className="text-sm font-medium text-on-surface mb-2 block">Application Details</label>
@@ -929,7 +948,7 @@ const ProjectDetailPage = () => {
                 </div>
               )}
 
-              {(formTemplateKey === 'securify' || formTemplateKey === 'unknown') && project.application_details && project.application_details.length > 0 && (
+              {(formTemplateKey === 'securify' || formTemplateKey === 'dast' || formTemplateKey === 'unknown') && project.application_details && project.application_details.length > 0 && (
                 <div className="p-3 rounded-lg bg-surface border border-outline-variant">
                   <div className="text-xs text-on-surface-variant mb-2">Application Details</div>
                   <div className="overflow-x-auto">
@@ -953,7 +972,7 @@ const ProjectDetailPage = () => {
                 </div>
               )}
 
-              {(formTemplateKey === 'securify' || formTemplateKey === 'unknown') && project.user_roles && project.user_roles.length > 0 && (
+              {(formTemplateKey === 'securify' || formTemplateKey === 'dast' || formTemplateKey === 'unknown') && project.user_roles && project.user_roles.length > 0 && (
                 <div className="p-3 rounded-lg bg-surface border border-outline-variant">
                   <div className="text-xs text-on-surface-variant mb-2">User Roles</div>
                   <div className="overflow-x-auto">
@@ -1008,7 +1027,7 @@ const ProjectDetailPage = () => {
                 </div>
               )}
 
-              {(formTemplateKey === 'securify' || formTemplateKey === 'unknown') && (project as any).include_out_of_scope_endpoints && project.out_of_scope_endpoints && project.out_of_scope_endpoints.length > 0 && (
+              {(formTemplateKey === 'securify' || formTemplateKey === 'dast' || formTemplateKey === 'unknown') && (project as any).include_out_of_scope_endpoints && project.out_of_scope_endpoints && project.out_of_scope_endpoints.length > 0 && (
                 <div className="p-3 rounded-lg bg-surface border border-outline-variant">
                   <div className="text-xs text-on-surface-variant mb-2">Out of Scope Endpoints</div>
                   <div className="overflow-x-auto">
@@ -1038,62 +1057,88 @@ const ProjectDetailPage = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-on-surface">Recent Findings</h2>
-            <span className="text-xs text-on-surface-variant">{visibleFindings.length} total</span>
-          </div>
-
-          {visibleFindings.length > 0 ? (
-            <div className="space-y-2">
-              {visibleFindings.slice(0, 10).map((finding) => (
-                <Card
-                  key={finding.id}
-                  className="p-3 bg-surface-high border-outline-variant hover:border-primary/30 transition-all cursor-pointer"
-                  onClick={() => navigate(`/findings/${finding.id}`)}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="text-sm font-medium text-on-surface line-clamp-1">{finding.title}</h4>
-                        <Badge className={`text-xs ${severityBadge(finding.severity)}`}>{finding.severity}</Badge>
-                      </div>
-                      <p className="text-xs text-on-surface-variant">Created {new Date(finding.created_at).toLocaleDateString()}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-shrink-0 text-primary hover:text-primary/80"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/findings/${finding.id}`);
-                      }}
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                    {(currentUserRole === 'manager' || currentUserRole === 'analyst') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="flex-shrink-0 text-error hover:text-error/80"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm('Are you sure you want to delete this finding?')) {
-                            handleDeleteFinding(finding.id);
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
+          {templateKeyFromProject(project) === 'dast' ? (
+            <>
+              {/* DAST: True Positive Findings */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-sm font-semibold text-on-surface">True Positive Findings</h2>
+                  <span className="text-xs text-on-surface-variant">{visibleFindings.filter((f: any) => f.finding_type !== 'false_positive').length} total</span>
+                </div>
+                {visibleFindings.filter((f: any) => f.finding_type !== 'false_positive').length > 0 ? (
+                  <div className="space-y-2">
+                    {visibleFindings.filter((f: any) => f.finding_type !== 'false_positive').slice(0, 10).map((finding) => (
+                      <FindingCard
+                        key={finding.id}
+                        finding={finding}
+                        severityBadge={severityBadge}
+                        onNavigate={() => navigate(`/findings/${finding.id}`)}
+                        onDelete={() => handleDeleteFinding(finding.id)}
+                        showDelete={currentUserRole === 'manager' || currentUserRole === 'analyst'}
+                      />
+                    ))}
                   </div>
-                </Card>
-              ))}
-            </div>
+                ) : (
+                  <Card className="p-6 text-center bg-surface-high border-outline">
+                    <p className="text-sm text-on-surface-variant">No true positive findings</p>
+                  </Card>
+                )}
+              </div>
+
+              {/* DAST: False Positive Findings */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-sm font-semibold text-on-surface">False Positive Findings</h2>
+                  <span className="text-xs text-on-surface-variant">{visibleFindings.filter((f: any) => f.finding_type === 'false_positive').length} total</span>
+                </div>
+                {visibleFindings.filter((f: any) => f.finding_type === 'false_positive').length > 0 ? (
+                  <div className="space-y-2">
+                    {visibleFindings.filter((f: any) => f.finding_type === 'false_positive').slice(0, 10).map((finding) => (
+                      <FindingCard
+                        key={finding.id}
+                        finding={finding}
+                        severityBadge={severityBadge}
+                        onNavigate={() => navigate(`/findings/${finding.id}`)}
+                        onDelete={() => handleDeleteFinding(finding.id)}
+                        showDelete={currentUserRole === 'manager' || currentUserRole === 'analyst'}
+                        isFP
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <Card className="p-6 text-center bg-surface-high border-outline">
+                    <p className="text-sm text-on-surface-variant">No false positive findings</p>
+                  </Card>
+                )}
+              </div>
+            </>
           ) : (
-            <Card className="p-8 text-center bg-surface-high border-outline">
-              <CheckCircle className="w-12 h-12 text-on-surface-variant mx-auto mb-3 opacity-50" />
-              <p className="text-sm text-on-surface-variant">No findings yet</p>
-            </Card>
+            <>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-on-surface">Recent Findings</h2>
+                <span className="text-xs text-on-surface-variant">{visibleFindings.length} total</span>
+              </div>
+
+              {visibleFindings.length > 0 ? (
+                <div className="space-y-2">
+                  {visibleFindings.slice(0, 10).map((finding) => (
+                    <FindingCard
+                      key={finding.id}
+                      finding={finding}
+                      severityBadge={severityBadge}
+                      onNavigate={() => navigate(`/findings/${finding.id}`)}
+                      onDelete={() => handleDeleteFinding(finding.id)}
+                      showDelete={currentUserRole === 'manager' || currentUserRole === 'analyst'}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Card className="p-8 text-center bg-surface-high border-outline">
+                  <CheckCircle className="w-12 h-12 text-on-surface-variant mx-auto mb-3 opacity-50" />
+                  <p className="text-sm text-on-surface-variant">No findings yet</p>
+                </Card>
+              )}
+            </>
           )}
         </div>
 
@@ -1148,5 +1193,58 @@ const ProjectDetailPage = () => {
     </div>
   );
 };
+
+const FindingCard = ({ finding, severityBadge, onNavigate, onDelete, showDelete, isFP }: {
+  finding: any;
+  severityBadge: (s: string) => string;
+  onNavigate: () => void;
+  onDelete: () => void;
+  showDelete: boolean;
+  isFP?: boolean;
+}) => (
+  <Card
+    className="p-3 bg-surface-high border-outline-variant hover:border-primary/30 transition-all cursor-pointer"
+    onClick={onNavigate}
+  >
+    <div className="flex items-start justify-between gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <h4 className="text-sm font-medium text-on-surface line-clamp-1">{finding.title}</h4>
+          {!isFP && <Badge className={`text-xs ${severityBadge(finding.severity)}`}>{finding.severity}</Badge>}
+          {(isFP || finding.finding_type === 'false_positive') && (
+            <Badge className="text-xs bg-purple-500/10 text-purple-400 border-purple-500/20">FP</Badge>
+          )}
+        </div>
+        <p className="text-xs text-on-surface-variant">Created {new Date(finding.created_at).toLocaleDateString()}</p>
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="flex-shrink-0 text-primary hover:text-primary/80"
+        onClick={(e) => {
+          e.stopPropagation();
+          onNavigate();
+        }}
+      >
+        <ExternalLink className="h-4 w-4" />
+      </Button>
+      {showDelete && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="flex-shrink-0 text-error hover:text-error/80"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (window.confirm('Are you sure you want to delete this finding?')) {
+              onDelete();
+            }
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  </Card>
+);
 
 export default ProjectDetailPage;

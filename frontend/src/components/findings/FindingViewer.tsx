@@ -114,6 +114,8 @@ const FindingViewer = ({
     rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
   };
 
+  const isFalsePositive = (f: Finding) => (f as any).finding_type === 'false_positive';
+
   if (loading || !finding) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -135,9 +137,13 @@ const FindingViewer = ({
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
-                  <Badge className={severityColors[finding.severity]}>
-                    {finding.severity}
-                  </Badge>
+                  {isFalsePositive(finding) ? (
+                    <Badge className="text-xs bg-purple-500/10 text-purple-400 border-purple-500/20">False Positive</Badge>
+                  ) : (
+                    <Badge className={severityColors[finding.severity]}>
+                      {finding.severity}
+                    </Badge>
+                  )}
                   <Badge className={statusColors[finding.status]}>
                     {finding.status.replace('_', ' ').toUpperCase()}
                   </Badge>
@@ -174,7 +180,7 @@ const FindingViewer = ({
             )}
 
             {/* Likelihood & Impact - Combined Section */}
-            {(finding.likelihood || finding.impact) && (
+            {!isFalsePositive(finding) && (finding.likelihood || finding.impact) && (
               <Card className="p-4 bg-surface border-outline-variant">
                 <h3 className="text-sm font-semibold text-on-surface mb-3">Impact & Likelihood</h3>
                 <div className="space-y-4">
@@ -210,7 +216,7 @@ const FindingViewer = ({
             )}
 
             {/* Steps to Reproduce */}
-            {finding.steps_to_reproduce && finding.steps_to_reproduce.length > 0 && (
+            {!isFalsePositive(finding) && finding.steps_to_reproduce && finding.steps_to_reproduce.length > 0 && (
               <Card className="p-4 bg-surface border-outline-variant">
                 <h3 className="text-sm font-semibold text-on-surface mb-3">Steps to Reproduce</h3>
                 <div className="space-y-4">
@@ -267,6 +273,37 @@ const FindingViewer = ({
               </Card>
             )}
 
+            {/* Evidence Items (False Positive) */}
+            {isFalsePositive(finding) && (finding as any).evidence_items?.length > 0 && (
+              <Card className="p-4 bg-surface border-outline-variant">
+                <h3 className="text-sm font-semibold text-on-surface mb-3">Evidence Items</h3>
+                <div className="space-y-4">
+                  {((finding as any).evidence_items || []).map((item: any, index: number) => (
+                    <div key={index} className="bg-surface-low p-3 rounded-lg border border-outline-variant">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-semibold text-purple-400 bg-purple-500/10 px-2 py-1 rounded">
+                          Evidence #{index + 1}
+                        </span>
+                      </div>
+                      {(item.signedUrl || item.imageKey) && (
+                        <div className="mt-3">
+                          <img
+                            src={item.signedUrl || item.imageKey}
+                            alt={`Evidence ${index + 1}`}
+                            className="max-h-64 rounded border border-outline-variant"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                          {item.caption && (
+                            <p className="text-xs text-on-surface-variant mt-2 italic">{item.caption}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
             {/* Proof of Concept */}
             {finding.proof_of_concept && (
               <Card className="p-4 bg-surface border-outline-variant">
@@ -278,7 +315,7 @@ const FindingViewer = ({
             )}
 
             {/* Recommendation (array from AI) */}
-            {finding.recommendation && finding.recommendation.length > 0 && (
+            {!isFalsePositive(finding) && finding.recommendation && finding.recommendation.length > 0 && (
               <Card className="p-4 bg-surface border-outline-variant">
                 <h3 className="text-sm font-semibold text-on-surface mb-3 flex items-center gap-2">
                   <Shield className="w-4 h-4" />
@@ -352,7 +389,7 @@ const FindingViewer = ({
             )}
 
             {/* References */}
-            {finding.references && finding.references.length > 0 && (
+            {!isFalsePositive(finding) && finding.references && finding.references.length > 0 && (
               <Card className="p-4 bg-surface border-outline-variant">
                 <h3 className="text-sm font-semibold text-on-surface mb-2">References</h3>
                 <ul className="list-disc list-inside space-y-1">

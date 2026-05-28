@@ -17,12 +17,24 @@ class FindingController {
   private static async processFindingImages(finding: any): Promise<any> {
     if (!finding) return finding;
     
-    const baseUrl = config.frontendUrl.replace(':5173', ':3000'); // Use backend URL
+    const baseUrl = config.frontendUrl.replace(':5173', ':3000');
     
     if (finding.steps_to_reproduce && Array.isArray(finding.steps_to_reproduce)) {
       finding.steps_to_reproduce = await imageUrlService.processStepsImages(
         finding.steps_to_reproduce,
         baseUrl
+      );
+    }
+    
+    if (finding.evidence_items && Array.isArray(finding.evidence_items)) {
+      finding.evidence_items = await Promise.all(
+        finding.evidence_items.map(async (item: any) => {
+          if (item.imageKey) {
+            const signedUrl = await imageUrlService.getAccessibleUrl(item.imageKey, baseUrl);
+            return { ...item, signedUrl: signedUrl || item.imageKey };
+          }
+          return item;
+        })
       );
     }
     
@@ -59,6 +71,28 @@ class FindingController {
 
     console.log('✅ AI result received:', JSON.stringify(aiResult, null, 2));
     // Return AI-generated content only
+    res.json({
+      success: true,
+      data: aiResult,
+    });
+  });
+
+  // Generate false positive content using AI (without creating a finding)
+  static generateFalsePositiveContent = asyncHandler(async (req: Request, res: Response) => {
+    const { evidence, finding_name } = req.body;
+    const user = (req as any).user;
+
+    if (!evidence) {
+      throw new ApiError(400, 'Evidence is required');
+    }
+
+    const aiResult = await OpenAIService.generateFalsePositiveFinding({
+      evidence,
+      severity: 'none',
+      role: user.role || 'analyst',
+      finding_name: finding_name || undefined,
+    });
+
     res.json({
       success: true,
       data: aiResult,
@@ -132,6 +166,9 @@ class FindingController {
       finding_references,
       status,
       project_id,
+      finding_type,
+      validation_status,
+      evidence_items,
     } = req.body;
     const user = (req as any).user;
 
@@ -144,9 +181,11 @@ class FindingController {
       has_impact: !!impact,
     });
 
-    if (!title || !severity) {
+    const isFP = finding_type === 'false_positive';
+    if (!title || (!severity && !isFP)) {
       throw new ApiError(400, 'Title and severity are required');
     }
+    const effectiveSeverity = isFP ? 'None' : severity;
 
     // Check for duplicate finding in the same project
     if (project_id) {
@@ -165,7 +204,7 @@ class FindingController {
     const finding = await FindingModel.create({
       title,
       description: description || '',
-      severity,
+      severity: effectiveSeverity,
       impact: impact || null,
       likelihood: likelihood || null,
       recommendation: recommendation || null,
@@ -177,6 +216,9 @@ class FindingController {
       project_id: project_id,
       created_by: user.id,
       status: status || 'draft',
+      finding_type: finding_type || 'true_positive',
+      validation_status: validation_status || null,
+      evidence_items: evidence_items || [],
     });
 
     console.log('✅ Finding created with ID:', finding.id);
@@ -207,7 +249,7 @@ class FindingController {
   // Get all findings
   static getAllFindings = asyncHandler(async (req: Request, res: Response) => {
     const user = (req as any).user;
-    const { severity, status, project_id } = req.query;
+    const { severity, status, project_id, finding_type } = req.query;
 
     const filters: any = {};
 
@@ -223,6 +265,7 @@ class FindingController {
     if (severity) filters.severity = severity;
     if (status && user.role !== 'client') filters.status = status;
     if (project_id && user.role !== 'client') filters.project_id = project_id;
+    if (finding_type) filters.finding_type = finding_type;
 
     const findings = await FindingModel.findAll(filters);
     
@@ -703,6 +746,9 @@ class FindingController {
         tags: finding.tags,
         status: finding.status || 'draft',
         created_by: userId,
+        finding_type: finding.finding_type || 'true_positive',
+        validation_status: finding.validation_status || undefined,
+        evidence_items: finding.evidence_items || [],
       });
       importedFindings.push(newFinding);
     }
