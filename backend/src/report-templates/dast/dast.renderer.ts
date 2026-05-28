@@ -141,6 +141,7 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
   const { templatePath, data } = args;
   const templateBuf = fs.readFileSync(templatePath);
   const templateZip = await JSZip.loadAsync(templateBuf);
+  const isDast = matches(data.template);
 
   const templateXml = await templateZip.file('word/document.xml')?.async('string');
   if (!templateXml) throw new Error('word/document.xml not found in template');
@@ -184,8 +185,12 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
       const settingsStr = await settingsXml;
       const $settings = cheerioLoad(settingsStr);
       const settingsEl = $settings('w\\:settings').first();
-      if (settingsEl.length && !settingsEl.find('w\\:updateFields').length) {
-        settingsEl.prepend('<w:updateFields w:val="true"/>');
+      if (settingsEl.length) {
+        if (isDast) {
+          settingsEl.find('w\\:updateFields').remove();
+        } else if (!settingsEl.find('w\\:updateFields').length) {
+          settingsEl.prepend('<w:updateFields w:val="true"/>');
+        }
         templateZip.file('word/settings.xml', Buffer.from($settings.xml()));
       }
     }
@@ -223,6 +228,10 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
     // Start/End Date text placeholders
     if (txt.includes('Start Date') || txt.includes('End Date')) {
       txt = txt.replace(/Start Date/g, startDate).replace(/End Date/g, endDate);
+      changed = true;
+    }
+    if (txt === 'Dynamic Analysis Security Test Report') {
+      txt = String(data.project?.name || txt);
       changed = true;
     }
     if (changed) setParaText($, p, txt);
@@ -812,13 +821,13 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
           if (impact) {
             const sev = String(finding.impact?.severity || '').trim();
             const sevPrefix = sev ? `${sev} – ` : '';
-            const xml = `<w:p><w:pPr><w:spacing w:after="200" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">Impact:</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve"> ${sevPrefix}</w:t></w:r><w:r><w:rPr><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${escapeXmlText(impact)}</w:t></w:r></w:p>`;
+            const xml = `<w:p><w:pPr><w:spacing w:after="120" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:color w:val="4EBc22"/></w:rPr><w:t xml:space="preserve">• </w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">Impact:</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${sevPrefix}</w:t></w:r><w:r><w:rPr><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${escapeXmlText(impact)}</w:t></w:r></w:p>`;
             sd(insertPt).after(xml);
             insertPt = sd(insertPt).next().get(0);
           }
           if (likelihood) {
             const sev = String(finding.likelihood?.severity || '').trim();
-            const xml = `<w:p><w:pPr><w:spacing w:after="200" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">Likelihood:</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve"> ${sev ? `${sev} – ` : ''}</w:t></w:r><w:r><w:rPr><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${escapeXmlText(likelihood)}</w:t></w:r></w:p>`;
+            const xml = `<w:p><w:pPr><w:spacing w:after="120" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:color w:val="4EBc22"/></w:rPr><w:t xml:space="preserve">• </w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">Likelihood:</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${sev ? `${sev} – ` : ''}</w:t></w:r><w:r><w:rPr><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${escapeXmlText(likelihood)}</w:t></w:r></w:p>`;
             sd(insertPt).after(xml);
           }
         }

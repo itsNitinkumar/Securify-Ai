@@ -439,10 +439,37 @@ class ReportService {
         throw new ApiError(500, 'DOCX to PDF conversion failed: output PDF was not created');
       }
 
-       // BlueAlly: post-process PDF to fix LO cover pagination.
-       if (templateKey === 'blueally') {
-         try {
-           const finalPdf = await this.postProcessBlueAllyPdf(outputPath, docxBuffer, tempDir, data);
+      if (templateKey === 'dast') {
+        try {
+          const actualTocPages = await this.buildDastActualTocPages(outputPath, data);
+          if (actualTocPages.size > 0) {
+            docxBuffer = this.patchDastTocPageNumbers(docxBuffer, actualTocPages, data);
+            fs.writeFileSync(inputPath, docxBuffer);
+
+            await this.execFileAsync(sofficePath, [
+              '--headless',
+              '--convert-to',
+              'pdf:writer_pdf_Export',
+              '--outdir',
+              tempDir,
+              inputPath,
+            ], {
+              timeout: 120000,
+            });
+
+            if (!fs.existsSync(outputPath)) {
+              throw new ApiError(500, 'DOCX to PDF reconversion failed after TOC patch');
+            }
+          }
+        } catch (e: any) {
+          console.warn('[Report Service] DAST TOC pagination patch failed, keeping initial PDF:', e?.message || e);
+        }
+      }
+
+      // BlueAlly: post-process PDF to fix LO cover pagination.
+      if (templateKey === 'blueally') {
+        try {
+          const finalPdf = await this.postProcessBlueAllyPdf(outputPath, docxBuffer, tempDir, data);
            return finalPdf;
          } catch (e: any) {
            console.warn('[Report Service] BlueAlly PDF post-process failed, returning raw LO PDF:', e?.message || e);
@@ -460,6 +487,189 @@ class ReportService {
       } catch {
         // Ignore temp cleanup failures.
       }
+    }
+  }
+
+  private static normalizeDastTocText(text: string): string {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private static cleanDastFindingTitle(title: string, isFP: boolean): string {
+    let t = String(title || '').trim();
+    if (isFP) t = t.replace(/\s*-\s*False\s*Positive\s*$/i, '');
+    return t;
+  }
+
+  private static buildDastTocTitles(data: ReportData): string[] {
+    const titles = [
+      'Scope',
+      'Application Details',
+      'User Roles',
+      'Tools',
+      'Assessment Limitation',
+      'Vulnerabilities',
+      'Summary',
+      'Detailed Vulnerabilities',
+    ];
+
+    const findings = Array.isArray(data.findings) ? data.findings : [];
+    const tpFindings = findings.filter((f: any) => String(f.finding_type || '') !== 'false_positive');
+    const fpFindings = findings.filter((f: any) => String(f.finding_type || '') === 'false_positive');
+
+    if (tpFindings.length) titles.push('True Positive');
+    for (const f of tpFindings) titles.push(this.cleanDastFindingTitle(f.title, false));
+    if (fpFindings.length) titles.push('False Positive');
+    for (const f of fpFindings) titles.push(this.cleanDastFindingTitle(f.title, true));
+
+    return titles;
+  }
+
+  private static async extractPdfPageTexts(pdfPath: string): Promise<string[]> {
+    const info = await this.execFileAsync('pdfinfo', [pdfPath], { timeout: 120000 });
+    const pagesMatch = String(info.stdout || '').match(/Pages:\s+(\d+)/i);
+    const pages = pagesMatch ? Number.parseInt(pagesMatch[1], 10) : 0;
+    if (!pages || pages < 1) return [];
+
+    const texts: string[] = [];
+    for (let i = 1; i <= pages; i++) {
+      const out = await this.execFileAsync('pdftotext', ['-f', String(i), '-l', String(i), '-layout', pdfPath, '-'], { timeout: 120000 });
+      texts.push(String(out.stdout || ''));
+    }
+    return texts;
+  }
+
+  private static async buildDastActualTocPages(pdfPath: string, data: ReportData): Promise<Map<string, number>> {
+    const pageTexts = await this.extractPdfPageTexts(pdfPath);
+    const pages = new Map<string, number>();
+    if (!pageTexts.length) return pages;
+
+    const normalizedPageTexts = pageTexts.map((pageText) => this.normalizeDastTocText(pageText));
+    const normalizedPageLines = pageTexts.map((pageText) =>
+      String(pageText || '')
+        .split(/\r?\n/)
+        .map((line) => this.normalizeDastTocText(line))
+        .filter(Boolean)
+    );
+
+    const findStandalonePage = (title: string, startPage = 3): number | null => {
+      const needle = this.normalizeDastTocText(title);
+      if (!needle) return null;
+      for (let i = Math.max(startPage - 1, 0); i < normalizedPageTexts.length; i++) {
+        if (normalizedPageTexts[i].includes(needle)) {
+          return i + 1;
+        }
+      }
+      return null;
+    };
+
+    const findExactLinePage = (title: string, startPage = 3): number | null => {
+      const needle = this.normalizeDastTocText(title);
+      if (!needle) return null;
+      for (let i = Math.max(startPage - 1, 0); i < normalizedPageLines.length; i++) {
+        if (normalizedPageLines[i].some((line) => line === needle)) {
+          return i + 1;
+        }
+      }
+      return null;
+    };
+
+    const titles = this.buildDastTocTitles(data);
+    const detailedPage = findExactLinePage('Detailed Vulnerabilities', 3) ?? 5;
+    const contentStartPage = detailedPage;
+    const tpHeadingPage = findExactLinePage('True Positive', contentStartPage) ?? contentStartPage;
+    const fpHeadingPage = findExactLinePage('False Positive', Math.max(contentStartPage, tpHeadingPage)) ?? pageTexts.length;
+
+    // Static sections and section headings.
+    for (const title of ['Scope', 'Application Details', 'User Roles', 'Tools', 'Assessment Limitation', 'Vulnerabilities', 'Summary', 'Detailed Vulnerabilities']) {
+      const page = findStandalonePage(title);
+      if (page) pages.set(title, page);
+    }
+
+    if (tpHeadingPage) pages.set('True Positive', tpHeadingPage);
+    if (fpHeadingPage) pages.set('False Positive', fpHeadingPage);
+
+    const findings = Array.isArray(data.findings) ? data.findings : [];
+    const tpFindings = findings.filter((f: any) => String(f.finding_type || '') !== 'false_positive');
+    const fpFindings = findings.filter((f: any) => String(f.finding_type || '') === 'false_positive');
+
+    for (const finding of tpFindings) {
+      const title = this.cleanDastFindingTitle(finding.title, false);
+      const page = findStandalonePage(title, contentStartPage);
+      if (page) pages.set(title, page);
+    }
+
+    for (const finding of fpFindings) {
+      const title = this.cleanDastFindingTitle(finding.title, true);
+      const page = findStandalonePage(title, Math.max(fpHeadingPage, contentStartPage));
+      if (page) pages.set(title, page);
+    }
+
+    // Make sure TOC titles we know about remain in a deterministic order.
+    for (const title of titles) {
+      if (!pages.has(title)) {
+        const page = findStandalonePage(title, contentStartPage);
+        if (page) pages.set(title, page);
+      }
+    }
+
+    return pages;
+  }
+
+  private static patchDastTocPageNumbers(docxBuffer: Buffer, pageMap: Map<string, number>, data: ReportData): Buffer {
+    let PizZip: any;
+    let cheerio: any;
+    try {
+      PizZip = require('pizzip');
+      cheerio = require('cheerio');
+    } catch {
+      return docxBuffer;
+    }
+
+    try {
+      const zip = new PizZip(docxBuffer);
+      const documentPath = 'word/document.xml';
+      const documentXml = zip.file(documentPath)?.asText() || '';
+      if (!documentXml) return docxBuffer;
+
+      const $ = cheerio.load(documentXml, { xmlMode: true });
+      const tocSdt = $('w\\:body w\\:sdt').filter((_: number, el: any) => $(el).find('w\\:docPartGallery').length > 0).first();
+      if (!tocSdt.length) return docxBuffer;
+
+      const tocContent = tocSdt.find('w\\:sdtContent').first();
+      const tocParas = tocContent.find('w\\:p').toArray();
+      const titles = this.buildDastTocTitles(data);
+      let searchIdx = 0;
+
+      for (const title of titles) {
+        const page = pageMap.get(title);
+        if (!page) continue;
+        const needle = this.normalizeDastTocText(title);
+        let matchedIdx = -1;
+        for (let i = searchIdx; i < tocParas.length; i++) {
+          const paraText = $(tocParas[i]).find('w\\:t').toArray().map((n: any) => $(n).text()).join(' ');
+          const normalized = this.normalizeDastTocText(paraText);
+          if (normalized === needle || normalized.includes(needle)) {
+            matchedIdx = i;
+            break;
+          }
+        }
+        if (matchedIdx === -1) continue;
+
+        const tNodes = $(tocParas[matchedIdx]).find('w\\:t').toArray();
+        if (tNodes.length > 0) {
+          $(tNodes[tNodes.length - 1]).text(String(page));
+        }
+        searchIdx = matchedIdx + 1;
+      }
+
+      zip.file(documentPath, $.xml());
+      return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+    } catch {
+      return docxBuffer;
     }
   }
 
@@ -875,6 +1085,8 @@ class ReportService {
           $('w\\:tbl').each((_: number, tbl: any) => {
             const rows = $(tbl).find('> w\\:tr').toArray();
             if (rows.length < 1) return;
+            const headerTexts = $(rows[0]).find('> w\\:tc').toArray().map((tc: any) => $(tc).text().replace(/\s+/g, ' ').trim().toLowerCase());
+            const isSummaryTable = headerTexts.includes('vulnerability') && headerTexts.includes('status') && headerTexts.includes('risk');
 
             // Set visible borders on the table (dark gray, single, 4pt)
             let tblPr = $(tbl).children('w\\:tblPr').first();
@@ -975,6 +1187,33 @@ class ReportService {
                   }
                 });
               });
+            }
+
+            if (isSummaryTable) {
+              for (let ri = 1; ri < rows.length; ri++) {
+                const tc = $(rows[ri]).find('> w\\:tc').eq(2);
+                if (!tc.length) continue;
+                const severity = tc.text().replace(/\s+/g, ' ').trim();
+                if (!severity) continue;
+                let tcPr = tc.children('w\\:tcPr').first();
+                if (!tcPr.length) { tc.prepend('<w:tcPr/>'); tcPr = tc.children('w\\:tcPr').first(); }
+                let shd = tcPr.children('w\\:shd').first();
+                const fill = this.severityFill(severity);
+                if (shd.length) {
+                  shd.attr('w:val', 'clear');
+                  shd.attr('w:color', 'auto');
+                  shd.attr('w:fill', fill);
+                } else {
+                  tcPr.append(`<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`);
+                }
+                tc.find('w\\:r').each((__: number, r: any) => {
+                  let rPr = $(r).children('w\\:rPr').first();
+                  if (!rPr.length) { $(r).prepend('<w:rPr/>'); rPr = $(r).children('w\\:rPr').first(); }
+                  let colorNode = rPr.children('w\\:color').first();
+                  if (!colorNode.length) rPr.append('<w:color w:val="FFFFFF"/>');
+                  else colorNode.attr('w:val', 'FFFFFF');
+                });
+              }
             }
             tablesPatched++;
           });
@@ -4187,7 +4426,45 @@ class ReportService {
     const filePath = path.join(this.reportsDir, fileName);
     console.log('📄 Generating DOCX report at:', filePath);
 
-    const buffer = await this.generateDOCXBuffer(data);
+    let buffer = await this.generateDOCXBuffer(data);
+
+    const templateKey = data.template ? getTemplateKey(data.template) : 'unknown';
+    if (templateKey === 'dast') {
+      const sofficePath = '/usr/bin/soffice';
+      if (fs.existsSync(sofficePath)) {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'securify-dast-docx-'));
+        const inputPath = path.join(tempDir, 'report.docx');
+        const outputPath = path.join(tempDir, 'report.pdf');
+
+        try {
+          fs.writeFileSync(inputPath, buffer);
+          await this.execFileAsync(sofficePath, [
+            '--headless',
+            '--convert-to',
+            'pdf:writer_pdf_Export',
+            '--outdir',
+            tempDir,
+            inputPath,
+          ], { timeout: 120000 });
+
+          if (fs.existsSync(outputPath)) {
+            const actualTocPages = await this.buildDastActualTocPages(outputPath, data);
+            if (actualTocPages.size > 0) {
+              buffer = this.patchDastTocPageNumbers(buffer, actualTocPages, data);
+            }
+          }
+        } catch (e) {
+          console.warn('[Report Service] DOCX TOC pagination patch failed, keeping initial DOCX:', (e as any)?.message || e);
+        } finally {
+          try {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+          } catch {
+            // Ignore cleanup failures.
+          }
+        }
+      }
+    }
+
     fs.writeFileSync(filePath, buffer);
     return filePath;
   }
