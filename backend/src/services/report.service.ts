@@ -410,6 +410,9 @@ class ReportService {
       } else if (templateKey === 'dast') {
         console.log('[Report Service] Applying DAST PDF patch...');
         docxBuffer = await this.patchDastDocxForLibreOfficePdf(docxBuffer);
+      } else if (templateKey === 'securify' || templateKey === 'unknown') {
+        console.log('[Report Service] Applying professional PDF bullet patch...');
+        docxBuffer = await this.patchProfessionalDocxForLibreOfficePdf(docxBuffer);
       } else {
         console.log('[Report Service] Not applying BlueAlly/DAST patch (template key is:', templateKey, ')');
       }
@@ -463,6 +466,31 @@ class ReportService {
           }
         } catch (e: any) {
           console.warn('[Report Service] DAST TOC pagination patch failed, keeping initial PDF:', e?.message || e);
+        }
+      } else if (templateKey === 'securify' || templateKey === 'blueally' || templateKey === 'unknown') {
+        try {
+          const actualTocPages = await this.buildProfessionalActualTocPages(outputPath, data);
+          if (actualTocPages.size > 0) {
+            docxBuffer = this.patchProfessionalTocPageNumbers(docxBuffer, actualTocPages, data);
+            fs.writeFileSync(inputPath, docxBuffer);
+
+            await this.execFileAsync(sofficePath, [
+              '--headless',
+              '--convert-to',
+              'pdf:writer_pdf_Export',
+              '--outdir',
+              tempDir,
+              inputPath,
+            ], {
+              timeout: 120000,
+            });
+
+            if (!fs.existsSync(outputPath)) {
+              throw new ApiError(500, 'DOCX to PDF reconversion failed after professional TOC patch');
+            }
+          }
+        } catch (e: any) {
+          console.warn('[Report Service] Professional TOC pagination patch failed, keeping initial PDF:', e?.message || e);
         }
       }
 
@@ -664,6 +692,224 @@ class ReportService {
           $(tNodes[tNodes.length - 1]).text(String(page));
         }
         searchIdx = matchedIdx + 1;
+      }
+
+      zip.file(documentPath, $.xml());
+      return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+    } catch {
+      return docxBuffer;
+    }
+  }
+
+  private static buildProfessionalTocTitles(data: ReportData): string[] {
+    const titles = [
+      'Table of Contents',
+      'Introduction',
+      'Approach',
+      'Runtime Application Vulnerability Assessment',
+      'Scope',
+      'Findings and Recommendation',
+      'Risk Classification',
+      'Measurement of Impact',
+      'Measurement of Likelihood',
+      'Overall Risk',
+      'Zero-risk Issues',
+      'Vulnerabilities',
+      'Summary',
+      'Detailed Vulnerabilities',
+    ];
+
+    const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, informational: 4, info: 4, unknown: 5 };
+    const findings = [...(Array.isArray(data.findings) ? data.findings : [])].sort((a: any, b: any) => {
+      const sa = String(a.severity || '').toLowerCase();
+      const sb = String(b.severity || '').toLowerCase();
+      return (severityOrder[sa] ?? 5) - (severityOrder[sb] ?? 5);
+    });
+
+    for (const finding of findings) {
+      const title = String(finding?.title || '').trim();
+      if (title) titles.push(title);
+    }
+
+    titles.push('Appendix A');
+    return titles;
+  }
+
+  private static async buildProfessionalActualTocPages(pdfPath: string, data: ReportData): Promise<Map<string, number>> {
+    const pageTexts = await this.extractPdfPageTexts(pdfPath);
+    const pages = new Map<string, number>();
+    if (!pageTexts.length) return pages;
+
+    const normalizedPageTexts = pageTexts.map((pageText) => this.normalizeDastTocText(pageText));
+    const normalizedPageLines = pageTexts.map((pageText) =>
+      String(pageText || '')
+        .split(/\r?\n/)
+        .map((line) => this.normalizeDastTocText(line))
+        .filter(Boolean)
+    );
+
+    const findExactLinePage = (title: string, startPage = 1): number | null => {
+      const needle = this.normalizeDastTocText(title);
+      if (!needle) return null;
+      for (let i = Math.max(startPage - 1, 0); i < normalizedPageLines.length; i++) {
+        if (normalizedPageLines[i].some((line) => line === needle)) return i + 1;
+      }
+      return null;
+    };
+
+    const findPageContaining = (title: string, startPage = 1): number | null => {
+      const needle = this.normalizeDastTocText(title);
+      if (!needle) return null;
+      for (let i = Math.max(startPage - 1, 0); i < normalizedPageTexts.length; i++) {
+        if (normalizedPageTexts[i].includes(needle)) return i + 1;
+      }
+      return null;
+    };
+
+    const tocPage = findExactLinePage('Table of Contents', 1) ?? 1;
+    const contentStartPage = tocPage + 1;
+
+    for (const title of [
+      'Table of Contents',
+      'Introduction',
+      'Approach',
+      'Runtime Application Vulnerability Assessment',
+      'Scope',
+      'Findings and Recommendation',
+      'Risk Classification',
+      'Measurement of Impact',
+      'Measurement of Likelihood',
+      'Overall Risk',
+      'Zero-risk Issues',
+      'Vulnerabilities',
+      'Summary',
+      'Detailed Vulnerabilities',
+    ]) {
+      const page = findExactLinePage(title, title === 'Table of Contents' ? 1 : contentStartPage);
+      if (page) pages.set(title, page);
+    }
+
+    const findings = [...(Array.isArray(data.findings) ? data.findings : [])].sort((a: any, b: any) => {
+      const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, informational: 4, info: 4, unknown: 5 };
+      const sa = String(a.severity || '').toLowerCase();
+      const sb = String(b.severity || '').toLowerCase();
+      return (severityOrder[sa] ?? 5) - (severityOrder[sb] ?? 5);
+    });
+
+    let searchPage = findExactLinePage('Detailed Vulnerabilities', contentStartPage) ?? contentStartPage;
+    for (const finding of findings) {
+      const title = String(finding?.title || '').trim();
+      if (!title) continue;
+      const page = findPageContaining(title, searchPage);
+      if (page) {
+        pages.set(title, page);
+        searchPage = page;
+      }
+    }
+
+    const appendixPage = findExactLinePage('Appendix A', searchPage) ?? findExactLinePage('Appendix A', contentStartPage);
+    if (appendixPage) pages.set('Appendix A', appendixPage);
+
+    return pages;
+  }
+
+  private static patchProfessionalTocPageNumbers(docxBuffer: Buffer, pageMap: Map<string, number>, data: ReportData): Buffer {
+    let PizZip: any;
+    let cheerio: any;
+    try {
+      PizZip = require('pizzip');
+      cheerio = require('cheerio');
+    } catch {
+      return docxBuffer;
+    }
+
+    try {
+      const zip = new PizZip(docxBuffer);
+      const documentPath = 'word/document.xml';
+      const documentXml = zip.file(documentPath)?.asText() || '';
+      if (!documentXml) return docxBuffer;
+
+      const $ = cheerio.load(documentXml, { xmlMode: true });
+      const tocSdt = $('w\\:body w\\:sdt').filter((_: number, el: any) => $(el).find('w\\:docPartGallery').length > 0).first();
+      if (!tocSdt.length) return docxBuffer;
+
+      const tocContent = tocSdt.find('w\\:sdtContent').first();
+      const tocParas = tocContent.find('w\\:p').toArray();
+      const titles = this.buildProfessionalTocTitles(data);
+      let searchIdx = 0;
+      const topTemplate = tocParas.find((p: any) => {
+        const text = $(p).find('w\\:t').toArray().map((n: any) => $(n).text()).join(' ').trim();
+        const normalized = this.normalizeDastTocText(text);
+        return normalized && normalized !== this.normalizeDastTocText('Table of Contents') && !$(p).find('w\\:pPr w\\:ind').length;
+      });
+      const subTemplate = tocParas.find((p: any) => $(p).find('w\\:pPr w\\:ind[w\\:left="360"]').length > 0);
+      const topTemplateXml = topTemplate ? $.xml(topTemplate) : '';
+      const subTemplateXml = subTemplate ? $.xml(subTemplate) : topTemplateXml;
+
+      const professionalLevel = (title: string): 0 | 1 => {
+        const topLevel = new Set([
+          'Table of Contents',
+          'Introduction',
+          'Approach',
+          'Scope',
+          'Findings and Recommendation',
+          'Vulnerabilities',
+          'Detailed Vulnerabilities',
+          'Appendix A',
+        ]);
+        return topLevel.has(title) ? 0 : 1;
+      };
+
+      for (const title of titles) {
+        const page = pageMap.get(title);
+        if (!page) continue;
+        const needle = this.normalizeDastTocText(title);
+        let matchedIdx = -1;
+        for (let i = searchIdx; i < tocParas.length; i++) {
+          const paraText = $(tocParas[i]).find('w\\:t').toArray().map((n: any) => $(n).text()).join(' ');
+          const normalized = this.normalizeDastTocText(paraText);
+          if (normalized === needle || normalized.includes(needle)) {
+            matchedIdx = i;
+            break;
+          }
+        }
+        if (matchedIdx === -1) continue;
+
+        const tNodes = $(tocParas[matchedIdx]).find('w\\:t').toArray();
+        if (tNodes.length > 0) $(tNodes[tNodes.length - 1]).text(String(page));
+        searchIdx = matchedIdx + 1;
+      }
+
+      // Rebuild the TOC list so template sample findings are removed.
+      if (topTemplateXml) {
+        tocContent.find('w\\:p').remove();
+        for (const title of titles) {
+          const page = pageMap.get(title) || 1;
+          const templateXml = professionalLevel(title) === 0 ? topTemplateXml : subTemplateXml;
+          const entry = cheerio.load(templateXml, { xmlMode: true }).root().children().first();
+          const tNodes = entry.find('w\\:t').toArray();
+          if (tNodes.length >= 2) {
+            $(tNodes[0]).text(title);
+            $(tNodes[tNodes.length - 1]).text(String(page));
+          } else if (tNodes.length === 1) {
+            $(tNodes[0]).text(`${title}\t${page}`);
+          }
+          if (professionalLevel(title) === 0) {
+            entry.find('w\\:b, w\\:bCs').attr('w:val', '1');
+            entry.find('w\\:ind').remove();
+          } else {
+            entry.find('w\\:b, w\\:bCs').attr('w:val', '0');
+            let pPr = entry.find('w\\:pPr').first();
+            if (!pPr.length) { entry.prepend('<w:pPr/>'); pPr = entry.find('w\\:pPr').first(); }
+            let ind = pPr.find('w\\:ind').first();
+            if (!ind.length) pPr.append('<w:ind w:left="360" w:firstLine="0"/>');
+            else {
+              ind.attr('w:left', '360');
+              ind.attr('w:firstLine', '0');
+            }
+          }
+          tocContent.append(entry);
+        }
       }
 
       zip.file(documentPath, $.xml());
@@ -1230,6 +1476,103 @@ class ReportService {
       return patched;
     } catch (error) {
       console.error('[DAST Patch] Error during patching:', error);
+      return docxBuffer;
+    }
+  }
+
+  private static async patchProfessionalDocxForLibreOfficePdf(docxBuffer: Buffer): Promise<Buffer> {
+    let PizZip: any;
+    let cheerio: any;
+    try {
+      PizZip = require('pizzip');
+      cheerio = require('cheerio');
+    } catch {
+      return docxBuffer;
+    }
+
+    try {
+      const zip = new PizZip(docxBuffer);
+      console.log('[Professional Patch] Starting patch for LibreOffice PDF conversion');
+
+      const numberingPath = 'word/numbering.xml';
+      const numberingXml = zip.file(numberingPath)?.asText() || '';
+      const docPath = 'word/document.xml';
+      const docXml = zip.file(docPath)?.asText() || '';
+      if (numberingXml && docXml) {
+        const $n = cheerio.load(numberingXml, { xmlMode: true });
+        const $d = cheerio.load(docXml, { xmlMode: true });
+
+        const numIdToAbstract = new Map<string, string>();
+        $n('w\\:num').each((_: number, num: any) => {
+          const numId = String($n(num).attr('w:numId') || $n(num).attr('numId') || '');
+          const abs = String($n(num).find('w\\:abstractNumId').first().attr('w:val') || '');
+          if (numId && abs) numIdToAbstract.set(numId, abs);
+        });
+
+        const absToLvlFmt = new Map<string, Map<string, string>>();
+        $n('w\\:abstractNum').each((_: number, abs: any) => {
+          const absId = String($n(abs).attr('w:abstractNumId') || $n(abs).attr('abstractNumId') || '');
+          if (!absId) return;
+          const lvlMap = new Map<string, string>();
+          $n(abs).find('w\\:lvl').each((__: number, lvl: any) => {
+            const ilvl = String($n(lvl).attr('w:ilvl') || $n(lvl).attr('ilvl') || '');
+            const fmt = String($n(lvl).find('w\\:numFmt').first().attr('w:val') || '');
+            if (ilvl && fmt) lvlMap.set(ilvl, fmt);
+          });
+          absToLvlFmt.set(absId, lvlMap);
+        });
+
+        const isHeadingOrTocPara = (p: any): boolean => {
+          const pPr = $d(p).children('w\\:pPr').first();
+          const pStyle = String(pPr.find('w\\:pStyle').first().attr('w:val') || '');
+          if (/^Heading\d+$/.test(pStyle)) return true;
+          if (/^TOC/i.test(pStyle)) return true;
+          if ($d(p).find('w\\:instrText').toArray().some((t: any) => /\bTOC\b/i.test($d(t).text()))) return true;
+          return false;
+        };
+
+        let bulletsConverted = 0;
+        $d('w\\:p').each((_: number, p: any) => {
+          const pPr = $d(p).children('w\\:pPr').first();
+          if (!pPr.length) return;
+          const numPr = pPr.children('w\\:numPr').first();
+          if (!numPr.length) return;
+          if (isHeadingOrTocPara(p)) return;
+
+          const numId = String(numPr.find('w\\:numId').first().attr('w:val') || '');
+          const ilvl = String(numPr.find('w\\:ilvl').first().attr('w:val') || '0');
+          const absId = numIdToAbstract.get(numId);
+          const fmt = absId ? absToLvlFmt.get(absId)?.get(ilvl) : undefined;
+          if (fmt !== 'bullet') return;
+
+          numPr.remove();
+
+          let ind = pPr.children('w\\:ind').first();
+          if (!ind.length) {
+            pPr.append('<w:ind/>');
+            ind = pPr.children('w\\:ind').first();
+          }
+          ind.attr('w:left', '720');
+          ind.attr('w:hanging', '360');
+
+          const bulletRun = '<w:r><w:rPr><w:color w:val="4CC51F"/></w:rPr><w:t xml:space="preserve">•\t</w:t></w:r>';
+          const firstR = $d(p).children('w\\:r').first();
+          if (firstR.length) {
+            firstR.before(bulletRun);
+          } else {
+            const pPrNode = pPr.get(0);
+            if (pPrNode) $d(pPrNode).after(bulletRun);
+            else $d(p).prepend(bulletRun);
+          }
+          bulletsConverted++;
+        });
+
+        console.log(`[Professional Patch] Converted ${bulletsConverted} bullet list paragraph(s) to explicit bullets`);
+        zip.file(docPath, $d.xml());
+      }
+
+      return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+    } catch {
       return docxBuffer;
     }
   }
@@ -2236,6 +2579,17 @@ class ReportService {
         }
       });
     };
+    const forceParagraphBold = (scope: any, root: any) => {
+      scope(root).find('w\\:r').each((_: number, r: any) => {
+        let rPr = scope(r).children('w\\:rPr').first();
+        if (!rPr.length) {
+          scope(r).prepend('<w:rPr/>');
+          rPr = scope(r).children('w\\:rPr').first();
+        }
+        if (!rPr.children('w\\:b').length) rPr.append('<w:b w:val="1"/>');
+        if (!rPr.children('w\\:bCs').length) rPr.append('<w:bCs w:val="1"/>');
+      });
+    };
     const ensureShading = (cell: any, fill: string) => {
       let tcPr = $(cell).children('w\\:tcPr').first();
       if (!tcPr.length) {
@@ -3126,6 +3480,12 @@ class ReportService {
       replaceAllParagraphText('Application Details', String(getSection('scope')?.fields?.application_details_title || 'Application Details'));
       replaceAllParagraphText('User Roles (Web application & API)', String(getSection('scope')?.fields?.user_roles_title || 'User Roles (Web application & API)'));
       replaceAllParagraphText('Tools', String(getSection('scope')?.fields?.tools_title || 'Tools'));
+
+      body.find('w\\:p').each((_: number, p: any) => {
+        if (paraText(p) === 'Appendix A') {
+          forceParagraphBold($, p);
+        }
+      });
     }
 
     // Second pass: replace any remaining literal placeholders in paragraphs inserted by section replacements.
@@ -3986,34 +4346,20 @@ class ReportService {
             appendSectionParagraph(urlLabel || backPara || titlePara, neutralParagraphTemplate, descText, { color: '000000' });
           }
 
+          let bulletTemplate = null;
+          for (const p of paras) {
+            if (sectionDoc(p).find('w\\:numPr').length > 0) {
+              bulletTemplate = p;
+              break;
+            }
+          }
+
           const affected = String(finding.affected_target || '').trim();
           console.log(`   - Affected target: "${affected}"`);
           if (urlLabel && affected) {
-            // Find a bullet paragraph template from the document
-            let bulletTemplate = null;
-            for (const p of paras) {
-              if (sectionDoc(p).find('w\\:numPr').length > 0) {
-                bulletTemplate = p;
-                break;
-              }
-            }
-
-            // Check if it's a URL and format as hyperlink with green bullet point
+            // Reuse the template bullet paragraph so Word/LibreOffice render a real bullet.
             if (bulletTemplate) {
               const p = cloneSectionNode(bulletTemplate);
-
-              // Ensure green bullet color
-              let pPr = sectionDoc(p).find('w\\:pPr').first();
-              if (!pPr.length) {
-                sectionDoc(p).prepend('<w:pPr/>');
-                pPr = sectionDoc(p).find('w\\:pPr').first();
-              }
-
-              // Add or update numPr for green bullet
-              let numPr = pPr.find('w\\:numPr').first();
-              if (!numPr.length) {
-                pPr.append('<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>');
-              }
 
               if (affected.startsWith('http://') || affected.startsWith('https://')) {
                 setParagraphSegments(sectionDoc, p.get(0), [
@@ -4027,21 +4373,15 @@ class ReportService {
               ensureSectionParaSpacing(p.get(0), { before: 0, after: 120 });
               sectionDoc(impactLikelihoodHeading || impactLabel || backPara || titlePara).before(sectionDoc.xml(p));
             } else {
-              // Fallback: use green dot character
+              // Fallback: keep the text without a manual glyph so we don't displace content.
               if (affected.startsWith('http://') || affected.startsWith('https://')) {
                 const p = cloneSectionNode(urlLabel);
-                setParagraphSegments(sectionDoc, p.get(0), [
-                  { text: '● ', color: '4CC51F', size: 32 },
-                  { text: affected, color: '1155CC', underline: 'single' },
-                ]);
+                setParagraphSegments(sectionDoc, p.get(0), [{ text: affected, color: '1155CC', underline: 'single' }]);
                 ensureSectionParaSpacing(p.get(0), { before: 0, after: 120 });
                 sectionDoc(impactLikelihoodHeading || impactLabel || backPara || titlePara).before(sectionDoc.xml(p));
               } else {
                 const p = cloneSectionNode(urlLabel);
-                setParagraphSegments(sectionDoc, p.get(0), [
-                  { text: '● ', color: '4CC51F', size: 32 },
-                  { text: affected, color: '000000' },
-                ]);
+                setParagraphSegments(sectionDoc, p.get(0), [{ text: affected, color: '000000' }]);
                 ensureSectionParaSpacing(p.get(0), { before: 0, after: 120 });
                 sectionDoc(impactLikelihoodHeading || impactLabel || backPara || titlePara).before(sectionDoc.xml(p));
               }
@@ -4224,15 +4564,6 @@ class ReportService {
           const recs = isFP ? [] : toLines(finding.recommendation);
           console.log(`   - Inserting ${recs.length} recommendations`);
 
-          // Find a bullet paragraph template from the document
-          let bulletTemplate = null;
-          for (const p of paras) {
-            if (sectionDoc(p).find('w\\:numPr').length > 0) {
-              bulletTemplate = p;
-              break;
-            }
-          }
-
           for (let ri = 0; ri < recs.length; ri++) {
             const cleaned = stripMarkdownEmphasis(recs[ri]);
             const colonIndex = cleaned.indexOf(':');
@@ -4266,17 +4597,15 @@ class ReportService {
               }
               sectionDoc(refLabel || backPara || titlePara).before(sectionDoc.xml(p));
             } else {
-              // Fallback: use green dot character
+              // Fallback: render plain text rather than a manual glyph.
               const p = cloneSectionNode(recTemplate);
               if (colonIndex !== -1) {
                 setParagraphSegments(sectionDoc, p.get(0), [
-                  { text: '● ', color: '4CC51F', size: 32 },
                   { text: cleaned.slice(0, colonIndex + 1), bold: true, color: '000000' },
                   { text: ' ' + cleaned.slice(colonIndex + 1).trim(), color: '000000' },
                 ]);
               } else {
                 setParagraphSegments(sectionDoc, p.get(0), [
-                  { text: '● ', color: '4CC51F', size: 32 },
                   { text: cleaned, bold: true, color: '000000' },
                 ]);
               }
@@ -4288,14 +4617,49 @@ class ReportService {
           const refsArray = isFP ? [] : (finding.references || finding.finding_references || []);
           const refs = toLines(refsArray);
           console.log(`   - Inserting ${refs.length} references`);
-          for (let ri = 0; ri < refs.length; ri++) {
-            let refText = String(refs[ri] || '').trim();
-            // If it's a URL-like reference that ends with a dot (common when authors paste
-            // links inside sentences), remove the trailing dot so PDF shows no extraneous '.'
-            if (/^(https?:\/\/|www\.)/i.test(refText) && refText.endsWith('.')) {
-              refText = refText.replace(/\.+$/g, '');
+          if (templateKey === 'securify' || templateKey === 'unknown') {
+            for (let ri = 0; ri < refs.length; ri++) {
+              let refText = String(refs[ri] || '').trim();
+              // If it's a URL-like reference that ends with a dot (common when authors paste
+              // links inside sentences), remove the trailing dot so PDF shows no extraneous '.'
+              if (/^(https?:\/\/|www\.)/i.test(refText) && refText.endsWith('.')) {
+                refText = refText.replace(/\.+$/g, '');
+              }
+
+              const refParagraph = cloneSectionNode(bulletTemplate || refTemplate);
+              ensureNoRightIndent(refParagraph.get(0));
+              let pPr = sectionDoc(refParagraph).find('w\\:pPr').first();
+              if (!pPr.length) {
+                sectionDoc(refParagraph).prepend('<w:pPr/>');
+                pPr = sectionDoc(refParagraph).find('w\\:pPr').first();
+              }
+              let jc = pPr.find('w\\:jc').first();
+              if (!jc.length) pPr.prepend('<w:jc w:val="left"/>');
+              else jc.attr('w:val', 'left');
+
+              pPr.find('w\\:tabs').remove();
+              let ind = pPr.find('w\\:ind').first();
+              if (!ind.length) pPr.append('<w:ind w:left="900" w:hanging="360"/>');
+              else {
+                ind.attr('w:left', '900');
+                ind.attr('w:hanging', '360');
+              }
+
+              const isUrl = /^(https?:\/\/|www\.)/i.test(refText);
+              setParagraphSegments(sectionDoc, refParagraph.get(0), [
+                { text: refText, color: isUrl ? '1155CC' : '000000', underline: isUrl ? 'single' : undefined },
+              ]);
+              ensureSectionParaSpacing(refParagraph.get(0), { before: 0, after: 120 });
+              sectionDoc(backPara || titlePara).before(sectionDoc.xml(refParagraph));
             }
-            appendSectionParagraph(backPara || titlePara, refTemplate, refText, { color: '1155CC', underline: 'single' });
+          } else {
+            for (let ri = 0; ri < refs.length; ri++) {
+              let refText = String(refs[ri] || '').trim();
+              if (/^(https?:\/\/|www\.)/i.test(refText) && refText.endsWith('.')) {
+                refText = refText.replace(/\.+$/g, '');
+              }
+              appendSectionParagraph(backPara || titlePara, refTemplate, refText, { color: '1155CC', underline: 'single' });
+            }
           }
 
           if (backPara && templateKey !== 'dast') sectionDoc(backPara).remove();
@@ -4429,9 +4793,9 @@ class ReportService {
     let buffer = await this.generateDOCXBuffer(data);
 
     const templateKey = data.template ? getTemplateKey(data.template) : 'unknown';
-    if (templateKey === 'dast') {
-      const sofficePath = '/usr/bin/soffice';
-      if (fs.existsSync(sofficePath)) {
+      if (templateKey === 'dast') {
+        const sofficePath = '/usr/bin/soffice';
+        if (fs.existsSync(sofficePath)) {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'securify-dast-docx-'));
         const inputPath = path.join(tempDir, 'report.docx');
         const outputPath = path.join(tempDir, 'report.pdf');
@@ -4455,15 +4819,49 @@ class ReportService {
           }
         } catch (e) {
           console.warn('[Report Service] DOCX TOC pagination patch failed, keeping initial DOCX:', (e as any)?.message || e);
-        } finally {
+          } finally {
+            try {
+              fs.rmSync(tempDir, { recursive: true, force: true });
+            } catch {
+              // Ignore cleanup failures.
+            }
+          }
+        }
+      } else if (templateKey === 'securify' || templateKey === 'blueally' || templateKey === 'unknown') {
+        const sofficePath = '/usr/bin/soffice';
+        if (fs.existsSync(sofficePath)) {
+          const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'securify-prof-docx-'));
+          const inputPath = path.join(tempDir, 'report.docx');
+          const outputPath = path.join(tempDir, 'report.pdf');
+
           try {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-          } catch {
-            // Ignore cleanup failures.
+            fs.writeFileSync(inputPath, buffer);
+            await this.execFileAsync(sofficePath, [
+              '--headless',
+              '--convert-to',
+              'pdf:writer_pdf_Export',
+              '--outdir',
+              tempDir,
+              inputPath,
+            ], { timeout: 120000 });
+
+            if (fs.existsSync(outputPath)) {
+              const actualTocPages = await this.buildProfessionalActualTocPages(outputPath, data);
+              if (actualTocPages.size > 0) {
+                buffer = this.patchProfessionalTocPageNumbers(buffer, actualTocPages, data);
+              }
+            }
+          } catch (e) {
+            console.warn('[Report Service] Professional DOCX TOC pagination patch failed, keeping initial DOCX:', (e as any)?.message || e);
+          } finally {
+            try {
+              fs.rmSync(tempDir, { recursive: true, force: true });
+            } catch {
+              // Ignore cleanup failures.
+            }
           }
         }
       }
-    }
 
     fs.writeFileSync(filePath, buffer);
     return filePath;
