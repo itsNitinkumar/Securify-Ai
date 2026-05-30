@@ -3,11 +3,13 @@ import { LayoutDashboard, Users, Activity, Settings, Bell, HelpCircle, FolderOpe
 import Logo from '@/components/common/Logo';
 import { useEffect, useState } from 'react';
 import { authApi } from '@/api/authApi';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 
 const MainLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, hasPermission, hasRole } = useAuth();
   const [profile, setProfile] = useState<{ name?: string; email?: string; avatar?: string } | null>(null);
 
   const getInitials = (name?: string) => {
@@ -32,6 +34,18 @@ const MainLayout = () => {
     loadProfile();
   }, []);
 
+  const isAdminOrManager = hasRole('admin', 'manager') || hasPermission('manage_roles');
+
+  const navItems = [
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard, show: true },
+    { path: '/projects', label: 'Projects', icon: FolderOpen, show: hasPermission('view_projects') },
+    { path: '/templates', label: 'Templates', icon: FileText, show: hasPermission('view_templates') || isAdminOrManager },
+    { path: '/search', label: 'Search', icon: Search, show: true },
+    { path: '/activity', label: 'Activity Logs', icon: Activity, show: isAdminOrManager },
+    { path: '/users', label: 'Users', icon: Users, show: hasPermission('view_users') },
+    { path: '/settings', label: 'RBAC Settings', icon: Settings, show: hasPermission('manage_roles') || hasRole('admin') },
+  ].filter(item => item.show);
+
   const handleLogout = async () => {
     try {
       await authApi.signout();
@@ -48,27 +62,17 @@ const MainLayout = () => {
     }
   };
 
-  const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/projects', label: 'Projects', icon: FolderOpen },
-    { path: '/templates', label: 'Templates', icon: FileText },
-    { path: '/search', label: 'Search', icon: Search },
-    { path: '/activity', label: 'Activity Logs', icon: Activity },
-    { path: '/users', label: 'Users', icon: Users },
-    { path: '/settings', label: 'RBAC Settings', icon: Settings },
-  ];
-
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
     return location.pathname.startsWith(path);
   };
 
   return (
-    <div className="min-h-screen bg-surface flex">
+    <div className="h-screen bg-surface flex overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 bg-surface-low border-r border-outline flex flex-col">
+      <aside className="w-64 bg-surface-low border-r border-outline flex flex-col overflow-hidden">
         {/* Logo */}
-        <div className="p-6 border-b border-outline">
+        <div className="p-6 border-b border-outline shrink-0">
           <Logo size="lg" />
           <div className="mt-2 flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
@@ -80,7 +84,7 @@ const MainLayout = () => {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
@@ -102,25 +106,25 @@ const MainLayout = () => {
         </nav>
 
         {/* Bottom Actions */}
-        <div className="p-4 border-t border-outline space-y-2">
+        <div className="p-4 border-t border-outline space-y-1 shrink-0">
           <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-high hover:text-on-surface transition-all">
             <HelpCircle className="w-5 h-5" />
             <span className="text-sm">Support</span>
           </button>
           <button 
             onClick={handleLogout}
-            className="w-full bg-error/10 text-error hover:bg-error/20 px-4 py-3 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-error hover:bg-error/10 transition-all"
           >
-            <LogOut className="w-4 h-4" />
-            Logout
+            <LogOut className="w-5 h-5" />
+            <span className="text-sm font-medium">Logout</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar */}
-        <header className="h-16 bg-surface-low border-b border-outline flex items-center justify-between px-6">
+        <header className="h-16 bg-surface-low border-b border-outline flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-4">
             <h2 className="text-lg font-semibold text-on-surface">
               {navItems.find((item) => isActive(item.path))?.label || 'Dashboard'}

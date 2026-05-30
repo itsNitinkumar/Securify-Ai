@@ -6,6 +6,9 @@ interface User {
   email: string;
   name: string;
   role: string;
+  role_id?: number;
+  company_id?: number;
+  permissions?: string[];
 }
 
 interface AuthContextType {
@@ -15,6 +18,8 @@ interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
+  hasPermission: (permission: string) => boolean;
+  hasRole: (...roles: string[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -41,7 +46,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const response = await axios.get('/auth/profile');
         
         if (response.data) {
-          setUser(response.data.data || response.data.user);
+          const userData: User = response.data.data || response.data.user;
+          
+          // Fetch permissions alongside profile
+          try {
+            const permResponse = await axios.get('/auth/permissions');
+            if (permResponse.data?.data) {
+              userData.permissions = permResponse.data.data;
+            }
+          } catch {
+            // Permissions endpoint may not exist yet; fallback gracefully
+          }
+          
+          setUser(userData);
           setToken('cookie-based');
         }
       } catch (error) {
@@ -88,6 +105,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('user');
   };
 
+  const hasPermission = (permission: string): boolean => {
+    if (!user?.permissions) return false;
+    return user.permissions.includes(permission);
+  };
+
+  const hasRole = (...roles: string[]): boolean => {
+    if (!user?.role) return false;
+    return roles.includes(user.role);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -97,6 +124,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         isAuthenticated: !!token,
         isLoading,
+        hasPermission,
+        hasRole,
       }}
     >
       {children}

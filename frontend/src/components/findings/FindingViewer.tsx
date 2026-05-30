@@ -17,7 +17,6 @@ import { Card } from '@/components/ui/card';
 
 interface FindingViewerProps {
   findingId: number;
-  currentUserRole: string;
   currentUserId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -26,7 +25,6 @@ interface FindingViewerProps {
 
 const FindingViewer = ({
   findingId,
-  currentUserRole,
   currentUserId,
   open,
   onOpenChange,
@@ -160,10 +158,9 @@ const FindingViewer = ({
             {/* Workflow Buttons */}
             <FindingWorkflowButtons
               finding={finding}
-              currentUserRole={currentUserRole}
               currentUserId={currentUserId}
-              onUpdate={handleUpdate}
-              onEditClick={handleEditClick}
+              onUpdate={onUpdate}
+              onEditClick={() => setEditDialogOpen(true)}
             />
 
             {/* Description */}
@@ -408,7 +405,6 @@ const FindingViewer = ({
             <FindingComments
               findingId={findingId}
               currentUserId={currentUserId}
-              currentUserRole={currentUserRole}
             />
           </div>
         </DialogContent>

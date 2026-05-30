@@ -20,9 +20,8 @@ interface UsersTableProps {
   onApprove?: (userId: number) => void;
 }
 
-const roleColors = {
-  analyst: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  reviewer: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+const roleColors: Record<string, string> = {
+  reporter: 'bg-green-500/10 text-green-400 border-green-500/20',
   manager: 'bg-primary/10 text-primary border-primary/20',
   client: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
 };
@@ -109,7 +108,7 @@ const UsersTable = ({ users, onEdit, onDelete, onApprove }: UsersTableProps) => 
                   <td className="py-4 px-4">
                     <Badge
                       className={`text-xs ${
-                        roleColors[user.role as keyof typeof roleColors] || roleColors.client
+  roleColors[user.role as keyof typeof roleColors] || roleColors.client || 'bg-gray-500/10 text-gray-400 border-gray-500/20'
                       }`}
                     >
                       {user.role?.toUpperCase() || 'USER'}

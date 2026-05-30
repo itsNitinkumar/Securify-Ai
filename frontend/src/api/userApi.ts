@@ -17,6 +17,8 @@ export const userApi = {
   
   delete: (id: number) => axiosInstance.delete<ApiResponse>(`/users/${id}`),
   
+  getReporters: () => axiosInstance.get<ApiResponse<User[]>>('/users/reporters'),
+
   // Admin only: Create manager
   createManager: (data: { name: string; email: string; password: string }) =>
     axiosInstance.post<ApiResponse<User>>('/users/managers/create', data),

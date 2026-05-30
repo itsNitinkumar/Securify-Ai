@@ -8,14 +8,11 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
-type RequestedRole = 'analyst' | 'reviewer';
-
 const RoleRequestPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [requestedRole, setRequestedRole] = useState<RequestedRole>('analyst');
   const [reason, setReason] = useState('');
 
   const canSubmit = useMemo(() => {
@@ -54,7 +51,7 @@ const RoleRequestPage = () => {
     try {
       setSubmitting(true);
       await axios.post('/role-requests/request', {
-        requested_role: requestedRole,
+        requested_role: 'reporter',
         request_reason: reason,
       });
       toast.success('Role request submitted');
@@ -93,7 +90,7 @@ const RoleRequestPage = () => {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-on-surface">Request Role Change</h1>
           <p className="text-sm text-on-surface-variant">
-            Submit a request to become an analyst or reviewer.
+            Submit a request to become a reporter.
           </p>
         </div>
       </div>
@@ -114,41 +111,9 @@ const RoleRequestPage = () => {
 
       <Card className="max-w-3xl p-6 bg-surface-high border-outline">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label className="text-on-surface mb-2 block">Select Role</Label>
-            <div className="space-y-2">
-              <label className="flex items-start p-3 border border-outline rounded-lg cursor-pointer hover:bg-surface transition-colors">
-                <input
-                  type="radio"
-                  value="analyst"
-                  checked={requestedRole === 'analyst'}
-                  onChange={() => setRequestedRole('analyst')}
-                  className="mt-1 mr-3"
-                  disabled={hasPendingRequest || submitting}
-                />
-                <div className="flex-1">
-                  <div className="font-medium text-on-surface">Analyst</div>
-                  <div className="text-sm text-on-surface-variant">
-                    Create and edit findings, upload evidence
-                  </div>
-                </div>
-              </label>
-
-              <label className="flex items-start p-3 border border-outline rounded-lg cursor-pointer hover:bg-surface transition-colors">
-                <input
-                  type="radio"
-                  value="reviewer"
-                  checked={requestedRole === 'reviewer'}
-                  onChange={() => setRequestedRole('reviewer')}
-                  className="mt-1 mr-3"
-                  disabled={hasPendingRequest || submitting}
-                />
-                <div className="flex-1">
-                  <div className="font-medium text-on-surface">Reviewer</div>
-                  <div className="text-sm text-on-surface-variant">Review and approve findings</div>
-                </div>
-              </label>
-            </div>
+          <div className="p-3 border border-outline rounded-lg bg-surface">
+            <div className="font-medium text-on-surface">Reporter</div>
+            <div className="text-sm text-on-surface-variant">Create and edit findings, upload evidence</div>
           </div>
 
           <div>

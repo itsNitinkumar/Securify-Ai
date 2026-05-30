@@ -7,7 +7,7 @@ import {
   History,
 } from 'lucide-react';
 import { findingApi, Finding } from '@/api/findingApi';
-import { authApi } from '@/api/authApi';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import FindingContent from '@/components/findings/FindingContent';
@@ -20,6 +20,7 @@ import { toast } from 'react-hot-toast';
 const FindingDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user, hasPermission, hasRole } = useAuth();
   const [finding, setFinding] = useState<Finding | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -27,8 +28,7 @@ const FindingDetailPage = () => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [lastKnownProjectId, setLastKnownProjectId] = useState<number | null>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<string>('');
-  const [currentUserId, setCurrentUserId] = useState<number>(0);
+  const currentUserId = parseInt(user?.id || '0');
 
   useEffect(() => {
     let isMounted = true;
@@ -41,7 +41,6 @@ const FindingDetailPage = () => {
           const findingData = (response.data as any)?.data || response.data;
           if (isMounted) {
             setFinding(findingData);
-            // Store project_id for later use (in case finding gets deleted)
             if (findingData?.project_id) {
               setLastKnownProjectId(findingData.project_id);
             }
@@ -49,7 +48,6 @@ const FindingDetailPage = () => {
         } catch (error: any) {
           console.error('Failed to load finding:', error);
 
-          // If finding not found (404), silently redirect to project page or dashboard
           if (error?.response?.status === 404) {
             const redirectTo = lastKnownProjectId
               ? `/projects/${lastKnownProjectId}`
@@ -68,21 +66,7 @@ const FindingDetailPage = () => {
         }
       };
 
-      const loadUser = async () => {
-        try {
-          const response = await authApi.getProfile();
-          const userData = (response.data as any)?.data || (response.data as any)?.user || response.data;
-          if (isMounted) {
-            setCurrentUserRole(userData?.role || '');
-            setCurrentUserId(userData?.id || 0);
-          }
-        } catch (error) {
-          console.error('Failed to load user profile:', error);
-        }
-      };
-
       load();
-      loadUser();
     }
 
     return () => {
@@ -247,25 +231,29 @@ const FindingDetailPage = () => {
               <History className="w-4 h-4 mr-2" />
               Versions
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(!isEditing)}
-              className="border-outline text-on-surface-variant hover:text-primary"
-            >
-              <Edit className="w-4 h-4 mr-2" />
-              Edit
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConfirmDelete(true)}
-              disabled={isDeleting}
-              className="border-error/30 text-error hover:bg-error/10"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              {isDeleting ? 'Deleting...' : 'Delete'}
-            </Button>
+            {hasPermission('edit_findings') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditing(!isEditing)}
+                className="border-outline text-on-surface-variant hover:text-primary"
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Edit
+              </Button>
+            )}
+            {hasPermission('delete_findings') && hasPermission('approve_findings') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmDelete(true)}
+                disabled={isDeleting}
+                className="border-error/30 text-error hover:bg-error/10"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -289,7 +277,6 @@ const FindingDetailPage = () => {
           {/* Workflow Buttons */}
           <FindingWorkflowButtons
             finding={finding}
-            currentUserRole={currentUserRole}
             currentUserId={currentUserId}
             onUpdate={loadFinding}
             onEditClick={() => setIsEditing(!isEditing)}
@@ -311,12 +298,20 @@ const FindingDetailPage = () => {
           <ApprovalWorkflow finding={finding} />
 
           {/* Version History */}
-          {showVersions && (
-            <VersionHistory findingId={finding.id} />
-          )}
-        </div>
-      </div>
-    </div>
+       {showVersions && (
+         <VersionHistory findingId={finding.id} />
+       )}
+     </div>
+     
+     {/* Comments Section */}
+     <div className="lg:col-span-1 space-y-6">
+       <FindingComments 
+         findingId={finding.id} 
+         currentUserId={currentUserId} 
+       />
+     </div>
+   </div>
+ </div>
   );
 };
 

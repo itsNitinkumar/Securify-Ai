@@ -6,6 +6,8 @@ export interface Project {
   description?: string;
   client_name?: string;
   client_id?: number;
+  assigned_reporter_id?: number | null;
+  assigned_reporter_name?: string;
   start_date?: string;
   end_date?: string;
   application_details?: Array<{ name: string; url: string }>;
@@ -26,16 +28,17 @@ export interface Project {
 
 export interface CreateProjectData {
   name: string;
-  description?: string;
-  client_name?: string;
-  client_id?: number;
-  start_date?: string;
-  end_date?: string;
+  description?: string | null;
+  client_name?: string | null;
+  client_id?: number | null;
+  assigned_reporter_id?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
   application_details?: Array<{ name: string; url: string }>;
   user_roles?: Array<{ role: string; username: string }>;
   domains?: string[];
-  template_id?: number;
-  template_name?: string;
+  template_id?: number | null;
+  template_name?: string | null;
   out_of_scope_endpoints?: Array<{ name: string; url: string }>;
   include_out_of_scope_endpoints?: boolean;
 }
@@ -68,6 +71,11 @@ export const projectApi = {
 
   deleteProject: async (id: number) => {
     const response = await axios.delete(`/projects/${id}`);
+    return response.data;
+  },
+
+  assignReporter: async (id: number, reporterId: number | null) => {
+    const response = await axios.patch(`/projects/${id}/assign-reporter`, { reporter_id: reporterId });
     return response.data;
   },
 };

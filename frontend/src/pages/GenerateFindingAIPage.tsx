@@ -5,6 +5,8 @@ import { toast } from 'react-hot-toast';
 import S3Image from '@/components/common/S3Image';
 import { findingApi } from '@/api/findingApi';
 import { uploadApi } from '@/api/uploadApi';
+import { projectApi } from '@/api/projectApi';
+import { templateKeyFromProject } from '@/reportTemplates/registry';
 import EvidenceItemEditor from '@/components/findings/EvidenceItemEditor';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -27,8 +29,23 @@ const GenerateFindingAIPage = () => {
   const [loading, setLoading] = useState(false);
   const [uploadingSteps, setUploadingSteps] = useState<Set<number>>(new Set());
   const [step, setStep] = useState<'input' | 'review'>('input');
+  const [isDast, setIsDast] = useState(false);
+  const [projectLoaded, setProjectLoaded] = useState(false);
   const initialType = searchParams.get('type') === 'false_positive' ? 'false_positive' : 'true_positive';
   const [findingType, setFindingType] = useState<'true_positive' | 'false_positive'>(initialType);
+
+  // Fetch project to determine template type
+  useEffect(() => {
+    if (!parsedProjectId) return;
+    projectApi.getProject(parsedProjectId).then((res: any) => {
+      const project = res?.data || res;
+      const key = templateKeyFromProject(project);
+      setIsDast(key === 'dast');
+      setProjectLoaded(true);
+    }).catch(() => {
+      setProjectLoaded(true);
+    });
+  }, [parsedProjectId]);
   const [draftFindingId, setDraftFindingId] = useState<number | null>(null);
   const [generatedFinding, setGeneratedFinding] = useState<any>(null);
   const [evidenceItems, setEvidenceItems] = useState<Array<{ imageKey?: string; caption?: string }>>([]);
@@ -339,7 +356,8 @@ const GenerateFindingAIPage = () => {
       <Card className="p-6 bg-surface-high border-outline">
         {step === 'input' ? (
           <div className="space-y-6">
-            {/* Finding Type Toggle */}
+            {/* Finding Type Toggle - only for DAST template */}
+            {isDast && (
             <div>
               <label className="text-sm font-medium text-on-surface mb-3 block">
                 Finding Type <span className="text-error">*</span>
@@ -359,6 +377,7 @@ const GenerateFindingAIPage = () => {
                 </Badge>
               </div>
             </div>
+            )}
 
             <div>
               <label className="text-sm font-medium text-on-surface mb-2 block">
@@ -437,7 +456,7 @@ const GenerateFindingAIPage = () => {
                 type="button"
                 onClick={() => void handleGenerate()}
                 disabled={loading || !formData.title || !formData.evidence}
-                className={`${findingType === 'false_positive' ? 'bg-purple-500 hover:bg-purple-500/90' : 'bg-primary hover:bg-primary/90'} text-surface`}
+                className={`${isDast && findingType === 'false_positive' ? 'bg-purple-500 hover:bg-purple-500/90' : 'bg-primary hover:bg-primary/90'} text-surface`}
               >
                 {loading ? (
                   <>
@@ -447,7 +466,7 @@ const GenerateFindingAIPage = () => {
                 ) : (
                   <>
                     <Sparkles className="mr-2 h-4 w-4" />
-                    {findingType === 'false_positive' ? 'Generate False Positive' : 'Generate True Positive'}
+                    {isDast && findingType === 'false_positive' ? 'Generate False Positive' : 'Generate with AI'}
                   </>
                 )}
               </Button>

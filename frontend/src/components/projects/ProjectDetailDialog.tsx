@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Edit, Trash2, ExternalLink, AlertTriangle, CheckCircle, Plus, Sparkles } from 'lucide-react';
 import { Project, projectApi } from '@/api/projectApi';
-import { authApi } from '@/api/authApi';
 import { templateKeyFromProject } from '@/reportTemplates/registry';
 import CreateFindingDialog from '@/components/findings/CreateFindingDialog';
 import FindingViewer from '@/components/findings/FindingViewer';
@@ -16,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ProjectDetailDialogProps {
   project: Project;
@@ -31,34 +31,19 @@ const ProjectDetailDialog = ({
   onUpdate,
 }: ProjectDetailDialogProps) => {
   const navigate = useNavigate();
+  const { user, hasPermission, hasRole } = useAuth();
   const [deleting, setDeleting] = useState(false);
   const [projectDetails, setProjectDetails] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [isCreateFindingOpen, setIsCreateFindingOpen] = useState(false);
   const [selectedFindingId, setSelectedFindingId] = useState<number | null>(null);
   const [isFindingViewerOpen, setIsFindingViewerOpen] = useState(false);
-  const [currentUserRole, setCurrentUserRole] = useState<string>('');
-  const [currentUserId, setCurrentUserId] = useState<number>(0);
 
   useEffect(() => {
     if (open && project.id) {
       loadProjectDetails();
-      loadCurrentUser();
     }
   }, [open, project.id]);
-
-  const loadCurrentUser = async () => {
-    try {
-      const response = await authApi.getProfile();
-      const userData = response.data.data || response.data;
-      if (userData && typeof userData === 'object') {
-        setCurrentUserRole((userData as any).role || '');
-        setCurrentUserId((userData as any).id || 0);
-      }
-    } catch (error) {
-      console.error('Failed to load current user:', error);
-    }
-  };
 
   const loadProjectDetails = async () => {
     try {
@@ -181,7 +166,7 @@ const ProjectDetailDialog = ({
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-on-surface">Recent Findings</h3>
                   {/* Only Analysts and Managers can create findings */}
-                  {(currentUserRole === 'analyst' || currentUserRole === 'manager') && (
+                  {hasPermission('create_findings') && (
                     <div className="flex gap-2">
                       <Button
                         onClick={() => setIsCreateFindingOpen(true)}
@@ -228,7 +213,7 @@ const ProjectDetailDialog = ({
                   {projectDetails.findings
                     .filter((finding: any) => {
                       // Clients can only see approved findings
-                      if (currentUserRole === 'client') {
+                      if (hasRole('client')) {
                         return finding.status === 'approved';
                       }
                       return true;
@@ -301,43 +286,16 @@ const ProjectDetailDialog = ({
                 <CheckCircle className="w-12 h-12 text-on-surface-variant mx-auto mb-3 opacity-50" />
                 <p className="text-sm text-on-surface-variant mb-4">No findings yet</p>
                 {/* Only Analysts and Managers can create findings */}
-                {(currentUserRole === 'analyst' || currentUserRole === 'manager') && (
-                  <div className="flex gap-2 justify-center">
-                    <Button
-                      onClick={() => setIsCreateFindingOpen(true)}
-                      variant="ghost"
-                      className="border border-outline"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Manually
-                    </Button>
-                    {templateKeyFromProject(project) === 'dast' ? (
-                      <>
-                        <Button
-                          onClick={() => navigate(`/projects/${project.id}/findings/generate?type=true_positive`)}
-                          className="bg-primary text-surface hover:bg-primary/90"
-                        >
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Generate True Positive
-                        </Button>
-                        <Button
-                          onClick={() => navigate(`/projects/${project.id}/findings/generate?type=false_positive`)}
-                          className="bg-purple-500 text-surface hover:bg-purple-500/90"
-                        >
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Generate False Positive
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        onClick={() => navigate(`/projects/${project.id}/findings/generate`)}
-                        className="bg-primary text-surface hover:bg-primary/90"
-                      >
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Generate with AI
-                      </Button>
-                    )}
-                  </div>
+                {hasPermission('create_findings') && (
+                  <Button
+                    onClick={() => navigate(`/projects/${project.id}/findings/new`)}
+                    size="sm"
+                    variant="ghost"
+                    className="text-on-surface-variant hover:text-on-surface"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Finding
+                  </Button>
                 )}
               </Card>
             )}
@@ -377,40 +335,39 @@ const ProjectDetailDialog = ({
           <div className="flex items-center justify-between pt-6 border-t border-outline-variant mt-6">
             <div className="flex gap-2">
               {/* Only Managers can edit/delete projects */}
-              {currentUserRole === 'manager' && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-on-surface-variant hover:text-primary"
-                  >
-                    <Edit className="w-4 h-4 mr-2" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    className="text-error hover:bg-error/10"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete
-                  </Button>
-                </>
+              {hasPermission('edit_projects') && (
+                <Card className="p-4 bg-surface-high border-outline">
+                  <h3 className="text-sm font-semibold text-on-surface mb-3">Project Details</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-on-surface-variant">Client</span>
+                      <span className="text-sm text-on-surface font-medium">{project.client_name || 'N/A'}</span>
+                    </div>
+                    {project.start_date ? (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-on-surface-variant">Start Date</span>
+                        <span className="text-sm text-on-surface font-medium">{new Date(project.start_date).toLocaleDateString()}</span>
+                      </div>
+                    ) : null}
+                    {project.end_date ? (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-on-surface-variant">End Date</span>
+                        <span className="text-sm text-on-surface font-medium">{new Date(project.end_date).toLocaleDateString()}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </Card>
               )}
             </div>
             {/* Only Managers and Clients can view/download reports */}
-            {(currentUserRole === 'manager' || currentUserRole === 'client') && (
-              <Button 
-                onClick={() => {
-                  onOpenChange(false);
-                  navigate(`/projects/${project.id}/report`);
-                }}
+            {(hasPermission('view_reports') || hasRole('client')) && (
+              <Button
+                onClick={() => navigate(`/projects/${project.id}/report`)}
+                size="sm"
                 className="bg-primary text-surface hover:bg-primary/90"
               >
                 <ExternalLink className="w-4 h-4 mr-2" />
-                {currentUserRole === 'client' ? 'Download Report' : 'View Full Report'}
+                {hasRole('client') ? 'Download Report' : 'View Full Report'}
               </Button>
             )}
           </div>
@@ -429,8 +386,7 @@ const ProjectDetailDialog = ({
       {selectedFindingId && (
         <FindingViewer
           findingId={selectedFindingId}
-          currentUserRole={currentUserRole}
-          currentUserId={currentUserId}
+          currentUserId={parseInt(user?.id || '0')}
           open={isFindingViewerOpen}
           onOpenChange={setIsFindingViewerOpen}
           onUpdate={loadProjectDetails}

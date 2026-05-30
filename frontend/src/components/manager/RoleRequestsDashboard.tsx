@@ -98,14 +98,13 @@ export const RoleRequestsDashboard: React.FC = () => {
   };
 
   const getRoleBadge = (role: string) => {
-    const colors = {
+    const colors: Record<string, string> = {
       client: 'bg-surface-high text-on-surface-variant border border-outline',
-      analyst: 'bg-primary/10 text-primary border border-primary/20',
-      reviewer: 'bg-purple-500/10 text-purple-400 border border-purple-500/20',
+      reporter: 'bg-primary/10 text-primary border border-primary/20',
     };
 
     return (
-      <span className={`px-2 py-1 rounded text-xs font-medium ${colors[role as keyof typeof colors]}`}>
+      <span className={`px-2 py-1 rounded text-xs font-medium ${colors[role] || 'bg-surface-high text-on-surface-variant border border-outline'}`}>
         {role.charAt(0).toUpperCase() + role.slice(1)}
       </span>
     );

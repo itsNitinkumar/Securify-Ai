@@ -3,6 +3,7 @@ import OpenAIService from '../services/openai.service';
 import { AuthRequest } from '../types';
 
 import FindingModel from '../models/finding.model';
+import pool from '../config/database';
 import VersionService from '../services/version.service';
 import ActivityLogService from '../services/activity-log.service';
 import ApiError from '../utils/ApiError';
@@ -66,7 +67,7 @@ class FindingController {
     const aiResult = await OpenAIService.generateFinding({
       evidence,
       severity,
-      role: user.role || 'analyst',
+      role: user.role || 'reporter',
     });
 
     console.log('✅ AI result received:', JSON.stringify(aiResult, null, 2));
@@ -89,7 +90,7 @@ class FindingController {
     const aiResult = await OpenAIService.generateFalsePositiveFinding({
       evidence,
       severity: 'none',
-      role: user.role || 'analyst',
+      role: user.role || 'reporter',
       finding_name: finding_name || undefined,
     });
 
@@ -112,7 +113,7 @@ class FindingController {
     const aiResult = await OpenAIService.generateFinding({
       evidence,
       severity,
-      role: user.role || 'analyst',
+      role: user.role || 'reporter',
     });
 
     // Save to database
@@ -249,15 +250,19 @@ class FindingController {
   // Get all findings
   static getAllFindings = asyncHandler(async (req: Request, res: Response) => {
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
     const { severity, status, project_id, finding_type } = req.query;
 
     const filters: any = {};
 
-    // Role-based access control
-    if (user.role === 'analyst') {
+    // Permission-based access control
+    const canViewAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
+
+    if (!canViewAll && permissions.includes('create_findings')) {
+      // Reporter: only their own findings
       filters.created_by = user.id;
-    } else if (user.role === 'client') {
-      // Clients can only see approved findings from their projects
+    } else if (!canViewAll && user.role === 'client') {
+      // Client fallback (legacy): only see approved findings
       filters.status = 'approved';
       if (project_id) filters.project_id = project_id;
     }
@@ -282,6 +287,7 @@ class FindingController {
   static getFinding = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
 
     const finding = await FindingModel.findById(parseInt(id));
 
@@ -290,8 +296,17 @@ class FindingController {
     }
 
     // Access control
-    if (user.role === 'analyst' && finding.created_by !== user.id) {
-      throw new ApiError(403, 'Access denied');
+    const canViewAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
+
+    if (!canViewAll && permissions.includes('create_findings') && finding.created_by !== user.id) {
+      // Check if user is assigned to the project this finding belongs to
+      const projectCheck = await pool.query(
+        'SELECT id FROM projects WHERE id = $1 AND assigned_reporter_id = $2',
+        [finding.project_id, user.id]
+      );
+      if (projectCheck.rows.length === 0) {
+        throw new ApiError(403, 'Access denied');
+      }
     }
 
     if (user.role === 'client' && finding.status !== 'approved') {
@@ -331,6 +346,7 @@ class FindingController {
   static updateFinding = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
     const updates = req.body;
 
     const finding = await FindingModel.findById(parseInt(id));
@@ -340,19 +356,16 @@ class FindingController {
     }
 
     // Access control
-    if (user.role === 'analyst') {
-      // Analysts can only edit their own findings
+    const canEditAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
+
+    if (!canEditAll && permissions.includes('create_findings')) {
+      // Reporter: can only edit own findings in draft/changes_requested status
       if (finding.created_by !== user.id) {
         throw new ApiError(403, 'Only the creator can edit this finding');
       }
-      // Analysts can edit if status is draft or changes_requested
       if (finding.status !== 'draft' && finding.status !== 'changes_requested') {
         throw new ApiError(403, 'Cannot edit finding with current status');
       }
-    }
-
-    if (user.role === 'reviewer') {
-      throw new ApiError(403, 'Reviewers cannot edit findings');
     }
 
     const updatedFinding = await FindingModel.update(parseInt(id), updates);
@@ -394,7 +407,7 @@ class FindingController {
     }
 
     // Access control
-    if (user.role === 'analyst' && finding.created_by !== user.id) {
+    if (user.role === 'reporter' && finding.created_by !== user.id) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -410,14 +423,15 @@ class FindingController {
     });
   });
 
-  // Approve finding (Reviewer and Manager)
+  // Approve finding (Manager only)
   static approveFinding = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
 
-    // Both Reviewers and Managers can approve findings
-    if (user.role !== 'reviewer' && user.role !== 'manager') {
-      throw new ApiError(403, 'Only reviewers and managers can approve findings');
+    // Permission check (authorize middleware already did this, but double-check for safety)
+    if (!permissions.includes('approve_findings') && user.role !== 'manager') {
+      throw new ApiError(403, 'Only managers can approve findings');
     }
 
     let finding;
@@ -496,14 +510,15 @@ class FindingController {
     });
   });
 
-  // Request changes (Reviewer/Manager only)
+  // Request changes (Manager only)
   static requestChanges = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const { comment } = req.body;
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
 
-    if (user.role !== 'manager' && user.role !== 'reviewer') {
-      throw new ApiError(403, 'Only managers and reviewers can request changes');
+    if (!permissions.includes('request_finding_changes') && user.role !== 'manager') {
+      throw new ApiError(403, 'Only managers can request changes');
     }
 
     const finding = await FindingModel.findById(parseInt(id));
@@ -613,6 +628,7 @@ class FindingController {
   static deleteFinding = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
 
     const finding = await FindingModel.findById(parseInt(id));
 
@@ -620,8 +636,9 @@ class FindingController {
       throw new ApiError(404, 'Finding not found');
     }
 
-    // Only creator or manager can delete
-    if (user.role !== 'manager' && finding.created_by !== user.id) {
+    // Permission check
+    const canDeleteAll = permissions.includes('manage_roles') || permissions.includes('approve_findings');
+    if (!canDeleteAll && !(permissions.includes('delete_findings') && finding.created_by === user.id)) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -655,7 +672,7 @@ class FindingController {
     }
 
     // Access control
-    if (user.role === 'analyst' && finding.created_by !== user.id) {
+    if (user.role === 'reporter' && finding.created_by !== user.id) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -679,7 +696,7 @@ class FindingController {
     }
 
     // Access control
-    if (user.role === 'analyst' && finding.created_by !== user.id) {
+    if (user.role === 'reporter' && finding.created_by !== user.id) {
       throw new ApiError(403, 'Access denied');
     }
 

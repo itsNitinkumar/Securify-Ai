@@ -64,8 +64,8 @@ class DashboardService {
     return result.rows;
   }
 
-  // Get top analysts by findings
-  static async getTopAnalysts(limit: number = 5): Promise<any[]> {
+  // Get top reporters by findings
+  static async getTopReporters(limit: number = 5): Promise<any[]> {
     const result = await pool.query(`
       SELECT 
         u.id,
@@ -75,7 +75,7 @@ class DashboardService {
         COUNT(CASE WHEN f.status = 'approved' THEN 1 END) as approved_count
       FROM users u
       LEFT JOIN findings f ON u.id = f.created_by
-      WHERE u.role = 'analyst'
+      WHERE u.role = 'reporter' OR u.role_id = (SELECT id FROM roles WHERE slug = 'reporter')
       GROUP BY u.id, u.name, u.email
       ORDER BY findings_count DESC
       LIMIT $1

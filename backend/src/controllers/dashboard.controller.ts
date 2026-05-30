@@ -6,10 +6,11 @@ class DashboardController {
   // Get overall dashboard statistics
   static getOverallStats = asyncHandler(async (req: Request, res: Response) => {
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
 
-    // Analysts can only see their own stats
+    // Reporters see their own stats; managers/admins see overall
     let stats;
-    if (user.role === 'analyst') {
+    if (permissions.includes('create_findings') && !permissions.includes('approve_findings')) {
       stats = await DashboardService.getUserActivitySummary(user.id);
     } else {
       stats = await DashboardService.getOverallStats();
@@ -52,20 +53,10 @@ class DashboardController {
     });
   });
 
-  // Get top analysts
-  static getTopAnalysts = asyncHandler(async (req: Request, res: Response) => {
-    const user = (req as any).user;
-
-    // Only managers can see top analysts
-    if (user.role !== 'manager') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
+  // Get top reporters
+  static getTopReporters = asyncHandler(async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 5;
-    const data = await DashboardService.getTopAnalysts(limit);
+    const data = await DashboardService.getTopReporters(limit);
 
     return res.json({
       success: true,
@@ -100,12 +91,13 @@ class DashboardController {
   // Get user activity summary
   static getUserActivity = asyncHandler(async (req: Request, res: Response) => {
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
     const userId = req.params.user_id 
       ? parseInt(Array.isArray(req.params.user_id) ? req.params.user_id[0] : req.params.user_id)
       : user.id;
 
-    // Users can only see their own activity unless they're managers
-    if (user.role !== 'manager' && userId !== user.id) {
+    const canViewAll = permissions.includes('manage_roles') || permissions.includes('approve_findings');
+    if (!canViewAll && userId !== user.id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied',

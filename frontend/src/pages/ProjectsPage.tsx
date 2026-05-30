@@ -2,40 +2,29 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, FolderOpen, Calendar, User, AlertTriangle } from 'lucide-react';
 import { projectApi, Project } from '@/api/projectApi';
-import { authApi } from '@/api/authApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import ProjectCard from '@/components/projects/ProjectCard';
+import { useAuth } from '@/contexts/AuthContext';
 
 const ProjectsPage = () => {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
-  const [currentUserRole, setCurrentUserRole] = useState<string>('');
 
   useEffect(() => {
     loadProjects();
-    loadCurrentUser();
   }, []);
 
   useEffect(() => {
     filterProjects();
   }, [projects, searchQuery, filter]);
-
-  const loadCurrentUser = async () => {
-    try {
-      const response = await authApi.getProfile();
-      const userData = response.data.data || response.data;
-      setCurrentUserRole((userData as any)?.role || '');
-    } catch (error) {
-      console.error('Failed to load current user:', error);
-    }
-  };
 
   const loadProjects = async () => {
     try {
@@ -100,8 +89,7 @@ const ProjectsPage = () => {
               Manage penetration testing projects and track security assessments
             </p>
           </div>
-          {/* Only Managers can create projects */}
-          {currentUserRole === 'manager' && (
+          {hasPermission('create_projects') && (
             <Button
               onClick={() => navigate('/projects/new')}
               className="bg-primary text-surface hover:bg-primary/90 w-full md:w-auto"
@@ -218,11 +206,11 @@ const ProjectsPage = () => {
           <p className="text-on-surface-variant mb-4">
             {searchQuery
               ? 'Try adjusting your search criteria'
-              : currentUserRole === 'manager'
+              : hasPermission('create_projects')
               ? 'Get started by creating your first project'
               : 'No projects available yet'}
           </p>
-          {!searchQuery && currentUserRole === 'manager' && (
+          {!searchQuery && hasPermission('create_projects') && (
             <Button
               onClick={() => navigate('/projects/new')}
               className="bg-primary text-surface hover:bg-primary/90"

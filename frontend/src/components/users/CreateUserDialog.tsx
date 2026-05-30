@@ -23,7 +23,7 @@ const CreateUserDialog = ({ open, onOpenChange, onSuccess }: CreateUserDialogPro
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    role: 'analyst' as 'analyst' | 'reviewer' | 'manager' | 'client',
+    role: 'reporter' as 'reporter' | 'manager' | 'client',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -41,7 +41,7 @@ const CreateUserDialog = ({ open, onOpenChange, onSuccess }: CreateUserDialogPro
       setFormData({
         name: '',
         email: '',
-        role: 'analyst',
+        role: 'reporter',
       });
     } catch (error) {
       console.error('Failed to create user:', error);
@@ -52,8 +52,7 @@ const CreateUserDialog = ({ open, onOpenChange, onSuccess }: CreateUserDialogPro
   };
 
   const roles = [
-    { value: 'analyst', label: 'Analyst', description: 'Can create and edit findings' },
-    { value: 'reviewer', label: 'Reviewer', description: 'Can review and comment on findings' },
+    { value: 'reporter', label: 'Reporter', description: 'Creates and manages findings' },
     { value: 'manager', label: 'Manager', description: 'Full access to all features' },
     { value: 'client', label: 'Client', description: 'Read-only access to approved findings' },
   ];

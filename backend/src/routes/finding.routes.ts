@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import FindingController from '../controllers/finding.controller';
-import { protect, requireRole } from '../middlewares/auth';
+import { protect, authorize, authorizeFindingAccess } from '../middlewares/auth';
+import { Permissions } from '../types/permissions';
 import { aiGenerationLimiter, apiLimiter } from '../middlewares/rateLimiter';
 
 const router = Router();
@@ -8,44 +9,44 @@ const router = Router();
 // All routes require authentication
 router.use(protect);
 
-// Generate AI content only (no finding creation) - Analyst, Reviewer, Manager (with AI rate limit)
-router.post('/generate-content', requireRole('analyst', 'reviewer', 'manager'), aiGenerationLimiter, FindingController.generateContent);
+// Generate AI content only (no finding creation)
+router.post('/generate-content', authorize(Permissions.CREATE_FINDINGS), aiGenerationLimiter, FindingController.generateContent);
 
-// Generate false positive content using AI - Analyst, Reviewer, Manager (with AI rate limit)
-router.post('/generate-false-positive-content', requireRole('analyst', 'reviewer', 'manager'), aiGenerationLimiter, FindingController.generateFalsePositiveContent);
+// Generate false positive content using AI
+router.post('/generate-false-positive-content', authorize(Permissions.CREATE_FINDINGS), aiGenerationLimiter, FindingController.generateFalsePositiveContent);
 
-// Generate finding using AI - Analyst, Reviewer, Manager (with AI rate limit)
-router.post('/generate', requireRole('analyst', 'reviewer', 'manager'), aiGenerationLimiter, FindingController.generateFinding);
+// Generate finding using AI
+router.post('/generate', authorize(Permissions.CREATE_FINDINGS), aiGenerationLimiter, FindingController.generateFinding);
 
-// Create finding manually - Analyst, Reviewer, Manager
-router.post('/', requireRole('analyst', 'reviewer', 'manager'), apiLimiter, FindingController.createFinding);
+// Create finding manually
+router.post('/', authorize(Permissions.CREATE_FINDINGS), apiLimiter, FindingController.createFinding);
 
 // Natural language query - All authenticated users (with AI rate limit)
 router.post('/query', aiGenerationLimiter, FindingController.queryFindings);
 
 // CRUD operations (with general API rate limit)
-router.get('/', apiLimiter, FindingController.getAllFindings); // All can view
-router.get('/:id', apiLimiter, FindingController.getFinding); // All can view
-router.put('/:id', requireRole('analyst', 'reviewer', 'manager'), apiLimiter, FindingController.updateFinding); // Analyst, Reviewer, Manager can edit
-router.delete('/:id', requireRole('analyst', 'manager'), apiLimiter, FindingController.deleteFinding); // Analyst and Manager can delete
+router.get('/', authorize(Permissions.VIEW_FINDINGS), apiLimiter, FindingController.getAllFindings);
+router.get('/:id', authorize(Permissions.VIEW_FINDINGS), apiLimiter, FindingController.getFinding);
+router.put('/:id', authorize(Permissions.EDIT_FINDINGS), authorizeFindingAccess(), apiLimiter, FindingController.updateFinding);
+router.delete('/:id', authorize(Permissions.DELETE_FINDINGS), authorizeFindingAccess(), apiLimiter, FindingController.deleteFinding);
 
-// AI regeneration - Analyst, Reviewer, Manager (with AI rate limit)
-router.post('/:id/regenerate', requireRole('analyst', 'reviewer', 'manager'), aiGenerationLimiter, FindingController.regenerateSection);
+// AI regeneration
+router.post('/:id/regenerate', authorize(Permissions.EDIT_FINDINGS), authorizeFindingAccess(), aiGenerationLimiter, FindingController.regenerateSection);
 
-// Approval - Reviewer and Manager only
-router.post('/:id/approve', requireRole('reviewer', 'manager'), apiLimiter, FindingController.approveFinding);
+// Approval - Manager only
+router.post('/:id/approve', authorize(Permissions.APPROVE_FINDINGS), apiLimiter, FindingController.approveFinding);
 
-// Request changes - Reviewer and Manager only
-router.post('/:id/request-changes', requireRole('reviewer', 'manager'), apiLimiter, FindingController.requestChanges);
+// Request changes - Manager only
+router.post('/:id/request-changes', authorize(Permissions.REQUEST_FINDING_CHANGES), apiLimiter, FindingController.requestChanges);
 
-// Submit for review - Analyst, Reviewer, Manager
-router.post('/:id/submit-review', requireRole('analyst', 'reviewer', 'manager'), apiLimiter, FindingController.submitForReview);
+// Submit for review - Reporter
+router.post('/:id/submit-review', authorize(Permissions.CREATE_FINDINGS), authorizeFindingAccess(), apiLimiter, FindingController.submitForReview);
 
 // Version history - All can view
-router.get('/:id/versions', apiLimiter, FindingController.getVersionHistory);
-router.get('/:id/versions/:version', apiLimiter, FindingController.getVersion);
+router.get('/:id/versions', authorize(Permissions.VIEW_FINDINGS), apiLimiter, FindingController.getVersionHistory);
+router.get('/:id/versions/:version', authorize(Permissions.VIEW_FINDINGS), apiLimiter, FindingController.getVersion);
 
-// Import findings from another project - Analyst, Reviewer, Manager
-router.post('/import', requireRole('analyst', 'reviewer', 'manager'), apiLimiter, FindingController.importFromProject as any);
+// Import findings from another project
+router.post('/import', authorize(Permissions.CREATE_FINDINGS), apiLimiter, FindingController.importFromProject as any);
 
 export default router;

@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { Send, CheckCircle, XCircle, Edit, Trash2, Loader2, MessageSquare } from 'lucide-react';
 import { findingApi, Finding } from '@/api/findingApi';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import InlineConfirm from '@/components/ui/inline-confirm';
 
 interface FindingWorkflowButtonsProps {
   finding: Finding;
-  currentUserRole: string;
   currentUserId: number;
   onUpdate: () => void;
   onEditClick?: () => void;
@@ -15,45 +15,31 @@ interface FindingWorkflowButtonsProps {
 
 const FindingWorkflowButtons = ({
   finding,
-  currentUserRole,
   currentUserId,
   onUpdate,
   onEditClick,
 }: FindingWorkflowButtonsProps) => {
+  const { hasPermission, hasRole } = useAuth();
   const [loading, setLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState<null | 'submit' | 'approve' | 'delete'>(null);
   const [requestChangesOpen, setRequestChangesOpen] = useState(false);
   const [requestChangesComment, setRequestChangesComment] = useState('');
 
   const isCreator = finding.created_by === currentUserId;
-  
-  // Debug logging
-  console.log('FindingWorkflowButtons Debug:', {
-    findingId: finding.id,
-    status: finding.status,
-    created_by: finding.created_by,
-    currentUserId,
-    currentUserRole,
-    isCreator,
-  });
-  
-  // Analysts can edit their own findings if status is draft or changes_requested
-  const canEdit = (currentUserRole === 'analyst' && isCreator && 
-                   (finding.status === 'draft' || finding.status === 'changes_requested')) ||
-                  (currentUserRole === 'manager');
-  
-  // Analysts can only delete their own DRAFT findings, Managers can delete any finding
-  const canDelete = (currentUserRole === 'analyst' && isCreator && finding.status === 'draft') ||
-                    (currentUserRole === 'manager');
-  
-  // Can submit if creator and status is draft OR changes_requested (resubmit after fixes)
-  const canSubmit = isCreator && (finding.status === 'draft' || finding.status === 'changes_requested');
-  
-  // Can approve/request changes if reviewer/manager and status is pending_review
-  const canReview = (currentUserRole === 'reviewer' || currentUserRole === 'manager') &&
-                    finding.status === 'pending_review';
+  const canManageAll = hasPermission('manage_roles') || hasPermission('approve_findings');
+  const canCreateFindings = hasPermission('create_findings');
+  const canDeleteFindings = hasPermission('delete_findings');
 
-  console.log('Button Visibility:', { canEdit, canDelete, canSubmit, canReview });
+  const canEdit = (canCreateFindings && isCreator && 
+                   (finding.status === 'draft' || finding.status === 'changes_requested')) ||
+                  canManageAll;
+
+  const canDelete = (canDeleteFindings && isCreator && finding.status === 'draft') ||
+                    canManageAll;
+
+  const canSubmit = canCreateFindings && isCreator && (finding.status === 'draft' || finding.status === 'changes_requested');
+
+  const canReview = canManageAll && finding.status === 'pending_review';
 
   const handleSubmitForReview = async () => {
     try {
@@ -75,7 +61,6 @@ const FindingWorkflowButtons = ({
       await findingApi.approve(finding.id);
       toast.success('Finding approved successfully');
       setConfirmAction(null);
-      // Wait a moment before updating to ensure backend has processed
       await new Promise(resolve => setTimeout(resolve, 100));
       onUpdate();
     } catch (error: any) {
@@ -156,7 +141,7 @@ const FindingWorkflowButtons = ({
       {requestChangesOpen ? (
         <div className="rounded-lg border border-outline-variant bg-surface-low p-3">
           <div className="text-sm font-semibold text-on-surface">Request changes</div>
-          <div className="mt-1 text-xs text-on-surface-variant">Optional feedback for the analyst.</div>
+          <div className="mt-1 text-xs text-on-surface-variant">Optional feedback for the reporter.</div>
           <textarea
             value={requestChangesComment}
             onChange={(e) => setRequestChangesComment(e.target.value)}
@@ -183,14 +168,13 @@ const FindingWorkflowButtons = ({
               onClick={() => void handleRequestChanges()}
               className="bg-orange-500 text-surface hover:bg-orange-500/90"
             >
-              {loading ? 'Working…' : 'Send'}
+              {loading ? 'Working\u2026' : 'Send'}
             </Button>
           </div>
         </div>
       ) : null}
 
       <div className="flex items-center gap-2 flex-wrap">
-      {/* Submit for Review - Analyst (creator) only, draft or changes_requested status */}
       {canSubmit && (
         <Button
           onClick={() => setConfirmAction('submit')}
@@ -206,7 +190,6 @@ const FindingWorkflowButtons = ({
         </Button>
       )}
 
-      {/* Approve - Reviewer/Manager only, pending_review status */}
       {canReview && (
         <>
           <Button
@@ -237,7 +220,6 @@ const FindingWorkflowButtons = ({
         </>
       )}
 
-      {/* Edit - Analyst (creator, draft) or Manager */}
       {canEdit && onEditClick && (
         <Button
           onClick={onEditClick}
@@ -249,7 +231,6 @@ const FindingWorkflowButtons = ({
         </Button>
       )}
 
-      {/* Delete - Analyst (creator) or Manager */}
       {canDelete && (
         <Button
           onClick={() => setConfirmAction('delete')}
@@ -266,10 +247,9 @@ const FindingWorkflowButtons = ({
         </Button>
       )}
 
-      {/* Status indicator for read-only states */}
       {finding.status === 'draft' && !canSubmit && (
         <div className="px-3 py-2 bg-gray-500/10 border border-gray-500/20 rounded-md text-sm text-gray-400">
-          Draft - Waiting for analyst to submit for review
+          Draft - Waiting for reporter to submit for review
         </div>
       )}
 
@@ -282,7 +262,7 @@ const FindingWorkflowButtons = ({
       {finding.status === 'changes_requested' && !isCreator && (
         <div className="px-3 py-2 bg-orange-500/10 border border-orange-500/20 rounded-md text-sm text-orange-400 flex items-center gap-2">
           <MessageSquare className="w-4 h-4" />
-          Changes Requested - Waiting for analyst to resubmit
+          Changes Requested - Waiting for reporter to resubmit
         </div>
       )}
 

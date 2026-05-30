@@ -15,6 +15,7 @@ router.post('/signin', authLimiter, validateSignin, AuthController.signin);
 router.post('/signout', AuthController.signout as any);
 router.get('/profile', protect, AuthController.getProfile as any);
 router.get('/session', protect, AuthController.getSessionInfo as any);
+router.get('/permissions', protect, AuthController.getPermissions as any);
 
 // Google OAuth routes
 router.get('/google', passport.authenticate('google', { 

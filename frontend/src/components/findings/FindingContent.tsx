@@ -56,19 +56,20 @@ const FindingContent = ({
   onRegenerateSection,
   onCancelEdit,
 }: FindingContentProps) => {
-  const [editData, setEditData] = useState({
-    severity: finding.severity,
-    description: finding.description,
-    affected_target: finding.affected_target || '',
-    steps_to_reproduce: normalizeSteps(finding.steps_to_reproduce),
-    recommendation: finding.recommendation || [],
-    remediation: finding.remediation || '',
-    impact_severity: (typeof finding.impact === 'object' ? finding.impact?.severity : '') || '',
-    impact_detail: (typeof finding.impact === 'object' ? finding.impact?.detail : '') || (typeof finding.impact === 'string' ? finding.impact : ''),
-    likelihood_severity: (typeof finding.likelihood === 'object' ? finding.likelihood?.severity : '') || '',
-    likelihood_detail: (typeof finding.likelihood === 'object' ? finding.likelihood?.detail : '') || (typeof finding.likelihood === 'string' ? finding.likelihood : ''),
-    evidence_items: (finding as any).evidence_items || [],
-  });
+    const [editData, setEditData] = useState({
+      severity: finding.severity,
+      description: finding.description,
+      affected_target: Array.isArray(finding.affected_target) ? finding.affected_target : (finding.affected_target ? [finding.affected_target] : []),
+      steps_to_reproduce: normalizeSteps(finding.steps_to_reproduce),
+      recommendation: finding.recommendation || [],
+      remediation: finding.remediation || '',
+      impact_severity: (typeof finding.impact === 'object' ? finding.impact?.severity : '') || '',
+      impact_detail: (typeof finding.impact === 'object' ? finding.impact?.detail : '') || (typeof finding.impact === 'string' ? finding.impact : ''),
+      likelihood_severity: (typeof finding.likelihood === 'object' ? finding.likelihood?.severity : '') || '',
+      likelihood_detail: (typeof finding.likelihood === 'object' ? finding.likelihood?.detail : '') || (typeof finding.likelihood === 'string' ? finding.likelihood : ''),
+      evidence_items: (finding as any).evidence_items || [],
+      references: finding.references || [],
+    });
   const [saving, setSaving] = useState(false);
 
   const handleStepsChange = (steps: Step[]) => {
@@ -106,6 +107,14 @@ const FindingContent = ({
       }
       if (isFalsePositive(finding) && editData.evidence_items) {
         payload.evidence_items = editData.evidence_items;
+      }
+      if (editData.affected_target && editData.affected_target.length > 0) {
+        payload.affected_target = editData.affected_target;
+      }
+      if (editData.references && editData.references.length > 0) {
+        payload.references = editData.references;
+      } else {
+        payload.references = [];
       }
       await findingApi.updateFinding(finding.id, payload);
       onUpdate();
@@ -182,15 +191,80 @@ const FindingContent = ({
         )}
       </Card>
 
-      {/* Affected Target */}
-      {finding.affected_target && (
-        <Card className="p-4 md:p-6 bg-surface-high border-outline">
-          <h3 className="text-sm font-semibold text-on-surface mb-2">Affected URL</h3>
-          <p className="text-sm text-primary font-mono bg-surface p-3 rounded border border-outline-variant break-all">
-            {finding.affected_target}
-          </p>
-        </Card>
-      )}
+       {/* Affected Target / URLs */}
+       {isEditing || (finding.affected_target && finding.affected_target.length > 0) ? (
+         <Card className="p-4 md:p-6 bg-surface-high border-outline">
+           <h3 className="text-sm font-semibold text-on-surface mb-2">Affected URLs</h3>
+           {isEditing ? (
+             <div className="space-y-3">
+               {editData.affected_target.map((url, index) => (
+                 <div key={index} className="flex items-center gap-2">
+                   <input
+                     value={url}
+                     onChange={(e) => {
+                       const updated = [...editData.affected_target];
+                       updated[index] = e.target.value;
+                       setEditData({ ...editData, affected_target: updated });
+                     }}
+                     placeholder="https://example.com/api/login"
+                     className="flex-1 px-3 py-2 bg-surface border border-outline rounded-md text-on-surface font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                   />
+                   <button
+                     type="button"
+                     onClick={() => {
+                       const updated = editData.affected_target.filter((_, i) => i !== index);
+                       setEditData({ ...editData, affected_target: updated });
+                     }}
+                     className="text-error hover:text-error/80 text-sm px-2 py-1"
+                   >
+                     Remove
+                   </button>
+                 </div>
+               ))}
+               <button
+                 type="button"
+                 onClick={() => {
+                   setEditData({ ...editData, affected_target: [...editData.affected_target, ''] });
+                 }}
+                 className="text-sm text-primary hover:text-primary/80"
+               >
+                 + Add URL
+               </button>
+             </div>
+           ) : (
+             <div className="space-y-2">
+               {Array.isArray(finding.affected_target) 
+                 ? finding.affected_target.map((url, index) => (
+                   <a
+                     key={index}
+                     href={url}
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     className="block text-sm text-primary hover:underline break-all"
+                   >
+                     {url}
+                   </a>
+                 )) 
+                 : (finding.affected_target ? [
+                     <a
+                       key="0"
+                       href={finding.affected_target}
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       className="block text-sm text-primary hover:underline break-all"
+                     >
+                       {finding.affected_target}
+                     </a>
+                   ] : [])}
+             </div>
+           )}
+         </Card>
+       ) : (
+         <Card className="p-4 md:p-6 bg-surface-high border-outline">
+           <h3 className="text-sm font-semibold text-on-surface mb-2">Affected URLs</h3>
+           <p className="text-sm text-on-surface-variant">No URLs added yet.</p>
+         </Card>
+       )}
 
       {/* Impact & Likelihood - hide for false positives */}
       {!isFalsePositive(finding) && (finding.impact || finding.likelihood || isEditing) && (
@@ -584,22 +658,60 @@ const FindingContent = ({
       )}
 
       {/* References (hide for false positives) */}
-      {!isFalsePositive(finding) && finding.references && finding.references.length > 0 && (
+      {!isFalsePositive(finding) && (isEditing || (finding.references && finding.references.length > 0)) && (
         <Card className="p-4 md:p-6 bg-surface-high border-outline">
           <h3 className="text-sm font-semibold text-on-surface mb-4">References</h3>
-          <div className="space-y-2">
-            {finding.references.map((ref, index) => (
-              <a
-                key={index}
-                href={ref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block text-sm text-primary hover:underline break-all"
+          {isEditing ? (
+            <div className="space-y-3">
+              {editData.references.map((ref, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input
+                    value={ref}
+                    onChange={(e) => {
+                      const updated = [...editData.references];
+                      updated[index] = e.target.value;
+                      setEditData({ ...editData, references: updated });
+                    }}
+                    placeholder="https://example.com/vulnerability-reference"
+                    className="flex-1 px-3 py-2 bg-surface border border-outline rounded-md text-on-surface text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = editData.references.filter((_, i) => i !== index);
+                      setEditData({ ...editData, references: updated });
+                    }}
+                    className="text-error hover:text-error/80 text-sm px-2 py-1"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setEditData({ ...editData, references: [...editData.references, ''] });
+                }}
+                className="text-sm text-primary hover:text-primary/80"
               >
-                {ref}
-              </a>
-            ))}
-          </div>
+                + Add Reference
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {(finding.references ?? []).map((ref, index) => (
+                <a
+                  key={index}
+                  href={ref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-sm text-primary hover:underline break-all"
+                >
+                  {ref}
+                </a>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
@@ -618,18 +730,19 @@ const FindingContent = ({
             variant="outline"
             onClick={() => {
               setEditData({
-                severity: finding.severity,
-                description: finding.description,
-                affected_target: finding.affected_target || '',
-                steps_to_reproduce: normalizeSteps(finding.steps_to_reproduce),
-                recommendation: finding.recommendation || [],
-                remediation: finding.remediation || '',
-                impact_severity: (typeof finding.impact === 'object' ? finding.impact?.severity : '') || '',
-                impact_detail: (typeof finding.impact === 'object' ? finding.impact?.detail : '') || (typeof finding.impact === 'string' ? finding.impact : ''),
-                likelihood_severity: (typeof finding.likelihood === 'object' ? finding.likelihood?.severity : '') || '',
-                likelihood_detail: (typeof finding.likelihood === 'object' ? finding.likelihood?.detail : '') || (typeof finding.likelihood === 'string' ? finding.likelihood : ''),
-                evidence_items: (finding as any).evidence_items || [],
-              });
+                 severity: finding.severity,
+                 description: finding.description,
+                 steps_to_reproduce: normalizeSteps(finding.steps_to_reproduce),
+                 recommendation: finding.recommendation || [],
+                 remediation: finding.remediation || '',
+                 impact_severity: (typeof finding.impact === 'object' ? finding.impact?.severity : '') || '',
+                 impact_detail: (typeof finding.impact === 'object' ? finding.impact?.detail : '') || (typeof finding.impact === 'string' ? finding.impact : ''),
+                 likelihood_severity: (typeof finding.likelihood === 'object' ? finding.likelihood?.severity : '') || '',
+                 likelihood_detail: (typeof finding.likelihood === 'object' ? finding.likelihood?.detail : '') || (typeof finding.likelihood === 'string' ? finding.likelihood : ''),
+                 evidence_items: (finding as any).evidence_items || [],
+                 references: finding.references || [],
+                 affected_target: Array.isArray(finding.affected_target) ? finding.affected_target : (finding.affected_target ? [finding.affected_target] : []),
+               });
             }}
             className="border-outline text-on-surface-variant"
           >

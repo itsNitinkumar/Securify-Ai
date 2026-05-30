@@ -10,9 +10,9 @@ class RoleRequestController {
     const { requested_role, request_reason } = req.body;
     const user = (req as any).user;
 
-    // Validate requested role
-    if (!requested_role || !['analyst', 'reviewer'].includes(requested_role)) {
-      throw new ApiError(400, 'Can only request analyst or reviewer role');
+    const validRoles = ['reporter'];
+    if (!requested_role || !validRoles.includes(requested_role)) {
+      throw new ApiError(400, 'Can only request reporter role');
     }
 
     // Check if user already has this role
@@ -53,7 +53,7 @@ class RoleRequestController {
   static reviewRoleRequest = asyncHandler(async (req: Request, res: Response) => {
     const requestId = parseInt(req.params.id as string);
     const { status, review_notes } = req.body;
-    const reviewer = (req as any).user;
+    const currentUser = (req as any).user;
 
     // Validate status
     if (!status || !['approved', 'rejected'].includes(status)) {
@@ -63,7 +63,7 @@ class RoleRequestController {
     const result = await RoleRequestService.reviewRequest(
       requestId,
       status,
-      reviewer.id,
+      currentUser.id,
       review_notes || null
     );
 

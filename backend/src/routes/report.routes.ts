@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import ReportController from '../controllers/report.controller';
-import { protect, requireRole } from '../middlewares/auth';
+import { protect, authorize } from '../middlewares/auth';
+import { Permissions } from '../types/permissions';
 import { apiLimiter } from '../middlewares/rateLimiter';
 
 const router = Router();
@@ -11,35 +12,38 @@ router.use(protect);
 // Report Generation - Manager and Admin only
 router.post(
   '/generate',
-  requireRole('manager', 'admin'),
+  authorize(Permissions.GENERATE_REPORTS),
   apiLimiter,
   ReportController.generateReport
 );
 
 router.post(
   '/preview',
-  requireRole('manager', 'admin'),
+  authorize(Permissions.GENERATE_REPORTS),
   apiLimiter,
   ReportController.previewReport
 );
 
-// HTML Preview - All authenticated users can view
+// HTML Preview
 router.post(
   '/preview/html',
+  authorize(Permissions.VIEW_REPORTS),
   apiLimiter,
   ReportController.getHTMLPreview
 );
 
-// Download Report - All authenticated users
+// Download Report
 router.get(
   '/:id/download',
+  authorize(Permissions.VIEW_REPORTS),
   apiLimiter,
   ReportController.downloadReport
 );
 
-// Get Reports by Project - All authenticated users
+// Get Reports by Project
 router.get(
   '/project/:projectId',
+  authorize(Permissions.VIEW_REPORTS),
   apiLimiter,
   ReportController.getReportsByProject
 );
@@ -47,41 +51,43 @@ router.get(
 // Delete Report - Manager and Admin only
 router.delete(
   '/:id',
-  requireRole('manager', 'admin'),
+  authorize(Permissions.DELETE_REPORTS),
   apiLimiter,
   ReportController.deleteReport
 );
 
-// Template Management - Manager and Admin only
+// Template Management
 router.post(
   '/templates',
-  requireRole('manager', 'admin'),
+  authorize(Permissions.MANAGE_TEMPLATES),
   apiLimiter,
   ReportController.createTemplate
 );
 
 router.get(
   '/templates',
+  authorize(Permissions.VIEW_TEMPLATES),
   apiLimiter,
   ReportController.getAllTemplates
 );
 
 router.get(
   '/templates/:id',
+  authorize(Permissions.VIEW_TEMPLATES),
   apiLimiter,
   ReportController.getTemplate
 );
 
 router.put(
   '/templates/:id',
-  requireRole('manager', 'admin'),
+  authorize(Permissions.MANAGE_TEMPLATES),
   apiLimiter,
   ReportController.updateTemplate
 );
 
 router.delete(
   '/templates/:id',
-  requireRole('manager', 'admin'),
+  authorize(Permissions.MANAGE_TEMPLATES),
   apiLimiter,
   ReportController.deleteTemplate
 );

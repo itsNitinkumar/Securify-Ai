@@ -47,8 +47,7 @@ const EditUserPage = () => {
 
   const roles = useMemo(
     () => [
-      { value: 'analyst', label: 'Analyst', description: 'Can create and edit findings' },
-      { value: 'reviewer', label: 'Reviewer', description: 'Can review and approve findings' },
+      { value: 'reporter', label: 'Reporter', description: 'Creates and manages findings' },
       { value: 'manager', label: 'Manager', description: 'Full access to all features' },
       { value: 'client', label: 'Client', description: 'Read-only access to approved findings' },
     ],

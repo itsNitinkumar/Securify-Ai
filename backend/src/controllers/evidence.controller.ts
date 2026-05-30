@@ -11,6 +11,7 @@ class EvidenceController {
   static uploadEvidence = asyncHandler(async (req: Request, res: Response) => {
     const { finding_id, caption } = req.body;
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
     const file = req.file;
 
     if (!file) {
@@ -30,8 +31,9 @@ class EvidenceController {
       throw new ApiError(404, 'Finding not found');
     }
 
-    // Access control
-    if (user.role === 'analyst' && finding.created_by !== user.id) {
+    // Access control - reporter can only upload to own findings
+    const canUploadAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
+    if (!canUploadAll && finding.created_by !== user.id) {
       fs.unlinkSync(file.path);
       throw new ApiError(403, 'Access denied');
     }
@@ -69,6 +71,7 @@ class EvidenceController {
   static getEvidenceByFinding = asyncHandler(async (req: Request, res: Response) => {
     const finding_id = Array.isArray(req.params.finding_id) ? req.params.finding_id[0] : req.params.finding_id;
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
 
     // Verify finding exists and user has access
     const finding = await FindingModel.findById(parseInt(finding_id));
@@ -77,7 +80,8 @@ class EvidenceController {
     }
 
     // Access control
-    if (user.role === 'analyst' && finding.created_by !== user.id) {
+    const canViewAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
+    if (!canViewAll && permissions.includes('create_findings') && finding.created_by !== user.id) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -97,6 +101,7 @@ class EvidenceController {
   static downloadEvidence = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = (req as any).user;
+    const permissions = (req as any).permissions || [];
 
     const evidence = await EvidenceModel.findById(parseInt(id));
     if (!evidence) {
@@ -110,7 +115,8 @@ class EvidenceController {
     }
 
     // Access control
-    if (user.role === 'analyst' && finding.created_by !== user.id) {
+    const canViewAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
+    if (!canViewAll && permissions.includes('create_findings') && finding.created_by !== user.id) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -144,8 +150,9 @@ class EvidenceController {
       throw new ApiError(404, 'Finding not found');
     }
 
-    // Access control
-    if (user.role === 'analyst' && finding.created_by !== user.id) {
+    const permissions = (req as any).permissions || [];
+    const canEditAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
+    if (!canEditAll && finding.created_by !== user.id) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -184,8 +191,9 @@ class EvidenceController {
       throw new ApiError(404, 'Finding not found');
     }
 
-    // Access control - only creator or manager can delete
-    if (user.role !== 'manager' && finding.created_by !== user.id) {
+    const permissions = (req as any).permissions || [];
+    const canDeleteAll = permissions.includes('manage_roles') || permissions.includes('approve_findings');
+    if (!canDeleteAll && finding.created_by !== user.id) {
       throw new ApiError(403, 'Access denied');
     }
 

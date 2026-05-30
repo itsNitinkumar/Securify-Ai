@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface User {
   id: number;
@@ -22,13 +23,13 @@ interface User {
 
 interface ApproveUserDialogProps {
   user: User;
-  currentUserRole: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }
 
-const ApproveUserDialog = ({ user, currentUserRole, open, onOpenChange, onSuccess }: ApproveUserDialogProps) => {
+const ApproveUserDialog = ({ user, open, onOpenChange, onSuccess }: ApproveUserDialogProps) => {
+  const { user: currentUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string>('client');
 
@@ -49,15 +50,14 @@ const ApproveUserDialog = ({ user, currentUserRole, open, onOpenChange, onSucces
   // Define available roles based on current user's role
   const allRoles = [
     { value: 'client', label: 'Client', description: 'Read-only access to approved findings', color: 'bg-gray-500/10 text-gray-400 border-gray-500/20' },
-    { value: 'analyst', label: 'Analyst', description: 'Can create and edit findings', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
-    { value: 'reviewer', label: 'Reviewer', description: 'Can review and approve findings', color: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' },
+    { value: 'reporter', label: 'Reporter', description: 'Creates and manages findings', color: 'bg-green-500/10 text-green-400 border-green-500/20' },
     { value: 'manager', label: 'Manager', description: 'Full access to projects and reports', color: 'bg-primary/10 text-primary border-primary/20' },
   ];
 
   // Filter roles based on current user's permissions
-  const availableRoles = currentUserRole === 'admin' 
-    ? allRoles // Admin can assign any role
-    : allRoles.filter(r => r.value !== 'manager'); // Manager cannot assign manager role
+  const availableRoles = currentUser?.role === 'admin' 
+    ? allRoles
+    : allRoles.filter(r => r.value !== 'manager');
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -112,7 +112,7 @@ const ApproveUserDialog = ({ user, currentUserRole, open, onOpenChange, onSucces
                 </button>
               ))}
             </div>
-            {currentUserRole === 'manager' && (
+            {currentUser?.role === 'manager' && (
               <p className="text-xs text-on-surface-variant mt-2">
                 ℹ️ Only admin can assign manager role
               </p>

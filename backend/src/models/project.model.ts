@@ -6,8 +6,10 @@ interface Project {
   description?: string;
   client_name?: string;
   client_id?: number;
-  start_date?: string; // DATE in DB
-  end_date?: string; // DATE in DB
+  company_id?: number;
+  assigned_reporter_id?: number;
+  start_date?: string;
+  end_date?: string;
   application_details?: Array<{ name: string; url: string }>;
   user_roles?: Array<{ role: string; username: string }>;
   domains?: string[];
@@ -28,6 +30,8 @@ class ProjectModel {
          description,
          client_name,
          client_id,
+         company_id,
+         assigned_reporter_id,
          start_date,
          end_date,
          application_details,
@@ -39,13 +43,15 @@ class ProjectModel {
          include_out_of_scope_endpoints,
          created_by
         )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
        [
          data.name,
          data.description,
          data.client_name,
          data.client_id ?? null,
+         data.company_id ?? null,
+         data.assigned_reporter_id ?? null,
          data.start_date ?? null,
          data.end_date ?? null,
          data.application_details ? JSON.stringify(data.application_details) : null,
@@ -71,6 +77,22 @@ class ProjectModel {
     return result.rows;
   }
 
+  static async findByReporter(userId: number): Promise<Project[]> {
+    const result = await pool.query(
+      'SELECT * FROM projects WHERE assigned_reporter_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
+    return result.rows;
+  }
+
+  static async findByCompany(companyId: number): Promise<Project[]> {
+    const result = await pool.query(
+      'SELECT * FROM projects WHERE company_id = $1 ORDER BY created_at DESC',
+      [companyId]
+    );
+    return result.rows;
+  }
+
   static async update(id: number, data: Partial<Project>): Promise<Project> {
     const updates: string[] = [];
     const values: any[] = [];
@@ -85,6 +107,8 @@ if (data.name !== undefined) set('name', data.name);
       if (data.description !== undefined) set('description', data.description);
       if (data.client_name !== undefined) set('client_name', data.client_name);
       if (data.client_id !== undefined) set('client_id', data.client_id);
+      if (data.company_id !== undefined) set('company_id', data.company_id);
+      if (data.assigned_reporter_id !== undefined) set('assigned_reporter_id', data.assigned_reporter_id);
       if (data.start_date !== undefined) set('start_date', data.start_date);
       if (data.end_date !== undefined) set('end_date', data.end_date);
       if (data.application_details !== undefined) set('application_details', data.application_details ? JSON.stringify(data.application_details) : null);
@@ -114,6 +138,8 @@ if (data.name !== undefined) set('name', data.name);
     const result = await pool.query(
       `SELECT 
         p.*,
+        u.name AS assigned_reporter_name,
+        u.email AS assigned_reporter_email,
         json_agg(
           json_build_object(
             'id', f.id,
@@ -127,8 +153,9 @@ if (data.name !== undefined) set('name', data.name);
         ) FILTER (WHERE f.id IS NOT NULL) as findings
        FROM projects p
        LEFT JOIN findings f ON p.id = f.project_id
+       LEFT JOIN users u ON p.assigned_reporter_id = u.id
        WHERE p.id = $1
-       GROUP BY p.id`,
+       GROUP BY p.id, u.name, u.email`,
       [id]
     );
     return result.rows[0] || null;

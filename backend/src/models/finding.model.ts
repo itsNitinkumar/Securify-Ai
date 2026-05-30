@@ -6,7 +6,7 @@ interface Finding {
   title: string;
   severity: string;
   description: string;
-  affected_target?: string;
+  affected_target?: string[];
   likelihood?: { severity: string; detail: string }; // JSONB: {severity: string, detail: string}
   impact?: { severity: string; detail: string }; // JSONB: {severity: string, detail: string}
   steps_to_reproduce?: Array<{
@@ -49,7 +49,7 @@ class FindingModel {
         data.title,
         data.severity,
         data.description,
-        data.affected_target,
+        data.affected_target ? JSON.stringify(data.affected_target) : null,
         data.likelihood ? JSON.stringify(data.likelihood) : null,
         data.impact ? JSON.stringify(data.impact) : null,
         data.steps_to_reproduce ? JSON.stringify(data.steps_to_reproduce) : null,

@@ -77,9 +77,9 @@ const DashboardPage = () => {
     }
 
     return (
-        <div className="min-h-screen bg-surface p-4 md:p-6 lg:p-8">
+        <div className="h-full flex flex-col overflow-hidden p-4 md:p-6 lg:p-8">
             {/* Header */}
-            <div className="mb-6 md:mb-8">
+            <div className="mb-4 shrink-0">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
                         <div className="flex items-center gap-3 mb-2">
@@ -101,89 +101,90 @@ const DashboardPage = () => {
                 </div>
             </div>
 
-            {/* AI Query Interface */}
-            <Card className="mb-6 p-4 md:p-6 bg-surface-high border-primary/20 glow-primary">
-                <div className="flex items-start gap-3 md:gap-4">
-                    <div className="p-2 md:p-3 rounded-lg bg-primary/10 flex-shrink-0">
-                        <Sparkles className="w-5 h-5 md:w-6 md:h-6 text-primary animate-pulse" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-on-surface mb-2 text-sm md:text-base">
-                            Sentinel AI - Ready for Instruction
-                        </h3>
-                        <input
-                            type="text"
-                            value={aiQuery}
-                            onChange={(e) => setAiQuery(e.target.value)}
-                            placeholder="Show critical findings from last month..."
-                            className="w-full px-3 md:px-4 py-2 md:py-3 bg-surface border border-outline rounded-lg text-on-surface text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-on-surface-variant"
-                        />
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                            <Badge variant="outline" className="border-primary/30 text-primary">
-                                DATA SANITIZED BEFORE AI PROCESSING
-                            </Badge>
+            {/* Scrollable Content Area */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 md:space-y-6">
+                {/* AI Query Interface */}
+                <Card className="p-4 md:p-6 bg-surface-high border-primary/20 glow-primary">
+                    <div className="flex items-start gap-3 md:gap-4">
+                        <div className="p-2 md:p-3 rounded-lg bg-primary/10 flex-shrink-0">
+                            <Sparkles className="w-5 h-5 md:w-6 md:h-6 text-primary animate-pulse" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-on-surface mb-2 text-sm md:text-base">
+                                Sentinel AI - Ready for Instruction
+                            </h3>
+                            <input
+                                type="text"
+                                value={aiQuery}
+                                onChange={(e) => setAiQuery(e.target.value)}
+                                placeholder="Show critical findings from last month..."
+                                className="w-full px-3 md:px-4 py-2 md:py-3 bg-surface border border-outline rounded-lg text-on-surface text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-on-surface-variant"
+                            />
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                                <Badge variant="outline" className="border-primary/30 text-primary">
+                                    DATA SANITIZED BEFORE AI PROCESSING
+                                </Badge>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </Card>
+                </Card>
 
-            {/* Key Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
-                <StatCard
-                    title="Total Findings"
-                    value={stats?.total_findings || 0}
-                    change="+13.4%"
-                    icon={Activity}
-                    trend="up"
-                />
-                <StatCard
-                    title="Critical Issues"
-                    value={stats?.critical_findings || 0}
-                    subtitle="⚠️ ACTIVE PRIORITY ITEM"
-                    icon={AlertTriangle}
-                    variant="critical"
-                />
-                <StatCard
-                    title="Risk Score"
-                    value={calculateRiskScore()}
-                    suffix="/100"
-                    icon={TrendingUp}
-                    variant="warning"
-                />
-                <StatCard
-                    title="MTTR (Mean Time)"
-                    value="4.2"
-                    suffix="d"
-                    subtitle="avg fix time"
-                    icon={Clock}
-                />
-            </div>
-
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
-                {/* Severity Distribution */}
-                <div className="lg:col-span-1">
-                    <SeverityChart data={severityData} />
+                {/* Key Metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                    <StatCard
+                        title="Total Findings"
+                        value={stats?.total_findings || 0}
+                        change="+13.4%"
+                        icon={Activity}
+                        trend="up"
+                    />
+                    <StatCard
+                        title="Critical Issues"
+                        value={stats?.critical_findings || 0}
+                        subtitle="⚠️ ACTIVE PRIORITY ITEM"
+                        icon={AlertTriangle}
+                        variant="critical"
+                    />
+                    <StatCard
+                        title="Risk Score"
+                        value={calculateRiskScore()}
+                        suffix="/100"
+                        icon={TrendingUp}
+                        variant="warning"
+                    />
+                    <StatCard
+                        title="MTTR (Mean Time)"
+                        value="4.2"
+                        suffix="d"
+                        subtitle="avg fix time"
+                        icon={Clock}
+                    />
                 </div>
 
-                {/* Remediation Velocity */}
-                <div className="lg:col-span-1">
-                    <RemediationVelocity data={trendData} />
+                {/* Main Content Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+                    {/* Severity Distribution */}
+                    <div className="lg:col-span-1">
+                        <SeverityChart data={severityData} />
+                    </div>
+
+                    {/* Remediation Velocity */}
+                    <div className="lg:col-span-1">
+                        <RemediationVelocity data={trendData} />
+                    </div>
+
+                    {/* Recent Activity */}
+                    <div className="lg:col-span-1">
+                        <ActivityFeed activities={recentActivity} />
+                    </div>
                 </div>
 
-                {/* Recent Activity */}
-                <div className="lg:col-span-1">
-                    <ActivityFeed activities={recentActivity} />
-                </div>
-            </div>
-
-            {/* AI Insights */}
-            <div className="mb-6 md:mb-8">
+                {/* AI Insights */}
                 <AIInsights />
-            </div>
 
-            {/* Vulnerability Feed */}
-            <VulnerabilityFeed />
+                {/* Vulnerability Feed */}
+                <VulnerabilityFeed />
+            </div>
         </div>
     );
 };

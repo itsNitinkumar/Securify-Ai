@@ -77,8 +77,10 @@ class CommentController {
       throw new ApiError(404, 'Comment not found');
     }
 
-    // Only the comment author or manager can update
-    if (existingComment.user_id !== user.id && user.role !== 'manager') {
+    const permissions = (req as any).permissions || [];
+    const canManageAll = permissions.includes('manage_roles') || permissions.includes('approve_findings');
+
+    if (existingComment.user_id !== user.id && !canManageAll) {
       throw new ApiError(403, 'You can only edit your own comments');
     }
 
@@ -105,8 +107,10 @@ class CommentController {
       throw new ApiError(404, 'Comment not found');
     }
 
-    // Only the comment author or manager can delete
-    if (existingComment.user_id !== user.id && user.role !== 'manager') {
+    const permissions = (req as any).permissions || [];
+    const canManageAll = permissions.includes('manage_roles') || permissions.includes('approve_findings');
+
+    if (existingComment.user_id !== user.id && !canManageAll) {
       throw new ApiError(403, 'You can only delete your own comments');
     }
 

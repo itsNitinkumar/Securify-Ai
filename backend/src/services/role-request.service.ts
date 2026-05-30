@@ -138,15 +138,17 @@ class RoleRequestService {
 
     // If approved, update user's role
     if (status === 'approved') {
+      const newRoleSlug = request.requested_role === 'reporter' ? 'reporter' : request.requested_role;
       await pool.query(
         `UPDATE users 
          SET role = $1, 
+             role_id = (SELECT id FROM roles WHERE slug = $2),
              role_request_status = 'approved', 
-             role_approved_by = $2, 
+             role_approved_by = $3, 
              role_approved_date = NOW(),
              requested_role = NULL
-         WHERE id = $3`,
-        [request.requested_role, reviewedBy, request.user_id]
+         WHERE id = $4`,
+        [newRoleSlug, newRoleSlug, reviewedBy, request.user_id]
       );
     } else {
       // If rejected, clear the request status

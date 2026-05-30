@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import RoleRequestController from '../controllers/role-request.controller';
-import { protect, requireRole } from '../middlewares/auth';
+import { protect, authorize } from '../middlewares/auth';
+import { Permissions } from '../types/permissions';
 import { apiLimiter } from '../middlewares/rateLimiter';
 
 const router = Router();
@@ -8,7 +9,7 @@ const router = Router();
 // All routes require authentication
 router.use(protect);
 
-// User requests role change (client can request analyst/reviewer)
+// User requests role change (client can request reporter)
 router.post(
   '/request',
   apiLimiter,
@@ -25,7 +26,7 @@ router.get(
 // Manager views pending role requests
 router.get(
   '/pending',
-  requireRole('manager', 'admin'),
+  authorize(Permissions.VIEW_ROLE_REQUESTS),
   apiLimiter,
   RoleRequestController.getPendingRequests
 );
@@ -33,7 +34,7 @@ router.get(
 // Manager approves/rejects role request
 router.patch(
   '/:id/review',
-  requireRole('manager', 'admin'),
+  authorize(Permissions.APPROVE_ROLE_REQUESTS),
   apiLimiter,
   RoleRequestController.reviewRoleRequest
 );
@@ -41,7 +42,7 @@ router.patch(
 // Get all role requests (manager/admin)
 router.get(
   '/',
-  requireRole('manager', 'admin'),
+  authorize(Permissions.VIEW_ROLE_REQUESTS),
   apiLimiter,
   RoleRequestController.getAllRequests
 );

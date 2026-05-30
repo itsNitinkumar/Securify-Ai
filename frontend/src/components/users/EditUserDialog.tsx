@@ -32,7 +32,7 @@ const EditUserDialog = ({ user, open, onOpenChange, onSuccess }: EditUserDialogP
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: user.name,
-    role: user.role as 'analyst' | 'reviewer' | 'manager' | 'client',
+    role: user.role as 'reporter' | 'manager' | 'client',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,8 +55,7 @@ const EditUserDialog = ({ user, open, onOpenChange, onSuccess }: EditUserDialogP
   };
 
   const roles = [
-    { value: 'analyst', label: 'Analyst', description: 'Can create and edit findings' },
-    { value: 'reviewer', label: 'Reviewer', description: 'Can review and comment on findings' },
+    { value: 'reporter', label: 'Reporter', description: 'Creates and manages findings' },
     { value: 'manager', label: 'Manager', description: 'Full access to all features' },
     { value: 'client', label: 'Client', description: 'Read-only access to approved findings' },
   ];

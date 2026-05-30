@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Users, UserPlus, Shield } from 'lucide-react';
 import { userApi } from '@/api/userApi';
 import { authApi } from '@/api/authApi';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import UsersTable from '@/components/users/UsersTable';
@@ -21,26 +22,15 @@ interface User {
 
 const UsersManagementPage = () => {
   const navigate = useNavigate();
+  const { hasPermission, hasRole } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentUserRole, setCurrentUserRole] = useState<string>('');
   const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<number | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
 
   useEffect(() => {
     loadUsers();
-    loadCurrentUser();
   }, []);
-
-  const loadCurrentUser = async () => {
-    try {
-      const response = await authApi.getProfile();
-      const userData = response.data.data || response.data;
-      setCurrentUserRole((userData as any)?.role || '');
-    } catch (error) {
-      console.error('Failed to load current user:', error);
-    }
-  };
 
   const loadUsers = async () => {
     try {
@@ -102,8 +92,7 @@ const UsersManagementPage = () => {
               Manage user accounts, roles, and permissions
             </p>
           </div>
-          {/* Admin only: Create Manager button */}
-          {currentUserRole === 'admin' && (
+          {(hasPermission('manage_roles') || hasRole('admin')) && (
             <Button
               onClick={() => navigate('/users/create-manager')}
               className="bg-primary text-surface hover:bg-primary/90 w-full md:w-auto"
@@ -189,7 +178,7 @@ const UsersManagementPage = () => {
             users={users}
             onEdit={handleEdit}
             onDelete={
-              currentUserRole === 'admin'
+              hasPermission('delete_users') || hasRole('admin')
                 ? (userId) => setConfirmDeleteUserId(userId)
                 : undefined
             }

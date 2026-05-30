@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import UserController from '../controllers/user.controller';
 import { validateUserInput } from '../middlewares/validate';
-import { protect, requireRole } from '../middlewares/auth';
+import { protect, authorize } from '../middlewares/auth';
+import { Permissions } from '../types/permissions';
 
 const router = Router();
 
@@ -9,19 +10,20 @@ const router = Router();
 router.use(protect);
 
 // Manager and Admin can manage users
-router.get('/', requireRole('manager', 'admin'), UserController.getUsers);
-router.get('/:id', requireRole('manager', 'admin'), UserController.getUser);
-router.post('/', requireRole('manager', 'admin'), validateUserInput, UserController.createUser);
-router.put('/:id', requireRole('manager', 'admin'), UserController.updateUser);
-router.patch('/:id/approve', requireRole('manager', 'admin'), UserController.approveUser);
+router.get('/', authorize(Permissions.VIEW_USERS), UserController.getUsers);
+router.get('/reporters', authorize(Permissions.VIEW_USERS, Permissions.ASSIGN_PROJECTS), UserController.getReporters);
+router.get('/:id', authorize(Permissions.VIEW_USERS), UserController.getUser);
+router.post('/', authorize(Permissions.CREATE_USERS), validateUserInput, UserController.createUser);
+router.put('/:id', authorize(Permissions.EDIT_USERS), UserController.updateUser);
+router.patch('/:id/approve', authorize(Permissions.APPROVE_USERS), UserController.approveUser);
 
 // Admin only: Create manager
-router.post('/managers/create', requireRole('admin'), UserController.createManager);
+router.post('/managers/create', authorize(Permissions.CREATE_USERS, Permissions.MANAGE_ROLES), UserController.createManager);
 
 // Admin only: Delete manager
-router.delete('/managers/:id', requireRole('admin'), UserController.deleteManager);
+router.delete('/managers/:id', authorize(Permissions.DELETE_USERS), UserController.deleteManager);
 
 // Admin only: Delete any user
-router.delete('/:id', requireRole('admin'), UserController.deleteUser);
+router.delete('/:id', authorize(Permissions.DELETE_USERS), UserController.deleteUser);
 
 export default router;

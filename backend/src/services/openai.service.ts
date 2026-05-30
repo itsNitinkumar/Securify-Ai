@@ -269,7 +269,7 @@
 
 // ACCESS CONTROL RULES:
 // - If role is "client", restrict results to their own project only
-// - If role is "analyst", restrict results to findings created by them
+// - If role is "reporter", restrict results to findings created by them
 // - If role is "manager", allow full access
 // - Do NOT generate SQL
 // - Do NOT include explanations`;
@@ -694,7 +694,7 @@ INSTRUCTIONS:
 
 ACCESS CONTROL RULES:
 - If role is "client", restrict results to their own project only
-- If role is "analyst", restrict results to findings created by them
+- If role is "reporter", restrict results to findings created by them
 - If role is "manager", allow full access
 - Do NOT generate SQL
 - Do NOT include explanations`;

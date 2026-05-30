@@ -38,7 +38,7 @@ export interface RecentActivity {
   ip_address: string;
 }
 
-export interface TopAnalyst {
+export interface TopReporter {
   user_id: number;
   user_name: string;
   findings_count: number;
@@ -63,24 +63,24 @@ export const dashboardApi = {
   },
 
   getFindingsBySeverity: async () => {
-    const response = await axios.get('/dashboard/findings-by-severity');
+    const response = await axios.get('/dashboard/findings/by-severity');
     return response.data;
   },
 
   getFindingsByStatus: async () => {
-    const response = await axios.get('/dashboard/findings-by-status');
+    const response = await axios.get('/dashboard/findings/by-status');
     return response.data;
   },
 
   getRecentActivity: async (limit: number = 10) => {
-    const response = await axios.get('/dashboard/recent-activity', {
+    const response = await axios.get('/dashboard/activity/recent', {
       params: { limit },
     });
     return response.data;
   },
 
-  getTopAnalysts: async (limit: number = 5) => {
-    const response = await axios.get('/dashboard/top-analysts', {
+  getTopReporters: async (limit: number = 5) => {
+    const response = await axios.get('/dashboard/reporters/top', {
       params: { limit },
     });
     return response.data;
@@ -92,12 +92,12 @@ export const dashboardApi = {
   },
 
   getFindingsTrend: async () => {
-    const response = await axios.get('/dashboard/findings-trend');
+    const response = await axios.get('/dashboard/findings/trend');
     return response.data;
   },
 
   getUserActivity: async (userId?: number) => {
-    const url = userId ? `/dashboard/users/${userId}/activity` : '/dashboard/user-activity';
+    const url = userId ? `/dashboard/users/${userId}/activity` : '/dashboard/my-activity';
     const response = await axios.get(url);
     return response.data;
   },

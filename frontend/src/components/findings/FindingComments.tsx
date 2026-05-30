@@ -4,16 +4,17 @@ import { commentApi, Comment } from '@/api/commentApi';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import InlineConfirm from '@/components/ui/inline-confirm';
 
 interface FindingCommentsProps {
   findingId: number;
   currentUserId: number;
-  currentUserRole: string;
 }
 
-const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingCommentsProps) => {
+const FindingComments = ({ findingId, currentUserId }: FindingCommentsProps) => {
+  const { hasPermission, hasRole } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -21,6 +22,9 @@ const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingC
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  const canComment = hasPermission('create_comments') || hasRole('manager', 'admin');
+  const canManageAll = hasPermission('manage_roles') || hasPermission('approve_findings');
 
   useEffect(() => {
     loadComments();
@@ -104,9 +108,7 @@ const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingC
     switch (role) {
       case 'manager':
         return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
-      case 'reviewer':
-        return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-      case 'analyst':
+      case 'reporter':
         return 'bg-green-500/10 text-green-400 border-green-500/20';
       default:
         return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
@@ -122,8 +124,7 @@ const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingC
         </h3>
       </div>
 
-      {/* Comment Form - Only Reviewers and Managers can add comments */}
-      {(currentUserRole === 'reviewer' || currentUserRole === 'manager') && (
+      {canComment && (
         <form onSubmit={handleSubmit} className="mb-4">
           <textarea
             value={newComment}
@@ -152,7 +153,6 @@ const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingC
         </form>
       )}
 
-      {/* Comments List */}
       {loading ? (
         <div className="text-center py-4">
           <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
@@ -184,7 +184,7 @@ const FindingComments = ({ findingId, currentUserId, currentUserRole }: FindingC
                     {formatDate(comment.created_at)}
                   </span>
                 </div>
-                {(comment.user_id === currentUserId || currentUserRole === 'manager') && (
+                {(comment.user_id === currentUserId || canManageAll) && (
                   <div className="flex gap-1">
                     {editingId !== comment.id && (
                       <>

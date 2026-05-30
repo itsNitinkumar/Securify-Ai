@@ -3,10 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { userApi } from '@/api/userApi';
-import { authApi } from '@/api/authApi';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/contexts/AuthContext';
 
 type UserRecord = {
   id: number;
@@ -21,23 +21,18 @@ type UserRecord = {
 const ApproveUserPage = () => {
   const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const parsedUserId = userId ? Number.parseInt(userId, 10) : NaN;
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [user, setUser] = useState<UserRecord | null>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<string>('');
   const [selectedRole, setSelectedRole] = useState<string>('client');
 
   useEffect(() => {
     void (async () => {
       try {
         setLoading(true);
-        const [profileRes, userRes] = await Promise.all([
-          authApi.getProfile(),
-          userApi.getById(parsedUserId),
-        ]);
-        const profile = (profileRes.data as any)?.data || (profileRes.data as any)?.user || profileRes.data;
-        setCurrentUserRole(profile?.role || '');
+        const userRes = await userApi.getById(parsedUserId);
         const loadedUser = (userRes.data as any)?.data || (userRes.data as any)?.user || userRes.data;
         setUser(loadedUser as UserRecord);
       } catch (error) {
@@ -53,16 +48,15 @@ const ApproveUserPage = () => {
   const allRoles = useMemo(
     () => [
       { value: 'client', label: 'Client', description: 'Read-only access to approved findings', color: 'bg-gray-500/10 text-gray-400 border-gray-500/20' },
-      { value: 'analyst', label: 'Analyst', description: 'Can create and edit findings', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
-      { value: 'reviewer', label: 'Reviewer', description: 'Can review and approve findings', color: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' },
+      { value: 'reporter', label: 'Reporter', description: 'Creates and manages findings', color: 'bg-green-500/10 text-green-400 border-green-500/20' },
       { value: 'manager', label: 'Manager', description: 'Full access to projects and reports', color: 'bg-primary/10 text-primary border-primary/20' },
     ],
     []
   );
 
   const availableRoles = useMemo(() => {
-    return currentUserRole === 'admin' ? allRoles : allRoles.filter((r) => r.value !== 'manager');
-  }, [allRoles, currentUserRole]);
+    return currentUser?.role === 'admin' ? allRoles : allRoles.filter((r) => r.value !== 'manager');
+  }, [allRoles, currentUser]);
 
   const handleApprove = async () => {
     if (!user) return;
@@ -159,7 +153,7 @@ const ApproveUserPage = () => {
                 </button>
               ))}
             </div>
-            {currentUserRole === 'manager' ? (
+            {currentUser?.role === 'manager' ? (
               <p className="mt-2 text-xs text-on-surface-variant">Only admin can assign manager role.</p>
             ) : null}
           </div>

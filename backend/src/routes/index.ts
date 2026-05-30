@@ -11,6 +11,7 @@ import commentRoutes from './comment.routes';
 import roleRequestRoutes from './role-request.routes';
 import clientRoutes from './client.routes';
 import uploadRoutes from './upload.routes';
+import roleRoutes from './role.routes';
 
 const router = Router();
 
@@ -49,6 +50,9 @@ router.use('/templates', templateRoutes);
 
 // Upload routes
 router.use('/upload', uploadRoutes);
+
+// Role routes (RBAC admin)
+router.use('/roles', roleRoutes);
 
 // Health check
 router.get('/health', (_req, res) => {

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import ProjectModel from '../models/project.model';
+import UserModel from '../models/user.model';
 import ClientModel from '../models/client.model';
 import ActivityLogService from '../services/activity-log.service';
 import ApiError from '../utils/ApiError';
@@ -29,6 +30,7 @@ class ProjectController {
       description,
       client_name,
       client_id,
+      assigned_reporter_id,
       start_date,
       end_date,
       application_details,
@@ -43,11 +45,6 @@ class ProjectController {
 
     if (!name) {
       throw new ApiError(400, 'Project name is required');
-    }
-
-    // Only managers can create projects
-    if (user.role !== 'manager') {
-      throw new ApiError(403, 'Only managers can create projects');
     }
 
     let resolvedClientId: number | null = null;
@@ -76,6 +73,9 @@ class ProjectController {
       description,
       client_id: resolvedClientId ?? undefined,
       client_name: resolvedClientName ?? undefined,
+      assigned_reporter_id: assigned_reporter_id !== undefined && assigned_reporter_id !== null && String(assigned_reporter_id).trim() !== ''
+        ? Number.parseInt(String(assigned_reporter_id), 10)
+        : undefined,
       start_date: toDateOnly(start_date) ?? undefined,
       end_date: toDateOnly(end_date) ?? undefined,
       application_details: normalizeRows(application_details, (row) => {
@@ -130,13 +130,31 @@ class ProjectController {
   });
 
   // Get all projects
-  static getAllProjects = asyncHandler(async (_req: Request, res: Response) => {
-    const projects = await ProjectModel.findAll();
+  static getAllProjects = asyncHandler(async (req: Request, res: Response) => {
+    const user = (req as any).user;
+    const permissions = (req as any).permissions || await UserModel.getPermissions(user.id);
 
-    res.json({
-      success: true,
-      data: projects,
-    });
+    // Admin/Manager bypass: see all projects
+    if (permissions.includes('manage_roles' as any) || permissions.includes('approve_findings' as any)) {
+      const projects = await ProjectModel.findAll();
+      return res.json({ success: true, data: projects });
+    }
+
+    // Reporter: only assigned projects
+    if (permissions.includes('create_findings' as any)) {
+      const projects = await ProjectModel.findByReporter(user.id);
+      return res.json({ success: true, data: projects });
+    }
+
+    // Client: only own company projects
+    if (user.company_id) {
+      const projects = await ProjectModel.findByCompany(user.company_id);
+      return res.json({ success: true, data: projects });
+    }
+
+    // Fallback: all projects
+    const projects = await ProjectModel.findAll();
+    return res.json({ success: true, data: projects });
   });
 
   // Get single project
@@ -179,6 +197,7 @@ class ProjectController {
       description,
       client_name,
       client_id,
+      assigned_reporter_id,
       start_date,
       end_date,
       application_details,
@@ -191,11 +210,6 @@ class ProjectController {
     } = req.body;
     const user = (req as any).user;
 
-    // Only managers can update projects
-    if (user.role !== 'manager') {
-      throw new ApiError(403, 'Only managers can update projects');
-    }
-
     const project = await ProjectModel.findById(parseInt(id));
     if (!project) {
       throw new ApiError(404, 'Project not found');
@@ -206,8 +220,15 @@ class ProjectController {
 
     if (client_id !== undefined) {
       if (client_id === null || String(client_id).trim() === '') {
-        resolvedClientId = null;
-        resolvedClientName = null;
+        if (client_name !== undefined && client_name !== null && String(client_name).trim()) {
+          const n = String(client_name).trim();
+          const c = await ClientModel.create({ name: n, created_by: user.id });
+          resolvedClientId = c.id;
+          resolvedClientName = c.name;
+        } else {
+          resolvedClientId = null;
+          resolvedClientName = null;
+        }
       } else {
         const idNum = Number.parseInt(String(client_id), 10);
         if (!Number.isFinite(idNum)) {
@@ -272,7 +293,12 @@ class ProjectController {
       description,
     };
     if (resolvedClientId !== undefined) updatePayload.client_id = resolvedClientId;
-    if (resolvedClientName) updatePayload.client_name = resolvedClientName;
+    if (resolvedClientName !== undefined) updatePayload.client_name = resolvedClientName;
+    if (assigned_reporter_id !== undefined) {
+      updatePayload.assigned_reporter_id = assigned_reporter_id !== null && String(assigned_reporter_id).trim() !== ''
+        ? Number.parseInt(String(assigned_reporter_id), 10)
+        : null;
+    }
     if (start_date !== undefined) updatePayload.start_date = toDateOnly(start_date);
     if (end_date !== undefined) updatePayload.end_date = toDateOnly(end_date);
     if (normalizedApps !== undefined) updatePayload.application_details = normalizedApps;
@@ -309,15 +335,58 @@ class ProjectController {
     });
   });
 
+  // Assign reporter to project
+  static assignReporter = asyncHandler(async (req: Request, res: Response) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { reporter_id } = req.body;
+    const user = (req as any).user;
+
+    const project = await ProjectModel.findById(parseInt(id));
+    if (!project) {
+      throw new ApiError(404, 'Project not found');
+    }
+
+    // Validate reporter exists and has reporter role
+    if (reporter_id !== null && reporter_id !== undefined && String(reporter_id).trim() !== '') {
+      const reporterIdNum = Number.parseInt(String(reporter_id), 10);
+      if (!Number.isFinite(reporterIdNum)) {
+        throw new ApiError(400, 'Invalid reporter_id');
+      }
+      const reporter = await UserModel.findById(reporterIdNum);
+      if (!reporter) {
+        throw new ApiError(400, 'Reporter not found');
+      }
+      if (reporter.role !== 'reporter') {
+        throw new ApiError(400, 'User is not a reporter');
+      }
+    }
+
+    const updated = await ProjectModel.update(parseInt(id) as any, {
+      assigned_reporter_id: reporter_id !== null && reporter_id !== undefined && String(reporter_id).trim() !== ''
+        ? Number.parseInt(String(reporter_id), 10)
+        : null,
+    } as any);
+
+    await ActivityLogService.log({
+      user_id: user.id,
+      action: 'ASSIGN_REPORTER',
+      entity_type: 'project',
+      entity_id: parseInt(id),
+      details: { project_name: project.name, reporter_id },
+      ip_address: req.ip || req.socket.remoteAddress,
+      user_agent: req.get('user-agent'),
+    });
+
+    res.json({
+      success: true,
+      data: updated,
+    });
+  });
+
   // Delete project
   static deleteProject = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = (req as any).user;
-
-    // Only managers can delete projects
-    if (user.role !== 'manager') {
-      throw new ApiError(403, 'Only managers can delete projects');
-    }
 
     const project = await ProjectModel.findById(parseInt(id));
     if (!project) {

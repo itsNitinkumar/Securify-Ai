@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import UserModel from '../models/user.model';
 import UserService from '../services/user.service';
 import ApiResponse from '../utils/ApiResponse';
 import asyncHandler from '../utils/asyncHandler';
@@ -32,6 +33,11 @@ class UserController {
     ApiResponse.success(res, 200, 'User retrieved successfully', user);
   });
 
+  static getReporters = asyncHandler(async (_req: Request, res: Response) => {
+    const reporters = await UserModel.findByRoleSlug('reporter');
+    ApiResponse.success(res, 200, 'Reporters retrieved successfully', reporters);
+  });
+
   static createUser = asyncHandler(async (req: Request, res: Response) => {
     const { email, name, role } = req.body;
     const currentUser = (req as any).user;
@@ -39,9 +45,9 @@ class UserController {
     // Default role is 'client'
     const userRole = role || 'client';
     
-    // Manager can only create client, analyst, reviewer
-    if (currentUser.role === 'manager' && !['client', 'analyst', 'reviewer'].includes(userRole)) {
-      throw new ApiError(403, 'Managers can only create client, analyst, or reviewer users');
+    // Manager can only create client or reporter
+    if (currentUser.role === 'manager' && !['client', 'reporter'].includes(userRole)) {
+      throw new ApiError(403, 'Managers can only create client or reporter users');
     }
     
     // Only admin can create managers
@@ -96,9 +102,9 @@ class UserController {
       throw new ApiError(403, 'Only admin can create or modify admins');
     }
     
-    // Manager can only assign client/analyst/reviewer roles
-    if (currentUser.role === 'manager' && role && !['client', 'analyst', 'reviewer'].includes(role)) {
-      throw new ApiError(403, 'Managers can only assign client, analyst, or reviewer roles');
+    // Manager can only assign client or reporter roles
+    if (currentUser.role === 'manager' && role && !['client', 'reporter'].includes(role)) {
+      throw new ApiError(403, 'Managers can only assign client or reporter roles');
     }
     
     const user = await UserService.updateUser(id, name, role);
@@ -127,10 +133,10 @@ class UserController {
       throw new ApiError(403, 'Managers cannot delete other managers');
     }
     
-    // Manager can only delete client, analyst, reviewer
+    // Manager can only delete client or reporter
     if (currentUser.role === 'manager') {
-      if (!['client', 'analyst', 'reviewer'].includes(userToDelete.role)) {
-        throw new ApiError(403, 'Managers can only delete client, analyst, or reviewer users');
+      if (!['client', 'reporter'].includes(userToDelete.role)) {
+        throw new ApiError(403, 'Managers can only delete client or reporter users');
       }
     }
     
@@ -144,8 +150,8 @@ class UserController {
     const currentUser = (req as any).user;
     
     // Validate role
-    if (!role || !['client', 'analyst', 'reviewer', 'manager'].includes(role)) {
-      throw new ApiError(400, 'Invalid role. Must be client, analyst, reviewer, or manager');
+    if (!role || !['client', 'reporter', 'manager'].includes(role)) {
+      throw new ApiError(400, 'Invalid role. Must be client, reporter, or manager');
     }
     
     // Only admin can approve managers

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthRequest } from '../types';
 import AuthService from '../services/auth.service';
+import UserModel from '../models/user.model';
 import ApiResponse from '../utils/ApiResponse';
 import asyncHandler from '../utils/asyncHandler';
 import { getSessionInfo, clearSessionActivity } from '../middlewares/sessionTimeout';
@@ -63,6 +64,15 @@ class AuthController {
     const userId = req.user?.id;
     const user = await AuthService.getProfile(userId!);
     ApiResponse.success(res, 200, 'Profile retrieved successfully', user);
+  });
+
+  static getPermissions = asyncHandler<AuthRequest>(async (req: AuthRequest, res: Response) => {
+    const userId = req.user?.id;
+    if (!userId) {
+      return ApiResponse.error(res, 401, 'Not authenticated');
+    }
+    const permissions = await UserModel.getPermissions(userId);
+    return ApiResponse.success(res, 200, 'Permissions retrieved', permissions);
   });
 
   static getSessionInfo = asyncHandler<AuthRequest>(async (req: AuthRequest, res: Response) => {
