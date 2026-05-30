@@ -47,6 +47,33 @@ const extractValue = (value: any): string => {
   return String(value);
 };
 
+// ── TOC helpers (mirrors DAST approach) ──
+function slugifyBookmark(title: string, suffix?: string | number): string {
+  let s = '_' + String(title)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+  if (suffix !== undefined) s += `_${suffix}`;
+  if (s.length > 40) s = s.slice(0, 40);
+  if (s === '_') s = '_bookmark';
+  return s;
+}
+
+function wrapWithBookmark($: any, el: any, name: string, id: number): void {
+  const safeName = String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const bmStart = $('<w:bookmarkStart/>').attr('w:id', String(id)).attr('w:name', safeName);
+  const bmEnd = $('<w:bookmarkEnd/>').attr('w:id', String(id));
+  const pPr = $(el).children('w\\:pPr').first();
+  if (pPr.length) {
+    pPr.after(bmStart);
+  } else {
+    $(el).prepend(bmStart);
+  }
+  $(el).append(bmEnd);
+}
+// ── end TOC helpers ──
+
 export const BlueAllyRenderer: TemplateRenderer = {
   key: 'blueally',
   matches: (template) => {
@@ -97,6 +124,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
     const documentPath = 'word/document.xml';
     const documentXml = zip.file(documentPath)?.asText() || '';
     const $ = cheerio.load(documentXml, { xmlMode: true });
+    const body = $('w\\:body');
 
     const relsPath = 'word/_rels/document.xml.rels';
     const relsXml = zip.file(relsPath)?.asText() || '';
@@ -401,6 +429,51 @@ export const BlueAllyRenderer: TemplateRenderer = {
         });
       return parts.join('').replace(/\s+/g, ' ').trim();
     };
+
+    // ── Initialize bookmark ID counter and TOC tracking (DAST-style) ──
+    let maxBmId = -1;
+    body.find('w\\:bookmarkStart, w\\:bookmarkEnd').each((_: number, el: any) => {
+      const id = parseInt(String($(el).attr('w:id') || '-1'), 10);
+      if (id > maxBmId) maxBmId = id;
+    });
+    let nextBmId = maxBmId + 1;
+    const bookmarkNameMap = new Map<string, string>();
+    const tocEntries: Array<{ title: string; level: 0 | 1 }> = [];
+
+    // Wrap all static Heading1 paragraphs with bookmarks (except TOC heading itself).
+    {
+      const allParas = $('w\\:p').toArray();
+      const isH1 = (p: any) => $(p).find('w\\:pPr > w\\:pStyle').attr('w:val') === 'Heading1';
+      for (const p of allParas) {
+        if (!isH1(p)) continue;
+        const t = paraText(p);
+        if (!t || /^Table of Contents$/i.test(t)) continue;
+        const bmName = slugifyBookmark(t);
+        wrapWithBookmark($, p, bmName, nextBmId++);
+        bookmarkNameMap.set(t, bmName);
+        tocEntries.push({ title: t, level: 0 });
+      }
+    }
+
+    // Ensure Executive Summary starts on a new page (after TOC).
+    {
+      const allParas = $('w\\:p').toArray();
+      const isH1 = (p: any) => $(p).find('w\\:pPr > w\\:pStyle').attr('w:val') === 'Heading1';
+      for (const p of allParas) {
+        if (!isH1(p)) continue;
+        const t = paraText(p);
+        if (!t || !/^Executive Summary$/i.test(t)) continue;
+        let pPr = $(p).children('w\\:pPr').first();
+        if (!pPr.length) {
+          $(p).prepend('<w:pPr/>');
+          pPr = $(p).children('w\\:pPr').first();
+        }
+        if (!pPr.children('w\\:pageBreakBefore').length) {
+          pPr.prepend('<w:pageBreakBefore/>');
+        }
+        break;
+      }
+    }
 
     // 0) Strip template highlights globally.
     stripHighlights(null);
@@ -862,16 +935,6 @@ export const BlueAllyRenderer: TemplateRenderer = {
       return $p.root().children().first();
     };
 
-    // Remove numbering and indent properties from a paragraph node so it won't render as a list.
-    const sanitizeParagraphNoNumbering = (pNode: any) => {
-      const $p = cheerio.load($.xml(pNode), { xmlMode: true });
-      let pPr = $p('w\\:pPr').first();
-      if (!pPr.length) { $p('w\\:p').prepend('<w:pPr/>'); pPr = $p('w\\:pPr').first(); }
-      pPr.find('w\\:numPr').remove();
-      pPr.find('w\\:ind').remove();
-      return $p.root().children().first();
-    };
-
         const severityColor = (sev: any): string => {
           const k = severityKey(sev);
           if (k === 'critical') return '980000';
@@ -944,7 +1007,6 @@ export const BlueAllyRenderer: TemplateRenderer = {
         const tplRefLabel = tplHeading2 ? findTplByExactText(tplHeading2, 'Reference:') : null;
         const tplRefText = tplRefLabel ? tplRefLabel.next('w\\:p') : null;
         const tplBack = tplHeading2 ? findTplByExactText(tplHeading2, 'Back to Summary') : null;
-
         // Remove all nodes between heading and endNode (exclusive).
         cursor = $(detailedHeading).next();
         while (cursor && cursor.length && (!endNode || cursor[0] !== endNode[0])) {
@@ -972,7 +1034,13 @@ export const BlueAllyRenderer: TemplateRenderer = {
           const sev = String(f?.severity || 'Informational');
 
           if (tplHeading2 && tplHeading2.length) {
-            anchor = insertAfter(anchor, tightenParagraphSpacing(clearAndSetParagraphText(tplHeading2, `7.${idx + 1}. ${title}`), { before: 120, after: 60 }));
+            const headingNode = insertAfter(anchor, tightenParagraphSpacing(clearAndSetParagraphText(tplHeading2, `7.${idx + 1}. ${title}`), { before: 120, after: 60 }));
+            anchor = headingNode;
+            const headingTitle = `7.${idx + 1}. ${title}`;
+            const fBmName = slugifyBookmark(headingTitle);
+            wrapWithBookmark($, headingNode, fBmName, nextBmId++);
+            bookmarkNameMap.set(headingTitle, fBmName);
+            tocEntries.push({ title: headingTitle, level: 1 });
           }
           if (tplRisk && (tplRisk as any).length) {
             anchor = insertAfter(anchor, tightenParagraphSpacing(patchRiskParagraph(tplRisk, sev), { before: 60, after: 120 }));
@@ -1209,13 +1277,26 @@ export const BlueAllyRenderer: TemplateRenderer = {
           // appears after the link in PDF output). Preserve non-URL reference punctuation.
           if (refLines.length && tplRefText && (tplRefText as any).length) {
             refLines.forEach((line: string) => {
-              let text = String(line || '').trim();
-              if (/^(https?:\/\/|www\.)/i.test(text) && text.endsWith('.')) {
-                text = text.replace(/\.+$/g, '');
+              let refText = String(line || '').trim();
+              if (/^(https?:\/\/|www\.)/i.test(refText) && refText.endsWith('.')) {
+                refText = refText.replace(/\.+$/g, '');
               }
-              const pNode = clearAndSetParagraphText(tplRefText, text);
-              const clean = sanitizeParagraphNoNumbering(pNode);
-              anchor = insertAfter(anchor, tightenParagraphSpacing(clean, { before: 0, after: 120 }));
+              // Use clearAndSetParagraphText to preserve template font properties,
+              // then modify text in-place instead of setParagraphRuns which strips fonts.
+              const pNode = clearAndSetParagraphText(tplRefText, '');
+              {
+                const $pLocal = cheerio.load($.xml(pNode), { xmlMode: true });
+                $pLocal('w\\:pPr > w\\:numPr').remove();
+                // Set text directly on the first text element to preserve template font size/face
+                const firstT = $pLocal('w\\:t').first();
+                if (firstT.length) {
+                  $pLocal(firstT).text(`• ${refText}`);
+                }
+                // Remove any extra runs beyond the first (template may have multiple)
+                $pLocal('w\\:r').slice(1).remove();
+                const cleaned = $pLocal.root().children().first();
+                anchor = insertAfter(anchor, tightenParagraphSpacing(cleaned, { before: 0, after: 120 }));
+              }
             });
           }
 

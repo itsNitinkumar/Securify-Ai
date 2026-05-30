@@ -467,7 +467,7 @@ class ReportService {
         } catch (e: any) {
           console.warn('[Report Service] DAST TOC pagination patch failed, keeping initial PDF:', e?.message || e);
         }
-      } else if (templateKey === 'securify' || templateKey === 'blueally' || templateKey === 'unknown') {
+      } else if (templateKey === 'securify' || templateKey === 'unknown') {
         try {
           const actualTocPages = await this.buildProfessionalActualTocPages(outputPath, data);
           if (actualTocPages.size > 0) {
@@ -491,6 +491,29 @@ class ReportService {
           }
         } catch (e: any) {
           console.warn('[Report Service] Professional TOC pagination patch failed, keeping initial PDF:', e?.message || e);
+        }
+      } else if (templateKey === 'blueally') {
+        try {
+          const actualTocPages = await this.buildBlueAllyActualTocPages(outputPath, docxBuffer);
+          if (actualTocPages.size > 0) {
+            docxBuffer = this.patchBlueAllyTocPageNumbers(docxBuffer, actualTocPages);
+            fs.writeFileSync(inputPath, docxBuffer);
+
+            await this.execFileAsync(sofficePath, [
+              '--headless',
+              '--convert-to',
+              'pdf:writer_pdf_Export',
+              '--outdir',
+              tempDir,
+              inputPath,
+            ], { timeout: 120000 });
+
+            if (!fs.existsSync(outputPath)) {
+              throw new ApiError(500, 'DOCX to PDF reconversion failed after BlueAlly TOC patch');
+            }
+          }
+        } catch (e: any) {
+          console.warn('[Report Service] BlueAlly TOC pagination patch failed, keeping initial PDF:', e?.message || e);
         }
       }
 
@@ -909,6 +932,258 @@ class ReportService {
             }
           }
           tocContent.append(entry);
+        }
+      }
+
+      zip.file(documentPath, $.xml());
+      return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+    } catch {
+      return docxBuffer;
+    }
+  }
+
+  private static collectBlueAllyTocEntries(docxBuffer: Buffer): Array<{ title: string; level: 0 | 1 }> {
+    try {
+      const PizZip = require('pizzip');
+      const cheerio = require('cheerio');
+      const zip = new PizZip(docxBuffer);
+      const documentXml = zip.file('word/document.xml')?.asText() || '';
+      if (!documentXml) return [];
+
+      const $ = cheerio.load(documentXml, { xmlMode: true });
+      const entries: Array<{ title: string; level: 0 | 1 }> = [];
+
+      $('w\\:body w\\:p').each((_: number, p: any) => {
+        const pStyle = String($(p).find('w\\:pPr > w\\:pStyle').first().attr('w:val') || '');
+        if (!/^Heading[12]$/i.test(pStyle)) return;
+        const title = $(p).find('w\\:t').toArray().map((n: any) => $(n).text()).join(' ').replace(/\s+/g, ' ').trim();
+        if (!title || /^Table of Contents$/i.test(title)) return;
+        entries.push({ title, level: pStyle.toLowerCase() === 'heading1' ? 0 : 1 });
+      });
+
+      return entries;
+    } catch {
+      return [];
+    }
+  }
+
+  private static async buildBlueAllyActualTocPages(pdfPath: string, docxBuffer: Buffer): Promise<Map<string, number>> {
+    const pageTexts = await this.extractPdfPageTexts(pdfPath);
+    const pages = new Map<string, number>();
+    if (!pageTexts.length) return pages;
+
+    const normalizedPageTexts = pageTexts.map((pageText) => this.normalizeDastTocText(pageText));
+    const normalizedPageLines = pageTexts.map((pageText) =>
+      String(pageText || '')
+        .split(/\r?\n/)
+        .map((line) => this.normalizeDastTocText(line))
+        .filter(Boolean)
+    );
+
+    const findExactLinePage = (title: string, startPage = 1): number | null => {
+      const needle = this.normalizeDastTocText(title);
+      if (!needle) return null;
+      for (let i = Math.max(startPage - 1, 0); i < normalizedPageLines.length; i++) {
+        if (normalizedPageLines[i].some((line) => line === needle)) return i + 1;
+      }
+      return null;
+    };
+
+    const findPageContaining = (title: string, startPage = 1): number | null => {
+      const needle = this.normalizeDastTocText(title);
+      if (!needle) return null;
+      for (let i = Math.max(startPage - 1, 0); i < normalizedPageTexts.length; i++) {
+        if (normalizedPageTexts[i].includes(needle)) return i + 1;
+      }
+      return null;
+    };
+
+    const entries = this.collectBlueAllyTocEntries(docxBuffer);
+    const tocPage = findExactLinePage('Table of Contents', 1) ?? 1;
+    let searchPage = Math.max(1, tocPage + 1);
+    for (const entry of entries) {
+      const page = findExactLinePage(entry.title, searchPage) ?? findPageContaining(entry.title, searchPage);
+      if (page) {
+        pages.set(entry.title, page);
+        searchPage = page;
+      }
+    }
+
+    return pages;
+  }
+
+  private static patchBlueAllyTocPageNumbers(docxBuffer: Buffer, pageMap: Map<string, number>): Buffer {
+    let PizZip: any;
+    let cheerio: any;
+    try {
+      PizZip = require('pizzip');
+      cheerio = require('cheerio');
+    } catch {
+      return docxBuffer;
+    }
+
+    try {
+      const zip = new PizZip(docxBuffer);
+      const documentPath = 'word/document.xml';
+      const documentXml = zip.file(documentPath)?.asText() || '';
+      if (!documentXml) return docxBuffer;
+
+      const $ = cheerio.load(documentXml, { xmlMode: true });
+      const tocSdt = $('w\\:body w\\:sdt').filter((_: number, el: any) => $(el).find('w\\:docPartGallery').length > 0).first();
+      if (!tocSdt.length) return docxBuffer;
+
+      const tocContent = tocSdt.find('w\\:sdtContent').first();
+      const tocParas = tocContent.find('w\\:p').toArray();
+      const entries = this.collectBlueAllyTocEntries(docxBuffer);
+
+      const getParaFullText = (p: any): string => {
+        const t = $(p).find('w\\:hyperlink > w\\:r > w\\:t').first();
+        return t.length ? $(t).text() : '';
+      };
+
+      const splitTextAndPage = (text: string): { titlePart: string; page: number } => {
+        const m = text.match(/^(.+?)(\d+)$/);
+        if (m) return { titlePart: m[1].trimEnd(), page: parseInt(m[2], 10) };
+        return { titlePart: text, page: 0 };
+      };
+
+      const stripNumberPrefix = (titlePart: string): string => {
+        return titlePart.replace(/^(?:\d+\.)*\d+\s+/, '').trim();
+      };
+
+      const pageForTitle = new Map<string, number>();
+      for (const [title, page] of pageMap.entries()) {
+        pageForTitle.set(this.normalizeDastTocText(title), page);
+      }
+
+      const usedHeadingNorms = new Set<string>();
+
+      // Phase 1: Categorize all TOC paragraphs and update matched ones in-place
+      const instrPara: any[] = [];
+      const matchedParas: Array<{ elem: any; plainNorm: string }> = [];
+      const staleParas: any[] = [];
+
+      for (const p of tocParas) {
+        if ($(p).find('w\\:instrText').length > 0) { instrPara.push(p); continue; }
+        const fullText = getParaFullText(p);
+        if (!fullText) { staleParas.push(p); continue; }
+
+        const { titlePart, page: oldPage } = splitTextAndPage(fullText);
+        const plainName = stripNumberPrefix(titlePart);
+        const plainNorm = this.normalizeDastTocText(plainName);
+        const titlePartNorm = this.normalizeDastTocText(titlePart);
+
+        let matchedEntry: (typeof entries)[0] | null = null;
+        let matchedNorm = '';
+
+        for (const entry of entries) {
+          const entryNorm = this.normalizeDastTocText(entry.title);
+          if (usedHeadingNorms.has(entryNorm)) continue;
+
+          if (
+            entryNorm === titlePartNorm ||
+            entryNorm === plainNorm ||
+            titlePartNorm.includes(entryNorm) ||
+            entryNorm.includes(titlePartNorm) ||
+            entryNorm.includes(plainNorm)
+          ) {
+            matchedEntry = entry;
+            matchedNorm = entryNorm;
+            break;
+          }
+        }
+
+        if (matchedEntry) {
+          const newPage = pageForTitle.get(matchedNorm);
+          const hyperlink = $(p).find('w\\:hyperlink');
+          if (hyperlink.length) {
+            const bmName = '_' + this.normalizeDastTocText(matchedEntry.title).replace(/\s+/g, '_');
+            hyperlink.attr('w:anchor', bmName);
+          }
+          const tNodes = $(p).find('w\\:t').toArray();
+          if (tNodes.length > 0) {
+            $(tNodes[tNodes.length - 1]).text(newPage !== undefined ? String(newPage) : String(oldPage));
+          }
+          usedHeadingNorms.add(matchedNorm);
+          matchedParas.push({ elem: p, plainNorm });
+        } else {
+          staleParas.push(p);
+        }
+      }
+
+      // Phase 2: Remove stale entries
+      for (const sp of staleParas) {
+        $(sp).remove();
+      }
+
+      // Phase 3: Insert new finding entries at correct position (after "7 Detailed Vulnerabilities")
+      const newFindingEntries: Array<{ title: string; level: number; page: number }> = [];
+      for (const entry of entries) {
+        const norm = this.normalizeDastTocText(entry.title);
+        if (!usedHeadingNorms.has(norm)) {
+          const page = pageForTitle.get(norm);
+          if (page !== undefined) {
+            newFindingEntries.push({ title: entry.title, level: entry.level, page });
+          }
+        }
+      }
+
+      if (newFindingEntries.length > 0) {
+        // Find template paragraphs for new entries
+        const topTemplate = tocParas.find((p: any) => {
+          if ($(p).find('w\\:instrText').length > 0) return false;
+          const text = getParaFullText(p);
+          const norm = this.normalizeDastTocText(text);
+          return !!norm && !$(p).find('w\\:pPr w\\:ind').length;
+        });
+        const subTemplate = tocParas.find((p: any) =>
+          $(p).find('w\\:pPr w\\:ind[w\\:left="360"]').length > 0
+        ) || topTemplate;
+        const topTemplateXml = topTemplate ? $.xml(topTemplate) : '';
+        const subTemplateXml = subTemplate ? $.xml(subTemplate) : topTemplateXml;
+
+        const createEntry = (displayText: string, pageNum: number, templateXml: string, bmName: string) => {
+          const entryDoc = cheerio.load(templateXml, { xmlMode: true });
+          const $entry = entryDoc.root().children().first();
+          const hyperlink = $entry.find('w\\:hyperlink');
+          if (hyperlink.length) hyperlink.attr('w:anchor', bmName);
+          const tNodes = $entry.find('w\\:t').toArray();
+          if (tNodes.length >= 2) {
+            entryDoc(tNodes[0]).text(displayText);
+            entryDoc(tNodes[tNodes.length - 1]).text(String(pageNum));
+          } else if (tNodes.length === 1) {
+            entryDoc(tNodes[0]).text(displayText + '\t' + pageNum);
+          }
+          return entryDoc.xml($entry);
+        };
+
+        // Find the "Detailed Vulnerabilities" entry to insert after
+        let insertAfterElem: any = null;
+        let detailedIdx = -1;
+        for (let i = 0; i < matchedParas.length; i++) {
+          if (matchedParas[i].plainNorm === 'detailed vulnerabilities') {
+            detailedIdx = i;
+            break;
+          }
+        }
+        if (detailedIdx >= 0) {
+          insertAfterElem = matchedParas[detailedIdx].elem;
+        } else {
+          const lastToc = matchedParas.length > 0 ? matchedParas[matchedParas.length - 1].elem : null;
+          insertAfterElem = lastToc;
+        }
+
+        // Insert new entries after the anchor element
+        if (insertAfterElem) {
+          for (const ne of newFindingEntries) {
+            const isTop = ne.level === 0;
+            const tplXml = isTop ? topTemplateXml : subTemplateXml;
+            if (!tplXml) continue;
+            const bmName = '_' + this.normalizeDastTocText(ne.title).replace(/\s+/g, '_');
+            const xml = createEntry(ne.title, ne.page, tplXml, bmName);
+            $(insertAfterElem).after(xml);
+            insertAfterElem = $(insertAfterElem).nextAll().first().get(0);
+          }
         }
       }
 
@@ -2817,6 +3092,9 @@ class ReportService {
     for (const p of paragraphs) {
       const txt = paraText(p);
       if (txt === 'Confidentiality and Distribution Restrictions') {
+        ensurePageBreakBefore(p);
+      }
+      if (txt === 'Executive Summary') {
         ensurePageBreakBefore(p);
       }
       if (txt === 'Introduction') {
@@ -4827,7 +5105,7 @@ class ReportService {
             }
           }
         }
-      } else if (templateKey === 'securify' || templateKey === 'blueally' || templateKey === 'unknown') {
+      } else if (templateKey === 'securify' || templateKey === 'unknown') {
         const sofficePath = '/usr/bin/soffice';
         if (fs.existsSync(sofficePath)) {
           const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'securify-prof-docx-'));
@@ -4853,6 +5131,40 @@ class ReportService {
             }
           } catch (e) {
             console.warn('[Report Service] Professional DOCX TOC pagination patch failed, keeping initial DOCX:', (e as any)?.message || e);
+          } finally {
+            try {
+              fs.rmSync(tempDir, { recursive: true, force: true });
+            } catch {
+              // Ignore cleanup failures.
+            }
+          }
+        }
+      } else if (templateKey === 'blueally') {
+        const sofficePath = '/usr/bin/soffice';
+        if (fs.existsSync(sofficePath)) {
+          const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'securify-blueally-docx-'));
+          const inputPath = path.join(tempDir, 'report.docx');
+          const outputPath = path.join(tempDir, 'report.pdf');
+
+          try {
+            fs.writeFileSync(inputPath, buffer);
+            await this.execFileAsync(sofficePath, [
+              '--headless',
+              '--convert-to',
+              'pdf:writer_pdf_Export',
+              '--outdir',
+              tempDir,
+              inputPath,
+            ], { timeout: 120000 });
+
+            if (fs.existsSync(outputPath)) {
+              const actualTocPages = await this.buildBlueAllyActualTocPages(outputPath, buffer);
+              if (actualTocPages.size > 0) {
+                buffer = this.patchBlueAllyTocPageNumbers(buffer, actualTocPages);
+              }
+            }
+          } catch (e) {
+            console.warn('[Report Service] BlueAlly DOCX TOC pagination patch failed, keeping initial DOCX:', (e as any)?.message || e);
           } finally {
             try {
               fs.rmSync(tempDir, { recursive: true, force: true });
