@@ -14,6 +14,7 @@ import FindingContent from '@/components/findings/FindingContent';
 import FindingWorkflowButtons from '@/components/findings/FindingWorkflowButtons';
 import ApprovalWorkflow from '@/components/findings/ApprovalWorkflow';
 import VersionHistory from '@/components/findings/VersionHistory';
+import FindingComments from '@/components/findings/FindingComments';
 import InlineConfirm from '@/components/ui/inline-confirm';
 import { toast } from 'react-hot-toast';
 
