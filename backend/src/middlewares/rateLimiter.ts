@@ -111,4 +111,7 @@ export const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitHandler,
+  skip: (req) =>
+    req.path.startsWith('/api/v1/comment-threads') ||
+    req.path.startsWith('/api/v1/auth/'),
 });

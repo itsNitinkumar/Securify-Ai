@@ -32,7 +32,7 @@ export interface Finding {
   references?: string[];
   finding_references?: any[];
   tags?: string[];
-  status: 'draft' | 'pending_review' | 'changes_requested' | 'approved' | 'rejected';
+  status: 'draft' | 'submitted' | 'pending_review' | 'changes_requested' | 'approved' | 'rejected';
   created_by?: number;
   approved_by?: number;
   reviewed_by?: number;
@@ -114,7 +114,7 @@ export const findingApi = {
   // AI operations
   generateContent: (data: GenerateFindingData) =>
     axiosInstance.post<ApiResponse<Partial<Finding>>>('/findings/generate-content', data, {
-      timeout: 60000, // 60 seconds for AI generation
+      timeout: 60000,
     }),
 
   generateFalsePositiveContent: (data: GenerateFalsePositiveData) =>
@@ -124,24 +124,15 @@ export const findingApi = {
 
   generate: (data: GenerateFindingData) =>
     axiosInstance.post<ApiResponse<Finding>>('/findings/generate', data, {
-      timeout: 60000, // 60 seconds for AI generation
+      timeout: 60000,
     }),
 
   regenerateSection: (id: number, section: string) =>
     axiosInstance.post<ApiResponse<Finding>>(`/findings/${id}/regenerate`, { section }),
 
-  // Workflow operations
-  submitForReview: (id: number) =>
-    axiosInstance.post<ApiResponse<Finding>>(`/findings/${id}/submit-review`),
-
-  approve: (id: number) =>
-    axiosInstance.post<ApiResponse<Finding>>(`/findings/${id}/approve`),
-
-  approveFinding: (id: number) =>
-    axiosInstance.post<ApiResponse<Finding>>(`/findings/${id}/approve`),
-
-  requestChanges: (id: number, comment?: string) =>
-    axiosInstance.post<ApiResponse<Finding>>(`/findings/${id}/request-changes`, { comment }),
+  // Submit finding (makes it final)
+  submitFinding: (id: number) =>
+    axiosInstance.post<ApiResponse<Finding>>(`/findings/${id}/submit`),
 
   // Version history
   getVersions: (id: number) =>

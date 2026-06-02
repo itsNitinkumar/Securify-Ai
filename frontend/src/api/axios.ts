@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1',
+  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
   timeout: 60000, // Increased to 60 seconds for report generation
   withCredentials: true, // Important: Send cookies with requests
   headers: {

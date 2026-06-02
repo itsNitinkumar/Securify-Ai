@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, CheckCircle, ExternalLink, Plus, Sparkles, Trash2, FileText, X, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle, ExternalLink, Plus, Sparkles, Trash2, FileText, X, Loader2, MessageSquare } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { projectApi, CreateProjectData } from '@/api/projectApi';
 import { userApi } from '@/api/userApi';
 import { findingApi } from '@/api/findingApi';
+import { commentThreadApi } from '@/api/commentThreadApi';
 import { clientApi, Client } from '@/api/clientApi';
 import { templateApi, Template } from '@/api/templateApi';
 import { templateKeyFromProject, templateKeyFromTemplate } from '@/reportTemplates/registry';
@@ -15,6 +16,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import InlineConfirm from '@/components/ui/inline-confirm';
 import ImportFindingsDialog from '@/components/findings/ImportFindingsDialog';
+import CommentableSection from '@/components/comments/CommentableSection';
+import WorkflowPanel from '@/components/projects/WorkflowPanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { Permissions } from '@/utils/permissions';
 import type { User } from '@/types';
@@ -62,6 +65,7 @@ const ProjectDetailPage = () => {
   const [pendingClientName, setPendingClientName] = useState<string>('');
   const [confirmClientChange, setConfirmClientChange] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [findingIdsWithOpenThreads, setFindingIdsWithOpenThreads] = useState<Set<number>>(new Set());
   const [editForm, setEditForm] = useState<CreateProjectData>({
     name: '',
     description: '',
@@ -416,10 +420,43 @@ const ProjectDetailPage = () => {
     }
   };
 
-  const statusColors = {
-    active: 'bg-primary/10 text-primary border-primary/20',
+  const loadFindingThreads = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const res = await commentThreadApi.getThreads({ projectId: Number(projectId) });
+      const data = (res.data as any)?.data || res.data || [];
+      const threads = Array.isArray(data) ? data : [];
+      const findingIds = new Set(
+        threads
+          .filter((t: any) => t.finding_id && t.status === 'OPEN')
+          .map((t: any) => t.finding_id)
+      );
+      setFindingIdsWithOpenThreads(findingIds);
+    } catch {
+      setFindingIdsWithOpenThreads(new Set());
+    }
+  }, [projectId]);
+
+  // Load thread data after project loads and when comments might change
+  useEffect(() => {
+    if (project) loadFindingThreads();
+  }, [project, loadFindingThreads]);
+
+  const statusColors: Record<string, string> = {
+    draft: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+    pending_review: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+    pending_comment_resolution: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
     completed: 'bg-green-500/10 text-green-400 border-green-500/20',
-    pending: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+  };
+
+  const getStatusLabel = (status?: string) => {
+    switch (status) {
+      case 'draft': return 'Draft';
+      case 'pending_review': return 'Pending Review';
+      case 'pending_comment_resolution': return 'Changes Requested';
+      case 'completed': return 'Completed';
+      default: return 'Draft';
+    }
   };
 
   const severityBadge = (severity: string) => {
@@ -449,11 +486,8 @@ const ProjectDetailPage = () => {
 
   const visibleFindings = useMemo(() => {
     if (!project) return [];
-    if (hasRole('client')) {
-      return project.findings.filter(f => f.status === 'approved');
-    }
     return project.findings;
-  }, [project, user]);
+  }, [project]);
 
   if (loading) {
     return (
@@ -491,57 +525,67 @@ const ProjectDetailPage = () => {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             {project.status ? (
-              <Badge className={statusColors[project.status as keyof typeof statusColors] || statusColors.pending}>
-                {project.status.toUpperCase()}
+              <Badge className={statusColors[project.status] || statusColors.draft}>
+                {getStatusLabel(project.status)}
               </Badge>
-            ) : null}
+            ) : (
+              <Badge className={statusColors.draft}>Draft</Badge>
+            )}
             {project.client_name ? (
               <Badge variant="outline" className="border-outline text-on-surface-variant">
                 {project.client_name}
               </Badge>
             ) : null}
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold text-on-surface mb-2 truncate">{project.name}</h1>
-          <p className="text-sm text-on-surface-variant">
+          <h1 className="text-xl md:text-3xl font-bold text-on-surface mb-2 truncate">{project.name}</h1>
+          <p className="text-xs md:text-sm text-on-surface-variant">
             Created {new Date(project.created_at).toLocaleDateString()} • Updated {new Date(project.updated_at).toLocaleDateString()}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5 sm:gap-2 min-w-0">
           {(hasPermission('create_findings')) ? (
             <>
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => navigate(`/projects/${project.id}/findings/new`)}
-                className="border-outline text-on-surface-variant hover:text-primary"
+                className="border-outline text-on-surface-variant hover:text-primary text-xs sm:text-sm"
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Add Finding
+                <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden xs:inline">Add Finding</span>
+                <span className="xs:hidden">Add</span>
               </Button>
               {templateKeyFromProject(project) === 'dast' ? (
                 <>
                   <Button
+                    size="sm"
                     onClick={() => navigate(`/projects/${project.id}/findings/generate?type=true_positive`)}
-                    className="bg-primary text-surface hover:bg-primary/90"
+                    className="bg-primary text-surface hover:bg-primary/90 text-xs sm:text-sm"
                   >
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Generate True Positive
+                    <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                    <span className="hidden xs:inline">Gen TP</span>
+                    <span className="xs:hidden">TP</span>
                   </Button>
                   <Button
+                    size="sm"
                     onClick={() => navigate(`/projects/${project.id}/findings/generate?type=false_positive`)}
-                    className="bg-purple-500 text-surface hover:bg-purple-500/90"
+                    className="bg-purple-500 text-surface hover:bg-purple-500/90 text-xs sm:text-sm"
                   >
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Generate False Positive
+                    <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                    <span className="hidden xs:inline">Gen FP</span>
+                    <span className="xs:hidden">FP</span>
                   </Button>
                 </>
               ) : (
                 <Button
+                  size="sm"
                   onClick={() => navigate(`/projects/${project.id}/findings/generate`)}
-                  className="bg-primary text-surface hover:bg-primary/90"
+                  className="bg-primary text-surface hover:bg-primary/90 text-xs sm:text-sm"
                 >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Generate with AI
+                  <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden xs:inline">Generate</span>
+                  <span className="xs:hidden">AI</span>
                 </Button>
               )}
             </>
@@ -549,22 +593,26 @@ const ProjectDetailPage = () => {
           {(hasPermission('view_reports') || hasRole('client')) ? (
             <>
               <Button
+                size="sm"
                 onClick={() => navigate(`/projects/${project.id}/report`)}
-                className="bg-primary text-surface hover:bg-primary/90"
+                className="bg-primary text-surface hover:bg-primary/90 text-xs sm:text-sm"
               >
-                <ExternalLink className="mr-2 h-4 w-4" />
-                {hasRole('client') ? 'Download Report' : 'View Full Report'}
+                <ExternalLink className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden xs:inline">{hasRole('client') ? 'Download Report' : 'View Report'}</span>
+                <span className="xs:hidden">Report</span>
               </Button>
             </>
           ) : null}
           {(hasPermission('create_findings')) && (
             <Button
               variant="outline"
+              size="sm"
               onClick={() => setIsImportDialogOpen(true)}
-              className="border-outline text-on-surface-variant hover:text-primary"
+              className="border-outline text-on-surface-variant hover:text-primary text-xs sm:text-sm"
             >
-              <FileText className="mr-2 h-4 w-4" />
-              Import Findings
+              <FileText className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden xs:inline">Import Findings</span>
+              <span className="xs:hidden">Import</span>
             </Button>
           )}
         </div>
@@ -573,8 +621,8 @@ const ProjectDetailPage = () => {
       {(() => {
         const canEdit = hasPermission('edit_projects') || (hasPermission('create_findings') && (project as any).assigned_reporter_id && Number(user?.id) === (project as any).assigned_reporter_id);
         return canEdit ? (
-        <Card className="mb-6 p-4 bg-surface-high border-outline">
-          <div className="flex items-center justify-between gap-3">
+        <Card className="mb-6 p-3 sm:p-4 bg-surface-high border-outline">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
             <div>
               <h3 className="text-sm font-semibold text-on-surface">Project Details</h3>
               <p className="mt-1 text-xs text-on-surface-variant">Edit project/client/scope metadata used in reports.</p>
@@ -584,6 +632,7 @@ const ProjectDetailPage = () => {
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   onClick={() => {
                     setEditing(false);
                     // Reset to last loaded values.
@@ -621,8 +670,9 @@ const ProjectDetailPage = () => {
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   onClick={() => setEditing(true)}
-                  className="border-outline text-on-surface-variant hover:text-primary"
+                  className="border-outline text-on-surface-variant hover:text-primary text-xs sm:text-sm"
                 >
                   Edit Project
                 </Button>
@@ -703,7 +753,7 @@ const ProjectDetailPage = () => {
               )}
             </div>
           ) : (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div className="p-3 rounded-lg bg-surface border border-outline-variant">
                 <div className="text-xs text-on-surface-variant mb-1">Project Name</div>
                 <div className="text-sm text-on-surface">{project.name}</div>
@@ -1060,20 +1110,30 @@ const ProjectDetailPage = () => {
                 </div>
               </div>
 
-              <div className="p-3 rounded-lg bg-surface border border-outline-variant">
-                <div className="text-xs text-on-surface-variant mb-1">Description</div>
+              <CommentableSection
+                projectId={project.id}
+                sectionType="project"
+                sectionKey="description"
+                label="Description"
+                className="p-3 rounded-lg bg-surface border border-outline-variant"
+              >
                 <div className="text-sm text-on-surface whitespace-pre-wrap">
                   {project.description || 'No description provided.'}
                 </div>
-              </div>
+              </CommentableSection>
 
               {(() => {
                 const vc = projectTemplateFieldConfig[formTemplateKey] || projectTemplateFieldConfig.unknown;
                 return (
                   <>
                     {vc.applicationDetails.enabled && (
-                      <div className="p-3 rounded-lg bg-surface border border-outline-variant">
-                        <div className="text-xs text-on-surface-variant mb-2">{vc.applicationDetails.label}</div>
+                      <CommentableSection
+                        projectId={project.id}
+                        sectionType="project"
+                        sectionKey="application_details"
+                        label={vc.applicationDetails.label}
+                        className="p-3 rounded-lg bg-surface border border-outline-variant"
+                      >
                         {project.application_details && project.application_details.length > 0 ? (
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -1096,12 +1156,17 @@ const ProjectDetailPage = () => {
                         ) : (
                           <p className="text-sm text-on-surface-variant">No rows added yet.</p>
                         )}
-                      </div>
+                      </CommentableSection>
                     )}
 
                     {vc.userRoles.enabled && (
-                      <div className="p-3 rounded-lg bg-surface border border-outline-variant">
-                        <div className="text-xs text-on-surface-variant mb-2">{vc.userRoles.label}</div>
+                      <CommentableSection
+                        projectId={project.id}
+                        sectionType="project"
+                        sectionKey="user_roles"
+                        label={vc.userRoles.label}
+                        className="p-3 rounded-lg bg-surface border border-outline-variant"
+                      >
                         {project.user_roles && project.user_roles.length > 0 ? (
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -1124,12 +1189,17 @@ const ProjectDetailPage = () => {
                         ) : (
                           <p className="text-sm text-on-surface-variant">No rows added yet.</p>
                         )}
-                      </div>
+                      </CommentableSection>
                     )}
 
                     {vc.outOfScopeEndpoints.enabled && project.include_out_of_scope_endpoints && (
-                      <div className="p-3 rounded-lg bg-surface border border-outline-variant">
-                        <div className="text-xs text-on-surface-variant mb-2">{vc.outOfScopeEndpoints.label}</div>
+                      <CommentableSection
+                        projectId={project.id}
+                        sectionType="project"
+                        sectionKey="out_of_scope_endpoints"
+                        label={vc.outOfScopeEndpoints.label}
+                        className="p-3 rounded-lg bg-surface border border-outline-variant"
+                      >
                         {project.out_of_scope_endpoints && project.out_of_scope_endpoints.length > 0 ? (
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -1152,12 +1222,17 @@ const ProjectDetailPage = () => {
                         ) : (
                           <p className="text-sm text-on-surface-variant">No rows added yet.</p>
                         )}
-                      </div>
+                      </CommentableSection>
                     )}
 
                     {vc.domains.enabled && (
-                      <div className="p-3 rounded-lg bg-surface border border-outline-variant">
-                        <div className="text-xs text-on-surface-variant mb-2">{vc.domains.label}</div>
+                      <CommentableSection
+                        projectId={project.id}
+                        sectionType="project"
+                        sectionKey="domains"
+                        label={vc.domains.label}
+                        className="p-3 rounded-lg bg-surface border border-outline-variant"
+                      >
                         {project.domains && project.domains.length > 0 ? (
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -1178,7 +1253,7 @@ const ProjectDetailPage = () => {
                         ) : (
                           <p className="text-sm text-on-surface-variant">No domains added yet.</p>
                         )}
-                      </div>
+                      </CommentableSection>
                     )}
                   </>
                 );
@@ -1191,7 +1266,7 @@ const ProjectDetailPage = () => {
               type="button"
               onClick={handleSaveProject}
               disabled={saving}
-              className="bg-primary text-surface hover:bg-primary/90"
+              className="w-full sm:w-auto bg-primary text-surface hover:bg-primary/90"
             >
               {saving ? 'Saving...' : 'Save Project Details'}
             </Button>
@@ -1201,7 +1276,7 @@ const ProjectDetailPage = () => {
       })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-3 sm:space-y-4">
           {templateKeyFromProject(project) === 'dast' ? (
             <>
               {/* DAST: True Positive Findings */}
@@ -1219,7 +1294,8 @@ const ProjectDetailPage = () => {
                         severityBadge={severityBadge}
                         onNavigate={() => navigate(`/findings/${finding.id}`)}
                         onDelete={() => handleDeleteFinding(finding.id)}
-                        showDelete={hasPermission('delete_findings') && hasPermission('approve_findings')}
+                        showDelete={hasPermission('delete_findings')}
+                        hasOpenComments={findingIdsWithOpenThreads.has(finding.id)}
                       />
                     ))}
                   </div>
@@ -1245,8 +1321,9 @@ const ProjectDetailPage = () => {
                         severityBadge={severityBadge}
                         onNavigate={() => navigate(`/findings/${finding.id}`)}
                         onDelete={() => handleDeleteFinding(finding.id)}
-                        showDelete={hasPermission('delete_findings') && hasPermission('approve_findings')}
+                        showDelete={hasPermission('delete_findings')}
                         isFP
+                        hasOpenComments={findingIdsWithOpenThreads.has(finding.id)}
                       />
                     ))}
                   </div>
@@ -1273,7 +1350,8 @@ const ProjectDetailPage = () => {
                       severityBadge={severityBadge}
                       onNavigate={() => navigate(`/findings/${finding.id}`)}
                       onDelete={() => handleDeleteFinding(finding.id)}
-                      showDelete={hasPermission('delete_findings') && hasPermission('approve_findings')}
+                      showDelete={hasPermission('delete_findings')}
+                      hasOpenComments={findingIdsWithOpenThreads.has(finding.id)}
                     />
                   ))}
                 </div>
@@ -1287,41 +1365,51 @@ const ProjectDetailPage = () => {
           )}
         </div>
 
-        <div className="space-y-4">
-          <Card className="p-4 bg-surface-high border-outline">
+        <div className="space-y-3 sm:space-y-4 min-w-0">
+          <Card className="p-3 sm:p-4 bg-surface-high border-outline">
             <h3 className="text-sm font-semibold text-on-surface mb-3">Quick Stats</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 bg-surface rounded-lg border border-outline-variant">
-                <div className="flex items-center gap-2 mb-1">
-                  <AlertTriangle className="h-4 w-4 text-error" />
-                  <span className="text-xs text-on-surface-variant">High Priority</span>
+            <div className="grid grid-cols-2 gap-2 sm:gap-4">
+              <div className="p-2 sm:p-3 bg-surface rounded-lg border border-outline-variant">
+                <div className="flex items-center gap-1 sm:gap-2 mb-1">
+                  <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4 text-error" />
+                  <span className="text-[10px] sm:text-xs text-on-surface-variant">High Priority</span>
                 </div>
-                <div className="text-lg font-bold text-on-surface font-technical">
+                <div className="text-base sm:text-lg font-bold text-on-surface font-technical">
                   {project.findings.filter((f) => f.severity === 'Critical' || f.severity === 'High').length}
                 </div>
               </div>
-              <div className="p-3 bg-surface rounded-lg border border-outline-variant">
-                <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle className="h-4 w-4 text-primary" />
-                  <span className="text-xs text-on-surface-variant">Approved</span>
+              <div className="p-2 sm:p-3 bg-surface rounded-lg border border-outline-variant">
+                <div className="flex items-center gap-1 sm:gap-2 mb-1">
+                  <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
+                  <span className="text-[10px] sm:text-xs text-on-surface-variant">Total Findings</span>
                 </div>
-                <div className="text-lg font-bold text-on-surface font-technical">
-                  {project.findings.filter((f) => f.status === 'approved').length}
+                <div className="text-base sm:text-lg font-bold text-on-surface font-technical">
+                  {project.findings.length}
                 </div>
               </div>
             </div>
           </Card>
 
+          <WorkflowPanel
+            projectId={project.id}
+            status={project.status || 'draft'}
+            submittedBy={(project as any).submitted_by}
+            submittedAt={(project as any).submitted_at}
+            completedBy={(project as any).completed_by}
+            completedAt={(project as any).completed_at}
+            onStatusChange={load}
+          />
+
           {hasPermission('edit_projects') ? (
-            <Card className="p-4 bg-surface-high border-outline">
+            <Card className="p-3 sm:p-4 bg-surface-high border-outline">
               <h3 className="text-sm font-semibold text-on-surface mb-3">Project Actions</h3>
               <Button
                 variant="outline"
                 onClick={handleDelete}
                 disabled={deleting}
-                className="w-full border-error/30 text-error hover:bg-error/10"
+                className="w-full border-error/30 text-error hover:bg-error/10 text-xs sm:text-sm"
               >
-                <Trash2 className="mr-2 h-4 w-4" />
+                <Trash2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                 {deleting ? 'Deleting...' : 'Delete Project'}
               </Button>
             </Card>
@@ -1339,16 +1427,17 @@ const ProjectDetailPage = () => {
   );
 };
 
-const FindingCard = ({ finding, severityBadge, onNavigate, onDelete, showDelete, isFP }: {
+const FindingCard = ({ finding, severityBadge, onNavigate, onDelete, showDelete, isFP, hasOpenComments }: {
   finding: any;
   severityBadge: (s: string) => string;
   onNavigate: () => void;
   onDelete: () => void;
   showDelete: boolean;
   isFP?: boolean;
+  hasOpenComments?: boolean;
 }) => (
   <Card
-    className="p-3 bg-surface-high border-outline-variant hover:border-primary/30 transition-all cursor-pointer"
+    className={`p-3 bg-surface-high border-outline-variant hover:border-primary/30 transition-all cursor-pointer ${hasOpenComments ? 'ring-2 ring-orange-500/50 border-orange-500/30' : ''}`}
     onClick={onNavigate}
   >
     <div className="flex items-start justify-between gap-3">
@@ -1358,6 +1447,12 @@ const FindingCard = ({ finding, severityBadge, onNavigate, onDelete, showDelete,
           {!isFP && <Badge className={`text-xs ${severityBadge(finding.severity)}`}>{finding.severity}</Badge>}
           {(isFP || finding.finding_type === 'false_positive') && (
             <Badge className="text-xs bg-purple-500/10 text-purple-400 border-purple-500/20">FP</Badge>
+          )}
+          {hasOpenComments && (
+            <Badge className="text-xs bg-orange-500/10 text-orange-400 border-orange-500/30">
+              <MessageSquare className="w-3 h-3 mr-0.5 inline" />
+              Comments
+            </Badge>
           )}
         </div>
         <p className="text-xs text-on-surface-variant">Created {new Date(finding.created_at).toLocaleDateString()}</p>

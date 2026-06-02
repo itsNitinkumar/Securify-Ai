@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import ProjectModel from '../models/project.model';
 import UserModel from '../models/user.model';
 import ClientModel from '../models/client.model';
+import WorkflowHistoryModel from '../models/workflow-history.model';
 import ActivityLogService from '../services/activity-log.service';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
@@ -133,27 +134,44 @@ class ProjectController {
   static getAllProjects = asyncHandler(async (req: Request, res: Response) => {
     const user = (req as any).user;
     const permissions = (req as any).permissions || await UserModel.getPermissions(user.id);
+    const {
+      client_id,
+      status,
+      assigned_reporter_id,
+      start_date,
+      end_date,
+      search,
+    } = req.query;
 
-    // Admin/Manager bypass: see all projects
+    const filters: any = {};
+    if (client_id) filters.client_id = parseInt(client_id as string);
+    if (status) filters.status = status as string;
+    if (assigned_reporter_id) filters.assigned_reporter_id = parseInt(assigned_reporter_id as string);
+    if (start_date) filters.start_date = start_date as string;
+    if (end_date) filters.end_date = end_date as string;
+    if (search) filters.search = search as string;
+
+    // Admin/Manager bypass: see all projects (with filters)
     if (permissions.includes('manage_roles' as any) || permissions.includes('approve_findings' as any)) {
-      const projects = await ProjectModel.findAll();
+      const projects = await ProjectModel.findAll(filters);
       return res.json({ success: true, data: projects });
     }
 
-    // Reporter: only assigned projects
+    // Reporter: only assigned projects (with filters)
     if (permissions.includes('create_findings' as any)) {
-      const projects = await ProjectModel.findByReporter(user.id);
+      filters.assigned_reporter_id = user.id;
+      const projects = await ProjectModel.findAll(filters);
       return res.json({ success: true, data: projects });
     }
 
-    // Client: only own company projects
+    // Client: only own company projects (with filters)
     if (user.company_id) {
       const projects = await ProjectModel.findByCompany(user.company_id);
       return res.json({ success: true, data: projects });
     }
 
     // Fallback: all projects
-    const projects = await ProjectModel.findAll();
+    const projects = await ProjectModel.findAll(filters);
     return res.json({ success: true, data: projects });
   });
 
@@ -381,6 +399,132 @@ class ProjectController {
       success: true,
       data: updated,
     });
+  });
+
+  // Submit project for review (Draft → Pending Review)
+  static submitForReview = asyncHandler(async (req: Request, res: Response) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const user = (req as any).user;
+
+    const project = await ProjectModel.findById(parseInt(id));
+    if (!project) {
+      throw new ApiError(404, 'Project not found');
+    }
+
+    if (project.status !== 'draft') {
+      throw new ApiError(400, `Cannot submit project with status: ${project.status}. Only drafts can be submitted.`);
+    }
+
+    const updated = await ProjectModel.update(parseInt(id), {
+      status: 'pending_review',
+      submitted_by: user.id,
+      submitted_at: new Date().toISOString(),
+    } as any);
+
+    await WorkflowHistoryModel.create({
+      project_id: parseInt(id),
+      from_status: project.status,
+      to_status: 'pending_review',
+      action: 'SUBMIT_FOR_REVIEW',
+      performed_by: user.id,
+    });
+
+    await ActivityLogService.log({
+      user_id: user.id,
+      action: 'SUBMIT_PROJECT_FOR_REVIEW',
+      entity_type: 'project',
+      entity_id: parseInt(id),
+      details: { name: project.name, from_status: project.status, to_status: 'pending_review' },
+      ip_address: req.ip || req.socket.remoteAddress,
+      user_agent: req.get('user-agent'),
+    });
+
+    res.json({ success: true, data: updated });
+  });
+
+  // Request changes on project (Pending Review → Pending Comment Resolution)
+  static requestChanges = asyncHandler(async (req: Request, res: Response) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const user = (req as any).user;
+
+    const project = await ProjectModel.findById(parseInt(id));
+    if (!project) {
+      throw new ApiError(404, 'Project not found');
+    }
+
+    if (project.status !== 'pending_review') {
+      throw new ApiError(400, `Cannot request changes on project with status: ${project.status}`);
+    }
+
+    const updated = await ProjectModel.update(parseInt(id), { status: 'pending_comment_resolution' } as any);
+
+    await WorkflowHistoryModel.create({
+      project_id: parseInt(id),
+      from_status: project.status,
+      to_status: 'pending_comment_resolution',
+      action: 'REQUEST_CHANGES',
+      performed_by: user.id,
+    });
+
+    await ActivityLogService.log({
+      user_id: user.id,
+      action: 'REQUEST_PROJECT_CHANGES',
+      entity_type: 'project',
+      entity_id: parseInt(id),
+      details: { name: project.name, from_status: project.status, to_status: 'pending_comment_resolution' },
+      ip_address: req.ip || req.socket.remoteAddress,
+      user_agent: req.get('user-agent'),
+    });
+
+    res.json({ success: true, data: updated });
+  });
+
+  // Mark project complete (Pending Review or Pending Comment Resolution → Completed)
+  static markComplete = asyncHandler(async (req: Request, res: Response) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const user = (req as any).user;
+
+    const project = await ProjectModel.findById(parseInt(id));
+    if (!project) {
+      throw new ApiError(404, 'Project not found');
+    }
+
+    if (project.status !== 'pending_review' && project.status !== 'pending_comment_resolution') {
+      throw new ApiError(400, `Cannot mark project complete with status: ${project.status}`);
+    }
+
+    const updated = await ProjectModel.update(parseInt(id), {
+      status: 'completed',
+      completed_by: user.id,
+      completed_at: new Date().toISOString(),
+    } as any);
+
+    await WorkflowHistoryModel.create({
+      project_id: parseInt(id),
+      from_status: project.status,
+      to_status: 'completed',
+      action: 'MARK_COMPLETE',
+      performed_by: user.id,
+    });
+
+    await ActivityLogService.log({
+      user_id: user.id,
+      action: 'COMPLETE_PROJECT',
+      entity_type: 'project',
+      entity_id: parseInt(id),
+      details: { name: project.name, from_status: project.status, to_status: 'completed' },
+      ip_address: req.ip || req.socket.remoteAddress,
+      user_agent: req.get('user-agent'),
+    });
+
+    res.json({ success: true, data: updated });
+  });
+
+  // Get workflow history for a project
+  static getWorkflowHistory = asyncHandler(async (req: Request, res: Response) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const history = await WorkflowHistoryModel.findByProject(parseInt(id));
+    res.json({ success: true, data: history });
   });
 
   // Delete project

@@ -59,8 +59,8 @@ export const authorize = (...requiredPermissions: PermissionSlug[]): any => {
       const permissions = await UserModel.getPermissions(req.user.id);
       req.permissions = permissions;
 
-      const hasAll = requiredPermissions.every((p) => permissions.includes(p));
-      if (!hasAll) {
+      const hasAny = requiredPermissions.some((p) => permissions.includes(p));
+      if (!hasAny) {
         throw new ApiError(403, 'Access denied. Insufficient permissions.');
       }
 

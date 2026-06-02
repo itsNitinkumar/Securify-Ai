@@ -123,7 +123,7 @@ class FindingController {
       created_by: user.id,
       steps_to_reproduce: aiResult.steps_to_reproduce,
       references: aiResult.references,
-    });
+    } as any);
 
     // Create initial version
     await VersionService.createVersion(finding.id, finding, user.id);
@@ -261,15 +261,12 @@ class FindingController {
     if (!canViewAll && permissions.includes('create_findings')) {
       // Reporter: only their own findings
       filters.created_by = user.id;
-    } else if (!canViewAll && user.role === 'client') {
-      // Client fallback (legacy): only see approved findings
-      filters.status = 'approved';
-      if (project_id) filters.project_id = project_id;
     }
 
+    // Clients can now see all findings (no longer filtered by 'approved')
     if (severity) filters.severity = severity;
-    if (status && user.role !== 'client') filters.status = status;
-    if (project_id && user.role !== 'client') filters.project_id = project_id;
+    if (status) filters.status = status;
+    if (project_id) filters.project_id = project_id;
     if (finding_type) filters.finding_type = finding_type;
 
     const findings = await FindingModel.findAll(filters);
@@ -309,7 +306,8 @@ class FindingController {
       }
     }
 
-    if (user.role === 'client' && finding.status !== 'approved') {
+    // Clients can view all findings for their projects
+    if (user.role === 'client' && !user.company_id) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -358,14 +356,19 @@ class FindingController {
     // Access control
     const canEditAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
 
-    if (!canEditAll && permissions.includes('create_findings')) {
-      // Reporter: can only edit own findings in draft/changes_requested status
+    if (!canEditAll && (permissions.includes('create_findings') || permissions.includes('edit_findings'))) {
+      // Reporter: can edit own findings or findings in assigned project
       if (finding.created_by !== user.id) {
-        throw new ApiError(403, 'Only the creator can edit this finding');
+        // Check if user is the assigned reporter for the project
+        const projectResult = await pool.query(
+          'SELECT id FROM projects WHERE id = $1 AND assigned_reporter_id = $2',
+          [finding.project_id, user.id]
+        );
+        if (projectResult.rows.length === 0) {
+          throw new ApiError(403, 'Only the creator or assigned reporter can edit this finding');
+        }
       }
-      if (finding.status !== 'draft' && finding.status !== 'changes_requested') {
-        throw new ApiError(403, 'Cannot edit finding with current status');
-      }
+      // Status-based locking removed (approval workflow was eliminated)
     }
 
     const updatedFinding = await FindingModel.update(parseInt(id), updates);
@@ -408,7 +411,13 @@ class FindingController {
 
     // Access control
     if (user.role === 'reporter' && finding.created_by !== user.id) {
-      throw new ApiError(403, 'Access denied');
+      const projectResult = await pool.query(
+        'SELECT id FROM projects WHERE id = $1 AND assigned_reporter_id = $2',
+        [finding.project_id, user.id]
+      );
+      if (projectResult.rows.length === 0) {
+        throw new ApiError(403, 'Access denied');
+      }
     }
 
     // Regenerate section using AI
@@ -423,139 +432,8 @@ class FindingController {
     });
   });
 
-  // Approve finding (Manager only)
-  static approveFinding = asyncHandler(async (req: Request, res: Response) => {
-    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const user = (req as any).user;
-    const permissions = (req as any).permissions || [];
-
-    // Permission check (authorize middleware already did this, but double-check for safety)
-    if (!permissions.includes('approve_findings') && user.role !== 'manager') {
-      throw new ApiError(403, 'Only managers can approve findings');
-    }
-
-    let finding;
-    try {
-      finding = await FindingModel.findById(parseInt(id));
-    } catch (error: any) {
-      console.error('❌ Database error when fetching finding:', error);
-      if (error.message?.includes('timeout')) {
-        throw new ApiError(504, 'Database query timeout. Please try again.');
-      }
-      throw new ApiError(500, 'Failed to fetch finding from database');
-    }
-
-    if (!finding) {
-      throw new ApiError(404, 'Finding not found');
-    }
-
-    console.log('🔍 Approval check:', {
-      findingId: finding.id,
-      status: finding.status,
-      statusType: typeof finding.status,
-      statusTrimmed: finding.status?.trim(),
-      isPendingReview: finding.status === 'pending_review',
-      isPendingReviewTrimmed: finding.status?.trim() === 'pending_review',
-    });
-
-    // Normalize status by trimming whitespace
-    const normalizedStatus = finding.status?.trim();
-
-    // Provide helpful error messages based on current status
-    if (normalizedStatus === 'approved') {
-      throw new ApiError(400, 'This finding has already been approved');
-    }
-
-    if (normalizedStatus === 'draft') {
-      throw new ApiError(400, 'This finding must be submitted for review before it can be approved');
-    }
-
-    if (normalizedStatus === 'changes_requested') {
-      throw new ApiError(400, 'This finding has changes requested. It must be resubmitted for review before approval');
-    }
-
-    if (normalizedStatus !== 'pending_review') {
-      throw new ApiError(400, `Only findings pending review can be approved. Current status: "${normalizedStatus}"`);
-    }
-
-    let updatedFinding;
-    try {
-      updatedFinding = await FindingModel.update(parseInt(id), {
-        status: 'approved',
-        approved_by: user.id,
-        reviewed_by: user.id,
-      });
-    } catch (error: any) {
-      console.error('❌ Database error when updating finding:', error);
-      if (error.message?.includes('timeout')) {
-        throw new ApiError(504, 'Database update timeout. Please try again.');
-      }
-      throw new ApiError(500, 'Failed to update finding in database');
-    }
-
-    // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'APPROVE_FINDING',
-      entity_type: 'finding',
-      entity_id: parseInt(id),
-      details: { title: finding.title },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
-    res.json({
-      success: true,
-      data: updatedFinding,
-    });
-  });
-
-  // Request changes (Manager only)
-  static requestChanges = asyncHandler(async (req: Request, res: Response) => {
-    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const { comment } = req.body;
-    const user = (req as any).user;
-    const permissions = (req as any).permissions || [];
-
-    if (!permissions.includes('request_finding_changes') && user.role !== 'manager') {
-      throw new ApiError(403, 'Only managers can request changes');
-    }
-
-    const finding = await FindingModel.findById(parseInt(id));
-
-    if (!finding) {
-      throw new ApiError(404, 'Finding not found');
-    }
-
-    if (finding.status !== 'pending_review') {
-      throw new ApiError(400, 'Only findings pending review can have changes requested');
-    }
-
-    const updatedFinding = await FindingModel.update(parseInt(id), {
-      status: 'changes_requested',
-      reviewed_by: user.id,
-    });
-
-    // Log activity with comment
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'REQUEST_CHANGES',
-      entity_type: 'finding',
-      entity_id: parseInt(id),
-      details: { title: finding.title, comment: comment || 'No comment provided' },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
-    res.json({
-      success: true,
-      data: updatedFinding,
-      message: 'Changes requested successfully',
-    });
-  });
-
-  // Submit finding for review
-  static submitForReview = asyncHandler(async (req: Request, res: Response) => {
+  // Submit finding (makes it final - no more editing)
+  static submitFinding = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = (req as any).user;
 
@@ -565,25 +443,17 @@ class FindingController {
       throw new ApiError(404, 'Finding not found');
     }
 
-    // Only creator can submit for review
-    if (finding.created_by !== user.id) {
-      throw new ApiError(403, 'Only the creator can submit this finding for review');
-    }
-
-    // Can only submit draft or changes_requested findings
-    if (finding.status !== 'draft' && finding.status !== 'changes_requested') {
+    if (finding.status !== 'draft') {
       throw new ApiError(400, `Cannot submit finding with status: ${finding.status}`);
     }
 
     const updatedFinding = await FindingModel.update(parseInt(id), {
-      status: 'pending_review',
-      reviewed_by: undefined, // Clear previous reviewer
+      status: 'submitted',
     });
 
-    // Log activity
     await ActivityLogService.log({
       user_id: user.id,
-      action: finding.status === 'changes_requested' ? 'RESUBMIT_FOR_REVIEW' : 'SUBMIT_FOR_REVIEW',
+      action: 'SUBMIT_FINDING',
       entity_type: 'finding',
       entity_id: parseInt(id),
       details: { title: finding.title },
@@ -594,7 +464,7 @@ class FindingController {
     res.json({
       success: true,
       data: updatedFinding,
-      message: 'Finding submitted for review successfully',
+      message: 'Finding submitted successfully',
     });
   });
 
@@ -726,7 +596,7 @@ class FindingController {
     }
 
     // Get findings from source project
-    const sourceFindings = await FindingModel.findAll({ project_id: source_project_id, status: 'approved' });
+    const sourceFindings = await FindingModel.findAll({ project_id: source_project_id });
     const findingsToImport = sourceFindings.filter(f => finding_ids.includes(f.id));
 
     if (findingsToImport.length === 0) {

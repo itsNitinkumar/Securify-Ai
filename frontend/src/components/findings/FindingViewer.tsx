@@ -4,7 +4,7 @@ import { findingApi, Finding } from '@/api/findingApi';
 import { evidenceApi, Evidence } from '@/api/evidenceApi';
 import FindingWorkflowButtons from './FindingWorkflowButtons';
 import EditFindingDialog from './EditFindingDialog';
-import FindingComments from './FindingComments';
+import CommentableSection from '@/components/comments/CommentableSection';
 import {
   Dialog,
   DialogContent,
@@ -104,14 +104,6 @@ const FindingViewer = ({
     Informational: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
   };
 
-  const statusColors = {
-    draft: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
-    pending_review: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-    changes_requested: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    approved: 'bg-green-500/10 text-green-400 border-green-500/20',
-    rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
-  };
-
   const isFalsePositive = (f: Finding) => (f as any).finding_type === 'false_positive';
 
   if (loading || !finding) {
@@ -142,9 +134,6 @@ const FindingViewer = ({
                       {finding.severity}
                     </Badge>
                   )}
-                  <Badge className={statusColors[finding.status]}>
-                    {finding.status.replace('_', ' ').toUpperCase()}
-                  </Badge>
                 </div>
                 <DialogTitle className="text-2xl text-on-surface">{finding.title}</DialogTitle>
                 <DialogDescription>
@@ -166,56 +155,74 @@ const FindingViewer = ({
             {/* Description */}
             {finding.description && (
               <Card className="p-4 bg-surface border-outline-variant">
-                <h3 className="text-sm font-semibold text-on-surface mb-2 flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Description
-                </h3>
-                <p className="text-sm text-on-surface-variant whitespace-pre-wrap">
-                  {finding.description}
-                </p>
+                <CommentableSection
+                  projectId={finding.project_id!}
+                  findingId={findingId}
+                  sectionType="finding"
+                  sectionKey="description"
+                  label="Description"
+                  icon={<FileText className="w-4 h-4" />}
+                >
+                  <p className="text-sm text-on-surface-variant whitespace-pre-wrap">
+                    {finding.description}
+                  </p>
+                </CommentableSection>
               </Card>
             )}
 
             {/* Likelihood & Impact - Combined Section */}
             {!isFalsePositive(finding) && (finding.likelihood || finding.impact) && (
               <Card className="p-4 bg-surface border-outline-variant">
-                <h3 className="text-sm font-semibold text-on-surface mb-3">Impact & Likelihood</h3>
-                <div className="space-y-4">
-                  {finding.impact && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <AlertTriangle className="w-4 h-4 text-on-surface" />
-                        <span className="text-sm font-semibold text-on-surface">Impact:</span>
-                        {typeof finding.impact === 'object' && finding.impact.severity && (
-                          <Badge className={severityBadge(finding.impact.severity) + " ml-1"}>{finding.impact.severity}</Badge>
-                        )}
+                <CommentableSection
+                  projectId={finding.project_id!}
+                  findingId={findingId}
+                  sectionType="finding"
+                  sectionKey="impact_likelihood"
+                  label="Impact & Likelihood"
+                >
+                  <div className="space-y-4">
+                    {finding.impact && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertTriangle className="w-4 h-4 text-on-surface" />
+                          <span className="text-sm font-semibold text-on-surface">Impact:</span>
+                          {typeof finding.impact === 'object' && finding.impact.severity && (
+                            <Badge className={severityBadge(finding.impact.severity) + " ml-1"}>{finding.impact.severity}</Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-on-surface-variant">
+                          {typeof finding.impact === 'object' ? finding.impact.detail : finding.impact}
+                        </p>
                       </div>
-                      <p className="text-sm text-on-surface-variant">
-                        {typeof finding.impact === 'object' ? finding.impact.detail : finding.impact}
-                      </p>
-                    </div>
-                  )}
-                  {finding.likelihood && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-semibold text-on-surface">Likelihood:</span>
-                        {typeof finding.likelihood === 'object' && finding.likelihood.severity && (
-                          <Badge className={severityBadge(finding.likelihood.severity) + " ml-1"}>{finding.likelihood.severity}</Badge>
-                        )}
+                    )}
+                    {finding.likelihood && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-semibold text-on-surface">Likelihood:</span>
+                          {typeof finding.likelihood === 'object' && finding.likelihood.severity && (
+                            <Badge className={severityBadge(finding.likelihood.severity) + " ml-1"}>{finding.likelihood.severity}</Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-on-surface-variant">
+                          {typeof finding.likelihood === 'object' ? finding.likelihood.detail : finding.likelihood}
+                        </p>
                       </div>
-                      <p className="text-sm text-on-surface-variant">
-                        {typeof finding.likelihood === 'object' ? finding.likelihood.detail : finding.likelihood}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                </CommentableSection>
               </Card>
             )}
 
             {/* Steps to Reproduce */}
             {!isFalsePositive(finding) && finding.steps_to_reproduce && finding.steps_to_reproduce.length > 0 && (
               <Card className="p-4 bg-surface border-outline-variant">
-                <h3 className="text-sm font-semibold text-on-surface mb-3">Steps to Reproduce</h3>
+                <CommentableSection
+                  projectId={finding.project_id!}
+                  findingId={findingId}
+                  sectionType="finding"
+                  sectionKey="steps_to_reproduce"
+                  label="Steps to Reproduce"
+                >
                 <div className="space-y-4">
                   {(() => {
                     console.log('📸 Steps data:', JSON.stringify(finding.steps_to_reproduce.slice(0, 2), null, 2));
@@ -267,13 +274,20 @@ const FindingViewer = ({
                     );
                   })})()}
                 </div>
+              </CommentableSection>
               </Card>
             )}
 
             {/* Evidence Items (False Positive) */}
             {isFalsePositive(finding) && (finding as any).evidence_items?.length > 0 && (
               <Card className="p-4 bg-surface border-outline-variant">
-                <h3 className="text-sm font-semibold text-on-surface mb-3">Evidence Items</h3>
+                <CommentableSection
+                  projectId={finding.project_id!}
+                  findingId={findingId}
+                  sectionType="finding"
+                  sectionKey="evidence_items"
+                  label="Evidence Items"
+                >
                 <div className="space-y-4">
                   {((finding as any).evidence_items || []).map((item: any, index: number) => (
                     <div key={index} className="bg-surface-low p-3 rounded-lg border border-outline-variant">
@@ -298,29 +312,40 @@ const FindingViewer = ({
                     </div>
                   ))}
                 </div>
+              </CommentableSection>
               </Card>
             )}
 
             {/* Proof of Concept */}
             {finding.proof_of_concept && (
               <Card className="p-4 bg-surface border-outline-variant">
-                <h3 className="text-sm font-semibold text-on-surface mb-2">Proof of Concept</h3>
+                <CommentableSection
+                  projectId={finding.project_id!}
+                  findingId={findingId}
+                  sectionType="finding"
+                  sectionKey="proof_of_concept"
+                  label="Proof of Concept"
+                >
                 <pre className="text-sm text-on-surface-variant whitespace-pre-wrap font-mono bg-surface-low p-3 rounded border border-outline-variant overflow-x-auto">
                   {finding.proof_of_concept}
                 </pre>
+              </CommentableSection>
               </Card>
             )}
 
             {/* Recommendation (array from AI) */}
             {!isFalsePositive(finding) && finding.recommendation && finding.recommendation.length > 0 && (
               <Card className="p-4 bg-surface border-outline-variant">
-                <h3 className="text-sm font-semibold text-on-surface mb-3 flex items-center gap-2">
-                  <Shield className="w-4 h-4" />
-                  Recommendations
-                </h3>
+                <CommentableSection
+                  projectId={finding.project_id!}
+                  findingId={findingId}
+                  sectionType="finding"
+                  sectionKey="recommendations"
+                  label="Recommendations"
+                  icon={<Shield className="w-4 h-4" />}
+                >
                 <ul className="list-disc list-outside ml-5 space-y-3">
                   {finding.recommendation.map((rec, index) => {
-                    // Parse bold category headers (e.g., "**Category:** description")
                     const match = rec.match(/^\*\*(.+?)\*\*:?\s*(.+)$/s);
                     if (match) {
                       return (
@@ -336,26 +361,38 @@ const FindingViewer = ({
                     );
                   })}
                 </ul>
+              </CommentableSection>
               </Card>
             )}
 
             {/* Remediation (string - legacy) */}
             {finding.remediation && (
               <Card className="p-4 bg-surface border-outline-variant">
-                <h3 className="text-sm font-semibold text-on-surface mb-2 flex items-center gap-2">
-                  <Shield className="w-4 h-4" />
-                  Remediation
-                </h3>
+                <CommentableSection
+                  projectId={finding.project_id!}
+                  findingId={findingId}
+                  sectionType="finding"
+                  sectionKey="remediation"
+                  label="Remediation"
+                  icon={<Shield className="w-4 h-4" />}
+                >
                 <p className="text-sm text-on-surface-variant whitespace-pre-wrap">
                   {finding.remediation}
                 </p>
+              </CommentableSection>
               </Card>
             )}
 
             {/* Evidence */}
             {evidence.length > 0 && (
               <Card className="p-4 bg-surface border-outline-variant">
-                <h3 className="text-sm font-semibold text-on-surface mb-3">Evidence ({evidence.length})</h3>
+                <CommentableSection
+                  projectId={finding.project_id!}
+                  findingId={findingId}
+                  sectionType="finding"
+                  sectionKey="evidence"
+                  label={`Evidence (${evidence.length})`}
+                >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {evidence.map((item) => (
                     <a
@@ -382,13 +419,20 @@ const FindingViewer = ({
                     </a>
                   ))}
                 </div>
+              </CommentableSection>
               </Card>
             )}
 
             {/* References */}
             {!isFalsePositive(finding) && finding.references && finding.references.length > 0 && (
               <Card className="p-4 bg-surface border-outline-variant">
-                <h3 className="text-sm font-semibold text-on-surface mb-2">References</h3>
+                <CommentableSection
+                  projectId={finding.project_id!}
+                  findingId={findingId}
+                  sectionType="finding"
+                  sectionKey="references"
+                  label="References"
+                >
                 <ul className="list-disc list-inside space-y-1">
                   {finding.references.map((ref, index) => (
                     <li key={index} className="text-sm text-on-surface-variant break-all">
@@ -398,14 +442,9 @@ const FindingViewer = ({
                     </li>
                   ))}
                 </ul>
+              </CommentableSection>
               </Card>
             )}
-
-            {/* Comments */}
-            <FindingComments
-              findingId={findingId}
-              currentUserId={currentUserId}
-            />
           </div>
         </DialogContent>
       </Dialog>

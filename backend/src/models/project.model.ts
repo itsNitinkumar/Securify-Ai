@@ -18,6 +18,7 @@ interface Project {
   out_of_scope_endpoints?: Array<{ name: string; url: string }>;
   include_out_of_scope_endpoints?: boolean;
   created_by?: number;
+  status?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -41,9 +42,10 @@ class ProjectModel {
          template_name,
          out_of_scope_endpoints,
          include_out_of_scope_endpoints,
-         created_by
+         created_by,
+         status
         )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING *`,
        [
          data.name,
@@ -62,6 +64,7 @@ class ProjectModel {
          data.out_of_scope_endpoints ? JSON.stringify(data.out_of_scope_endpoints) : null,
          data.include_out_of_scope_endpoints ?? false,
          data.created_by,
+         data.status || 'draft',
         ]
       );
     return result.rows[0];
@@ -72,8 +75,51 @@ class ProjectModel {
     return result.rows[0] || null;
   }
 
-  static async findAll(): Promise<Project[]> {
-    const result = await pool.query('SELECT * FROM projects ORDER BY created_at DESC');
+  static async findAll(filters?: {
+    client_id?: number;
+    status?: string;
+    assigned_reporter_id?: number;
+    start_date?: string;
+    end_date?: string;
+    search?: string;
+  }): Promise<Project[]> {
+    let query = 'SELECT p.*, u.name as assigned_reporter_name FROM projects p LEFT JOIN users u ON p.assigned_reporter_id = u.id WHERE 1=1';
+    const params: any[] = [];
+    let param = 1;
+
+    if (filters?.client_id) {
+      query += ` AND p.client_id = $${param++}`;
+      params.push(filters.client_id);
+    }
+
+    if (filters?.status) {
+      query += ` AND p.status = $${param++}`;
+      params.push(filters.status);
+    }
+
+    if (filters?.assigned_reporter_id) {
+      query += ` AND p.assigned_reporter_id = $${param++}`;
+      params.push(filters.assigned_reporter_id);
+    }
+
+    if (filters?.start_date) {
+      query += ` AND p.start_date >= $${param++}`;
+      params.push(filters.start_date);
+    }
+
+    if (filters?.end_date) {
+      query += ` AND p.end_date <= $${param++}`;
+      params.push(filters.end_date);
+    }
+
+    if (filters?.search) {
+      query += ` AND (p.name ILIKE $${param} OR p.description ILIKE $${param} OR p.client_name ILIKE $${param})`;
+      params.push(`%${filters.search}%`);
+      param++;
+    }
+
+    query += ' ORDER BY p.created_at DESC';
+    const result = await pool.query(query, params);
     return result.rows;
   }
 
@@ -118,6 +164,7 @@ if (data.name !== undefined) set('name', data.name);
       if (data.template_name !== undefined) set('template_name', data.template_name);
       if (data.out_of_scope_endpoints !== undefined) set('out_of_scope_endpoints', data.out_of_scope_endpoints ? JSON.stringify(data.out_of_scope_endpoints) : null);
       if (data.include_out_of_scope_endpoints !== undefined) set('include_out_of_scope_endpoints', data.include_out_of_scope_endpoints);
+      if (data.status !== undefined) set('status', data.status);
 
     // Always bump updated_at on any update call.
     updates.push('updated_at = CURRENT_TIMESTAMP');

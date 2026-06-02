@@ -1,35 +1,55 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, FolderOpen, Calendar, User, AlertTriangle } from 'lucide-react';
-import { projectApi, Project } from '@/api/projectApi';
+import { Plus, Search, FolderOpen, Calendar, AlertTriangle } from 'lucide-react';
+import { projectApi, Project, ProjectFilters } from '@/api/projectApi';
+import { clientApi, Client } from '@/api/clientApi';
+import { userApi } from '@/api/userApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import ProjectCard from '@/components/projects/ProjectCard';
 import { useAuth } from '@/contexts/AuthContext';
+import type { User } from '@/types';
+
+const PROJECT_STATUSES = ['draft', 'pending_review', 'pending_comment_resolution', 'completed'];
 
 const ProjectsPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+
+  // Filter state
+  const [selectedClientId, setSelectedClientId] = useState<number | undefined>(undefined);
+  const [selectedStatus, setSelectedStatus] = useState<string | undefined>(undefined);
+  const [selectedReporterId, setSelectedReporterId] = useState<number | undefined>(undefined);
+  const [startDate, setStartDate] = useState<string | undefined>(undefined);
+  const [endDate, setEndDate] = useState<string | undefined>(undefined);
+
+  const [clients, setClients] = useState<Client[]>([]);
+  const [reporters, setReporters] = useState<User[]>([]);
 
   useEffect(() => {
-    loadProjects();
+    loadFilterData();
   }, []);
 
   useEffect(() => {
-    filterProjects();
-  }, [projects, searchQuery, filter]);
+    loadProjects();
+  }, [selectedClientId, selectedStatus, selectedReporterId, startDate, endDate, searchQuery]);
 
   const loadProjects = async () => {
     try {
       setLoading(true);
-      const response = await projectApi.getAllProjects();
+      const filters: ProjectFilters = {};
+      if (selectedClientId) filters.client_id = selectedClientId;
+      if (selectedStatus) filters.status = selectedStatus;
+      if (selectedReporterId) filters.assigned_reporter_id = selectedReporterId;
+      if (startDate) filters.start_date = startDate;
+      if (endDate) filters.end_date = endDate;
+      if (searchQuery) filters.search = searchQuery;
+      const response = await projectApi.getAllProjects(filters);
       setProjects(response.data);
     } catch (error) {
       console.error('Failed to load projects:', error);
@@ -38,35 +58,44 @@ const ProjectsPage = () => {
     }
   };
 
-  const filterProjects = () => {
-    let filtered = projects;
-
-    // Filter by status
-    if (filter !== 'all') {
-      filtered = filtered.filter((p) => p.status === filter);
+  const loadFilterData = async () => {
+    try {
+      const [clientsRes, reportersRes] = await Promise.allSettled([
+        clientApi.listClients(),
+        userApi.getReporters(),
+      ]);
+      if (clientsRes.status === 'fulfilled') {
+        const data = (clientsRes.value as any)?.data || clientsRes.value;
+        setClients(Array.isArray(data) ? data : []);
+      }
+      if (reportersRes.status === 'fulfilled') {
+        const data = (reportersRes.value as any)?.data?.data || (reportersRes.value as any)?.data || [];
+        setReporters(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Failed to load filter data:', error);
     }
-
-    // Filter by search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.description?.toLowerCase().includes(query) ||
-          p.client_name?.toLowerCase().includes(query)
-      );
-    }
-
-    setFilteredProjects(filtered);
   };
 
   const handleProjectClick = (project: Project) => {
     navigate(`/projects/${project.id}`);
   };
 
+  const clearFilters = () => {
+    setSelectedClientId(undefined);
+    setSelectedStatus(undefined);
+    setSelectedReporterId(undefined);
+    setStartDate(undefined);
+    setEndDate(undefined);
+    setSearchQuery('');
+  };
+
+  const hasActiveFilters = selectedClientId || selectedStatus || selectedReporterId || startDate || endDate || searchQuery;
+
   const stats = {
     total: projects.length,
-    active: projects.filter((p) => p.status === 'active').length,
+    draft: projects.filter((p) => p.status === 'draft' || !p.status).length,
+    pendingReview: projects.filter((p) => p.status === 'pending_review').length,
     completed: projects.filter((p) => p.status === 'completed').length,
     totalFindings: projects.reduce((sum, p) => sum + (p.findings_count || 0), 0),
   };
@@ -115,11 +144,21 @@ const ProjectsPage = () => {
 
         <Card className="p-4 bg-surface-high border-outline">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-on-surface-variant uppercase">Active</span>
-            <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+            <span className="text-xs text-on-surface-variant uppercase">Draft</span>
+            <div className="w-2 h-2 rounded-full bg-gray-400"></div>
           </div>
-          <div className="text-2xl md:text-3xl font-bold text-primary font-technical">
-            {stats.active}
+          <div className="text-2xl md:text-3xl font-bold text-on-surface font-technical">
+            {stats.draft}
+          </div>
+        </Card>
+
+        <Card className="p-4 bg-surface-high border-outline">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-on-surface-variant uppercase">Pending Review</span>
+            <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
+          </div>
+          <div className="text-2xl md:text-3xl font-bold text-yellow-400 font-technical">
+            {stats.pendingReview}
           </div>
         </Card>
 
@@ -128,68 +167,89 @@ const ProjectsPage = () => {
             <span className="text-xs text-on-surface-variant uppercase">Completed</span>
             <div className="w-2 h-2 rounded-full bg-green-500"></div>
           </div>
-          <div className="text-2xl md:text-3xl font-bold text-on-surface font-technical">
+          <div className="text-2xl md:text-3xl font-bold text-green-500 font-technical">
             {stats.completed}
-          </div>
-        </Card>
-
-        <Card className="p-4 bg-surface-high border-outline">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-on-surface-variant uppercase">Total Findings</span>
-            <AlertTriangle className="w-4 h-4 text-error" />
-          </div>
-          <div className="text-2xl md:text-3xl font-bold text-on-surface font-technical">
-            {stats.totalFindings}
           </div>
         </Card>
       </div>
 
       {/* Search and Filters */}
-      <div className="mb-6 flex flex-col md:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-on-surface-variant" />
-          <Input
-            type="text"
-            placeholder="Search projects..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-surface-high border-outline text-on-surface"
-          />
+      <div className="mb-6 space-y-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+            <Input
+              type="text"
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-surface-high border-outline text-on-surface text-sm"
+            />
+          </div>
+
+          <select
+            value={selectedClientId || ''}
+            onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : undefined)}
+            className="px-3 py-2 bg-surface-high border border-outline rounded-md text-on-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">All Clients</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+
+          <select
+            value={selectedStatus || ''}
+            onChange={(e) => setSelectedStatus(e.target.value || undefined)}
+            className="px-3 py-2 bg-surface-high border border-outline rounded-md text-on-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">All Statuses</option>
+            {PROJECT_STATUSES.map((s) => (
+              <option key={s} value={s}>{s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+            ))}
+          </select>
+
+          <select
+            value={selectedReporterId || ''}
+            onChange={(e) => setSelectedReporterId(e.target.value ? Number(e.target.value) : undefined)}
+            className="px-3 py-2 bg-surface-high border border-outline rounded-md text-on-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">All Reporters</option>
+            {reporters.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0">
-          <Badge
-            variant={filter === 'all' ? 'default' : 'outline'}
-            className={`cursor-pointer whitespace-nowrap ${
-              filter === 'all'
-                ? 'bg-primary text-surface'
-                : 'border-outline text-on-surface-variant hover:border-primary'
-            }`}
-            onClick={() => setFilter('all')}
-          >
-            All Projects
-          </Badge>
-          <Badge
-            variant={filter === 'active' ? 'default' : 'outline'}
-            className={`cursor-pointer whitespace-nowrap ${
-              filter === 'active'
-                ? 'bg-primary text-surface'
-                : 'border-outline text-on-surface-variant hover:border-primary'
-            }`}
-            onClick={() => setFilter('active')}
-          >
-            Active
-          </Badge>
-          <Badge
-            variant={filter === 'completed' ? 'default' : 'outline'}
-            className={`cursor-pointer whitespace-nowrap ${
-              filter === 'completed'
-                ? 'bg-primary text-surface'
-                : 'border-outline text-on-surface-variant hover:border-primary'
-            }`}
-            onClick={() => setFilter('completed')}
-          >
-            Completed
-          </Badge>
+
+        <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-on-surface-variant whitespace-nowrap">Start Date:</label>
+            <Input
+              type="date"
+              value={startDate || ''}
+              onChange={(e) => setStartDate(e.target.value || undefined)}
+              className="bg-surface-high border-outline text-on-surface text-sm w-40"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-on-surface-variant whitespace-nowrap">End Date:</label>
+            <Input
+              type="date"
+              value={endDate || ''}
+              onChange={(e) => setEndDate(e.target.value || undefined)}
+              className="bg-surface-high border-outline text-on-surface text-sm w-40"
+            />
+          </div>
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="text-primary hover:text-primary/80 text-xs"
+            >
+              Clear Filters
+            </Button>
+          )}
         </div>
       </div>
 
@@ -199,18 +259,18 @@ const ProjectsPage = () => {
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           <p className="mt-4 text-on-surface-variant">Loading projects...</p>
         </div>
-      ) : filteredProjects.length === 0 ? (
+      ) : projects.length === 0 ? (
         <Card className="p-12 text-center bg-surface-high border-outline">
           <FolderOpen className="w-16 h-16 text-on-surface-variant mx-auto mb-4 opacity-50" />
           <h3 className="text-lg font-semibold text-on-surface mb-2">No projects found</h3>
           <p className="text-on-surface-variant mb-4">
-            {searchQuery
+            {searchQuery || hasActiveFilters
               ? 'Try adjusting your search criteria'
               : hasPermission('create_projects')
               ? 'Get started by creating your first project'
               : 'No projects available yet'}
           </p>
-          {!searchQuery && hasPermission('create_projects') && (
+          {!searchQuery && !hasActiveFilters && hasPermission('create_projects') && (
             <Button
               onClick={() => navigate('/projects/new')}
               className="bg-primary text-surface hover:bg-primary/90"
@@ -222,7 +282,7 @@ const ProjectsPage = () => {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          {filteredProjects.map((project) => (
+          {projects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}

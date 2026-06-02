@@ -182,7 +182,7 @@ class FindingModel {
         data.title,
         data.severity,
         data.description,
-        data.affected_target,
+        data.affected_target ? JSON.stringify(data.affected_target) : null,
         data.likelihood ? JSON.stringify(data.likelihood) : null,
         data.impact ? JSON.stringify(data.impact) : null,
         data.steps_to_reproduce ? JSON.stringify(data.steps_to_reproduce) : null,

@@ -11,7 +11,7 @@ router.use(protect);
 
 // Manager and Admin can manage users
 router.get('/', authorize(Permissions.VIEW_USERS), UserController.getUsers);
-router.get('/reporters', authorize(Permissions.VIEW_USERS, Permissions.ASSIGN_PROJECTS), UserController.getReporters);
+router.get('/reporters', authorize(Permissions.VIEW_PROJECTS), UserController.getReporters);
 router.get('/:id', authorize(Permissions.VIEW_USERS), UserController.getUser);
 router.post('/', authorize(Permissions.CREATE_USERS), validateUserInput, UserController.createUser);
 router.put('/:id', authorize(Permissions.EDIT_USERS), UserController.updateUser);

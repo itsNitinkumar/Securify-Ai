@@ -18,12 +18,12 @@ export interface Project {
   out_of_scope_endpoints?: Array<{ name: string; url: string }>;
   include_out_of_scope_endpoints?: boolean;
   created_by: number;
+  status?: string;
   created_at: string;
   updated_at: string;
   findings_count?: number;
   critical_count?: number;
   high_count?: number;
-  status?: string;
 }
 
 export interface CreateProjectData {
@@ -43,9 +43,18 @@ export interface CreateProjectData {
   include_out_of_scope_endpoints?: boolean;
 }
 
+export interface ProjectFilters {
+  client_id?: number;
+  status?: string;
+  assigned_reporter_id?: number;
+  start_date?: string;
+  end_date?: string;
+  search?: string;
+}
+
 export const projectApi = {
-  getAllProjects: async () => {
-    const response = await axios.get('/projects');
+  getAllProjects: async (filters?: ProjectFilters) => {
+    const response = await axios.get('/projects', { params: filters });
     return response.data;
   },
 
@@ -76,6 +85,27 @@ export const projectApi = {
 
   assignReporter: async (id: number, reporterId: number | null) => {
     const response = await axios.patch(`/projects/${id}/assign-reporter`, { reporter_id: reporterId });
+    return response.data;
+  },
+
+  // Workflow operations
+  getWorkflowHistory: async (id: number) => {
+    const response = await axios.get(`/projects/${id}/workflow-history`);
+    return response.data;
+  },
+
+  submitForReview: async (id: number) => {
+    const response = await axios.post(`/projects/${id}/submit-review`);
+    return response.data;
+  },
+
+  requestChanges: async (id: number) => {
+    const response = await axios.post(`/projects/${id}/request-changes`);
+    return response.data;
+  },
+
+  markComplete: async (id: number) => {
+    const response = await axios.post(`/projects/${id}/mark-complete`);
     return response.data;
   },
 };

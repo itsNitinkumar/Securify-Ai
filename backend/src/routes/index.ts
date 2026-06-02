@@ -4,10 +4,12 @@ import authRoutes from './auth.routes';
 import findingRoutes from './finding.routes';
 import evidenceRoutes from './evidence.routes';
 import projectRoutes from './project.routes';
+import projectCommentRoutes from './project-comment.routes';
 import reportRoutes from './report.routes';
 import dashboardRoutes from './dashboard.routes';
 import templateRoutes from './template.routes';
 import commentRoutes from './comment.routes';
+import commentThreadRoutes from './comment-thread.routes';
 import roleRequestRoutes from './role-request.routes';
 import clientRoutes from './client.routes';
 import uploadRoutes from './upload.routes';
@@ -27,11 +29,14 @@ router.use('/role-requests', roleRequestRoutes);
 // Dashboard routes
 router.use('/dashboard', dashboardRoutes);
 
-  // Project routes
-  router.use('/projects', projectRoutes);
+// Project routes
+router.use('/projects', projectRoutes);
 
-  // Client routes
-  router.use('/clients', clientRoutes);
+// Project comment routes (nested under /projects)
+router.use('/projects', projectCommentRoutes);
+
+// Client routes
+router.use('/clients', clientRoutes);
 
 // Finding routes
 router.use('/findings', findingRoutes);
@@ -39,8 +44,11 @@ router.use('/findings', findingRoutes);
 // Evidence routes
 router.use('/evidence', evidenceRoutes);
 
-// Comment routes
+// Comment routes (legacy finding comments)
 router.use('/comments', commentRoutes);
+
+// Comment thread routes (section-based threaded comments)
+router.use('/comment-threads', commentThreadRoutes);
 
 // Report routes
 router.use('/reports', reportRoutes);

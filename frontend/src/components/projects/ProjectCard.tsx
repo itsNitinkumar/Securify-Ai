@@ -1,4 +1,4 @@
-import { FolderOpen, Calendar, User, AlertTriangle, ExternalLink } from 'lucide-react';
+import { FolderOpen, Calendar, User, Building2, ExternalLink } from 'lucide-react';
 import { Project } from '@/api/projectApi';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,10 +18,29 @@ const ProjectCard = ({ project, onClick }: ProjectCardProps) => {
     });
   };
 
-  const statusColors = {
-    active: 'bg-primary/10 text-primary border-primary/20',
-    completed: 'bg-green-500/10 text-green-400 border-green-500/20',
-    pending: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+  const getStatusColor = (status?: string) => {
+    switch (status) {
+      case 'draft':
+        return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+      case 'pending_review':
+        return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+      case 'pending_comment_resolution':
+        return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+      case 'completed':
+        return 'bg-green-500/10 text-green-400 border-green-500/20';
+      default:
+        return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    }
+  };
+
+  const getStatusLabel = (status?: string) => {
+    switch (status) {
+      case 'draft': return 'Draft';
+      case 'pending_review': return 'Pending Review';
+      case 'pending_comment_resolution': return 'Changes Requested';
+      case 'completed': return 'Completed';
+      default: return 'Draft';
+    }
   };
 
   return (
@@ -40,23 +59,11 @@ const ProjectCard = ({ project, onClick }: ProjectCardProps) => {
               <h3 className="font-semibold text-on-surface mb-1 line-clamp-1 group-hover:text-primary transition-colors">
                 {project.name}
               </h3>
-              {project.client_name && (
-                <p className="text-xs text-on-surface-variant line-clamp-1">
-                  {project.client_name}
-                </p>
-              )}
             </div>
           </div>
-          {project.status && (
-            <Badge
-              className={`text-xs flex-shrink-0 ${
-                statusColors[project.status as keyof typeof statusColors] ||
-                statusColors.pending
-              }`}
-            >
-              {project.status.toUpperCase()}
-            </Badge>
-          )}
+          <Badge className={`text-xs flex-shrink-0 ${getStatusColor(project.status)}`}>
+            {getStatusLabel(project.status)}
+          </Badge>
         </div>
 
         {/* Description */}
@@ -66,25 +73,17 @@ const ProjectCard = ({ project, onClick }: ProjectCardProps) => {
           </p>
         )}
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-surface rounded-lg border border-outline-variant">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className="w-3 h-3 text-error" />
-              <span className="text-xs text-on-surface-variant">Critical</span>
-            </div>
-            <div className="text-lg font-bold text-error font-technical">
-              {project.critical_count || 0}
-            </div>
+        {/* Info Rows */}
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+            <Building2 className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="truncate">{project.client_name || 'No client'}</span>
           </div>
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className="w-3 h-3 text-orange-400" />
-              <span className="text-xs text-on-surface-variant">High</span>
-            </div>
-            <div className="text-lg font-bold text-orange-400 font-technical">
-              {project.high_count || 0}
-            </div>
+          <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+            <User className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="truncate">
+              {project.assigned_reporter_name || (project.assigned_reporter_id ? `Reporter #${project.assigned_reporter_id}` : 'Not assigned')}
+            </span>
           </div>
         </div>
 

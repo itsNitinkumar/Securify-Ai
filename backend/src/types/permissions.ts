@@ -47,6 +47,11 @@ export const Permissions = {
   VIEW_CLIENTS: 'view_clients',
   MANAGE_CLIENTS: 'manage_clients',
 
+  // Project Workflow
+  SUBMIT_PROJECT_REVIEW: 'submit_project_review',
+  REQUEST_PROJECT_CHANGES: 'request_project_changes',
+  COMPLETE_PROJECT: 'complete_project',
+
   // Role Requests (legacy, being deprecated)
   VIEW_ROLE_REQUESTS: 'view_role_requests',
   APPROVE_ROLE_REQUESTS: 'approve_role_requests',

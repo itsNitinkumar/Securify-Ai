@@ -12,9 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import FindingContent from '@/components/findings/FindingContent';
 import FindingWorkflowButtons from '@/components/findings/FindingWorkflowButtons';
-import ApprovalWorkflow from '@/components/findings/ApprovalWorkflow';
 import VersionHistory from '@/components/findings/VersionHistory';
-import FindingComments from '@/components/findings/FindingComments';
 import InlineConfirm from '@/components/ui/inline-confirm';
 import { toast } from 'react-hot-toast';
 
@@ -76,20 +74,18 @@ const FindingDetailPage = () => {
   }, [id, isDeleting, navigate, lastKnownProjectId]);
 
   const loadFinding = async () => {
-    if (isDeleting) return; // Don't reload if deleting
+    if (isDeleting) return;
     try {
       setLoading(true);
       const response = await findingApi.getFinding(parseInt(id!));
       const findingData = (response.data as any)?.data || response.data;
       setFinding(findingData);
-      // Store project_id for later use
       if (findingData?.project_id) {
         setLastKnownProjectId(findingData.project_id);
       }
     } catch (error: any) {
       console.error('Failed to load finding:', error);
 
-      // If finding not found (404), silently redirect to project page or dashboard
       if (error?.response?.status === 404) {
         const redirectTo = lastKnownProjectId
           ? `/projects/${lastKnownProjectId}`
@@ -105,24 +101,19 @@ const FindingDetailPage = () => {
   };
 
   const handleDelete = async () => {
-    if (isDeleting || !finding) return; // Prevent double-clicks and ensure finding is loaded
+    if (isDeleting || !finding) return;
 
     setIsDeleting(true);
     setConfirmDelete(false);
 
-    // Get project_id from finding
     const projectId = finding.project_id;
-
-    // Determine where to navigate
     const navigateTo = projectId
       ? `/projects/${projectId}`
       : '/dashboard';
 
-    // Navigate IMMEDIATELY
     navigate(navigateTo, { replace: true });
     toast.success('Finding deleted');
 
-    // Delete in background
     try {
       await findingApi.deleteFinding(parseInt(id!));
     } catch (error) {
@@ -151,8 +142,6 @@ const FindingDetailPage = () => {
     );
   }
 
-  // If finding is null and not loading, we've already redirected in useEffect
-  // This should never render, but just in case:
   if (!finding) {
     return null;
   }
@@ -165,19 +154,11 @@ const FindingDetailPage = () => {
     Informational: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
   };
 
-  const statusColors: Record<string, string> = {
-    draft: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
-    pending_review: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-    changes_requested: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    approved: 'bg-green-500/10 text-green-400 border-green-500/20',
-    rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
-  };
-
   const handleBack = () => {
     if (finding?.project_id) {
       navigate(`/projects/${finding.project_id}`);
     } else {
-      navigate('/projects'); // Go to projects list
+      navigate('/projects');
     }
   };
 
@@ -200,19 +181,6 @@ const FindingDetailPage = () => {
               <Badge className={severityColors[finding.severity]}>
                 {finding.severity.toUpperCase()}
               </Badge>
-              <Badge className={statusColors[finding.status]}>
-                {finding.status.replace('_', ' ').toUpperCase()}
-              </Badge>
-              {finding.owasp_category && (
-                <Badge variant="outline" className="border-outline text-on-surface-variant">
-                  {finding.owasp_category}
-                </Badge>
-              )}
-              {finding.cwe_id && (
-                <Badge variant="outline" className="border-outline text-on-surface-variant">
-                  {finding.cwe_id}
-                </Badge>
-              )}
             </div>
             <h1 className="text-2xl md:text-3xl font-bold text-on-surface mb-2">
               {finding.title}
@@ -295,24 +263,15 @@ const FindingDetailPage = () => {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Approval Workflow */}
-          <ApprovalWorkflow finding={finding} />
-
           {/* Version History */}
-       {showVersions && (
-         <VersionHistory findingId={finding.id} />
-       )}
-     </div>
-     
-     {/* Comments Section */}
-     <div className="lg:col-span-1 space-y-6">
-       <FindingComments 
-         findingId={finding.id} 
-         currentUserId={currentUserId} 
-       />
-     </div>
-   </div>
- </div>
+          {showVersions && (
+            <VersionHistory findingId={finding.id} />
+          )}
+        </div>
+
+
+      </div>
+    </div>
   );
 };
 

@@ -33,14 +33,8 @@ router.delete('/:id', authorize(Permissions.DELETE_FINDINGS), authorizeFindingAc
 // AI regeneration
 router.post('/:id/regenerate', authorize(Permissions.EDIT_FINDINGS), authorizeFindingAccess(), aiGenerationLimiter, FindingController.regenerateSection);
 
-// Approval - Manager only
-router.post('/:id/approve', authorize(Permissions.APPROVE_FINDINGS), apiLimiter, FindingController.approveFinding);
-
-// Request changes - Manager only
-router.post('/:id/request-changes', authorize(Permissions.REQUEST_FINDING_CHANGES), apiLimiter, FindingController.requestChanges);
-
-// Submit for review - Reporter
-router.post('/:id/submit-review', authorize(Permissions.CREATE_FINDINGS), authorizeFindingAccess(), apiLimiter, FindingController.submitForReview);
+// Submit finding (makes it final)
+router.post('/:id/submit', authorize(Permissions.CREATE_FINDINGS), authorizeFindingAccess(), apiLimiter, FindingController.submitFinding);
 
 // Version history - All can view
 router.get('/:id/versions', authorize(Permissions.VIEW_FINDINGS), apiLimiter, FindingController.getVersionHistory);

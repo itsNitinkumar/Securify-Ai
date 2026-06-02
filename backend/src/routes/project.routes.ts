@@ -31,6 +31,26 @@ const canEditProject = asyncHandler(async (req: any, _res: Response, next: NextF
   throw new ApiError(403, 'Access denied. Insufficient permissions.');
 });
 
+// Middleware: allows workflow action if user has create_findings OR is manager/admin
+const canPerformWorkflowAction = asyncHandler(async (req: any, _res: Response, next: NextFunction) => {
+  const permissions = req.permissions || await UserModel.getPermissions(req.user.id);
+  req.permissions = permissions;
+
+  // Manager/Admin can perform all workflow actions
+  if (permissions.includes(Permissions.APPROVE_FINDINGS) || permissions.includes('manage_roles' as any)) return next();
+
+  // Reporter can submit for review (on assigned projects)
+  if (permissions.includes(Permissions.CREATE_FINDINGS)) {
+    const id = parseInt(req.params.id);
+    if (!isNaN(id)) {
+      const project = await ProjectModel.findById(id);
+      if (project && project.assigned_reporter_id === req.user.id) return next();
+    }
+  }
+
+  throw new ApiError(403, 'Access denied. Insufficient permissions.');
+});
+
 // CRUD operations
 router.post('/', authorize(Permissions.CREATE_PROJECTS), ProjectController.createProject);
 router.get('/', authorize(Permissions.VIEW_PROJECTS), ProjectController.getAllProjects);
@@ -39,5 +59,11 @@ router.get('/:id/with-findings', authorize(Permissions.VIEW_PROJECTS), authorize
 router.put('/:id', canEditProject, authorizeProjectAccess('id'), ProjectController.updateProject);
 router.patch('/:id/assign-reporter', authorize(Permissions.ASSIGN_PROJECTS), ProjectController.assignReporter);
 router.delete('/:id', authorize(Permissions.DELETE_PROJECTS), ProjectController.deleteProject);
+
+// Workflow operations
+router.post('/:id/submit-review', canPerformWorkflowAction, authorizeProjectAccess('id'), ProjectController.submitForReview);
+router.post('/:id/request-changes', authorize(Permissions.APPROVE_FINDINGS), authorizeProjectAccess('id'), ProjectController.requestChanges);
+router.post('/:id/mark-complete', authorize(Permissions.APPROVE_FINDINGS), authorizeProjectAccess('id'), ProjectController.markComplete);
+router.get('/:id/workflow-history', authorize(Permissions.VIEW_PROJECTS), authorizeProjectAccess('id'), ProjectController.getWorkflowHistory);
 
 export default router;
