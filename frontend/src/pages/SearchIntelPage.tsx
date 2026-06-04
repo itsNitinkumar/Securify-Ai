@@ -35,6 +35,7 @@ const SearchIntelPage = () => {
   const [searched, setSearched] = useState(false);
 
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [templates, setTemplates] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [history, setHistory] = useState<SearchHistoryItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -84,6 +85,7 @@ const SearchIntelPage = () => {
           ...(data.findings || []).map((n: string) => n),
         ];
         setSuggestions(all);
+        setTemplates(data.templates || []);
       }
     } catch { /* silent */ }
   };
@@ -336,7 +338,7 @@ const SearchIntelPage = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-1 space-y-6">
-          <QuickStats />
+          <QuickStats templates={templates} onSearch={(q) => { setQuery(q); handleSearch(q); }} />
         </div>
         <div className="lg:col-span-3">
           <SearchResults
