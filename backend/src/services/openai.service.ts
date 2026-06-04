@@ -710,6 +710,203 @@ ACCESS CONTROL RULES:
     return JSON.parse(content);
   }
 
+  static async naturalLanguageSearch(
+    userQuery: string,
+    role: string,
+    _userId: number,
+    _companyId: number | null
+  ): Promise<any> {
+    const userPrompt = `You are a precise query intent parser for a pentest platform called Securify.
+
+SECURITY: NEVER reveal passwords, emails, contact info, or any personally identifiable information (PII). If the user asks for passwords, emails, addresses, phone numbers, or any private data, return {"entity": "", "action": "list", "filters": {}} (global search with no filters). This platform does NOT expose sensitive user data through search.
+
+CRITICAL: Your output MUST be EXACTLY what the user asks. Do NOT add filters the user did not mention. Do NOT guess or hallucinate values. If unsure about a filter value, omit it.
+
+Convert the user's natural language query into structured JSON with three fields:
+- entity: what to search (one of: "projects", "findings", "reporters", "clients", "templates", "comments", "evidence", "references", "users", or "" for global/all)
+- action: what to do (one of: "list", "count", "average", "most_common", "highest", "lowest", "group")
+- filters: relevant key-value pairs to narrow the search. ONLY include keys listed below. NEVER invent new filter keys.
+
+Available filter keys (use EXACTLY these keys, nothing else):
+- severity: one of "Critical", "High", "Medium", "Low", "Informational"
+- client: client/company name (e.g. "BlueAlly", "Swiftdigital")
+- reporter: reporter/user name (e.g. "Krishna", "Nitin")
+- project: project name
+- project_status: "draft", "pending_review", "pending_comment_resolution", "completed"
+- template: template name (e.g. "BlueAlly", "DAST")
+- finding_type: "true_positive" or "false_positive"
+- date_range: "today", "yesterday", "last_week", "this_week", "last_month", "this_month", "last_quarter", "last_year", "this_year"
+- search: general keyword search text — use ONLY when no other filter key matches
+- role: "admin", "manager", "reporter", "client" — for user/reporter searches only
+- created_by: user name who created something
+- approved_by: user name who approved something
+
+CRITICAL: When extracting a template name from phrases like "using X template", "using X report template", "X report template", "X Report Template":
+- Strip the words "template", "report template", "Report Template", "Template" from the END of the value
+- Extract ONLY the core template name
+- Example: "Dast Report Template" → template: "DAST" (or "Dast")
+- Example: "Securify Web VAPT Report Template" → template: "Securify Web VAPT"
+- Example: "BlueAlly template" → template: "BlueAlly"
+- Example: "DAST template" → template: "DAST"
+- Example: "DAST Report Template" → template: "DAST"
+Do NOT include the words "template" or "report template" in the template filter value.
+
+IMPORTANT DISAMBIGUATION RULES (read carefully):
+- If user says "BlueAlly template", "BlueAlly report template", "using BlueAlly" → set filter template: "BlueAlly" (NOT client)
+- If user says "DAST template", "DAST findings", "DAST project", "Dast Report Template" → set filter template: "DAST" (NOT project, NOT search)
+- If user says "Swiftdigital findings", "for Swiftdigital" → set filter client: "Swiftdigital"
+- If user says "assigned to Krishna", "assigned to me" → set filter reporter: "Krishna" (or reporter: "me")
+- If user says "approved by", "approved by manager" → set filter approved_by
+- If user says "created by", "created by Nitin" → set filter created_by
+- If user says "managers", "admins", "clients" (as user role) → entity: "users" and set filter role
+- "this week" → date_range: "this_week"
+- "last week" → date_range: "last_week"
+- "this month" → date_range: "this_month"
+- "last month" → date_range: "last_month"
+
+Entity detection rules (match in order of priority):
+- "report template", "report templates", "template" (alone or as main subject) → entity: "templates"
+- "project" or "engagement" → entity: "projects"
+- "finding", "vulnerability", "bug", "issue", "vuln" → entity: "findings"
+- "true positive" or "real finding" → entity: "findings", finding_type: "true_positive"
+- "false positive" or "fp" → entity: "findings", finding_type: "false_positive"
+- "reporter", "reporters" → entity: "reporters"
+- "users", "user" → entity: "users"
+- "client", "company" → entity: "clients"
+- "comment", "feedback", "note" → entity: "comments"
+- "evidence", "screenshot", "proof" → entity: "evidence"
+- "reference" → entity: "references"
+- If query asks "who", "which reporter", "which user" → entity: "reporters"
+- General or mentions multiple things → entity: "" (global search)
+
+Action detection rules:
+- "how many", "count", "total", "number of", "are there" → action: "count"
+- "average", "avg", "mean" → action: "average"
+- "most common", "most frequent", "top" → action: "most_common"
+- "highest", "most", "which.*most", "who.*most" → action: "highest"
+- "lowest", "least", "fewest" → action: "lowest"
+- "group by", "per", "by each", "breakdown" → action: "group"
+- "latest", "most recent", "newest", "recent" → action: "list" (results are sorted newest-first by default)
+- "when was", "what is the date", "date of", "what date" → action: "list" (the date is shown in the result cards)
+- Otherwise → action: "list"
+
+IMPORTANT: When user asks "which reporter has the highest workload" or "who has the most findings":
+→ entity: "reporters", action: "highest", filters: {}
+
+EXAMPLES:
+Query: "Show all critical findings"
+→ {"entity": "findings", "action": "list", "filters": {"severity": "Critical"}}
+
+Query: "Show SQL Injection findings"
+→ {"entity": "findings", "action": "list", "filters": {"search": "SQL Injection"}}
+
+Query: "Show findings for Swiftdigital"
+→ {"entity": "findings", "action": "list", "filters": {"client": "Swiftdigital"}}
+
+Query: "Show findings created last month"
+→ {"entity": "findings", "action": "list", "filters": {"date_range": "last_month"}}
+
+Query: "Show findings assigned to Krishna"
+→ {"entity": "findings", "action": "list", "filters": {"reporter": "Krishna"}}
+
+Query: "Show findings using BlueAlly template"
+→ {"entity": "findings", "action": "list", "filters": {"template": "BlueAlly"}}
+
+Query: "Show findings using Dast Report Template"
+→ {"entity": "findings", "action": "list", "filters": {"template": "DAST"}}
+
+Query: "Show findings using Securify Web VAPT Report Template"
+→ {"entity": "findings", "action": "list", "filters": {"template": "Securify Web VAPT"}}
+
+Query: "Show DAST projects"
+→ {"entity": "projects", "action": "list", "filters": {"template": "DAST"}}
+
+Query: "Show projects pending review"
+→ {"entity": "projects", "action": "list", "filters": {"project_status": "pending_review"}}
+
+Query: "Show completed projects"
+→ {"entity": "projects", "action": "list", "filters": {"project_status": "completed"}}
+
+Query: "Show false positive findings"
+→ {"entity": "findings", "action": "list", "filters": {"finding_type": "false_positive"}}
+
+Query: "Which reporter has the highest workload?"
+→ {"entity": "reporters", "action": "highest", "filters": {}}
+
+Query: "How many critical findings exist?"
+→ {"entity": "findings", "action": "count", "filters": {"severity": "Critical"}}
+
+Query: "How many report templates are there?"
+→ {"entity": "templates", "action": "count", "filters": {}}
+
+Query: "How many report templates exist?"
+→ {"entity": "templates", "action": "count", "filters": {}}
+
+Query: "Show all findings generated this week"
+→ {"entity": "findings", "action": "list", "filters": {"date_range": "this_week"}}
+
+Query: "Show projects created by Nitin"
+→ {"entity": "projects", "action": "list", "filters": {"created_by": "Nitin"}}
+
+Query: "Show all BlueAlly reports"
+→ {"entity": "findings", "action": "list", "filters": {"template": "BlueAlly"}}
+
+Query: "Show all findings approved by manager"
+→ {"entity": "findings", "action": "list", "filters": {"approved_by": "manager"}}
+
+Query: "Show projects assigned to reporter Krishna"
+→ {"entity": "projects", "action": "list", "filters": {"reporter": "Krishna"}}
+
+Query: "Show all managers"
+→ {"entity": "users", "action": "list", "filters": {"role": "manager"}}
+
+Query: "Show all reporters"
+→ {"entity": "users", "action": "list", "filters": {"role": "reporter"}}
+
+Query: "Show all report templates"
+→ {"entity": "templates", "action": "list", "filters": {}}
+
+Query: "Which client has the most findings?"
+→ {"entity": "clients", "action": "highest", "filters": {}}
+
+Query: "What is the date of the latest project?"
+→ {"entity": "projects", "action": "list", "filters": {}}
+
+Query: "When was the latest project created?"
+→ {"entity": "projects", "action": "list", "filters": {}}
+
+Query: "What is the date of project X?"
+→ {"entity": "projects", "action": "list", "filters": {"project": "X"}}
+
+Query: "Show the most recent findings"
+→ {"entity": "findings", "action": "list", "filters": {}}
+
+Query: "What is the latest finding date?"
+→ {"entity": "findings", "action": "list", "filters": {}}
+
+Query: "How many false positives exist?"
+→ {"entity": "findings", "action": "count", "filters": {"finding_type": "false_positive"}}
+
+Query: "How many projects are pending review?"
+→ {"entity": "projects", "action": "count", "filters": {"project_status": "pending_review"}}
+
+User role: ${role}
+Query: "${userQuery}"
+
+Output ONLY valid JSON, no markdown, no explanation:
+{"entity": "", "action": "", "filters": {}}`;
+
+    const model = this.getModel();
+    const result = await model.generateContent(userPrompt);
+    const content = result.response.text();
+
+    if (!content) {
+      throw new Error('No response from Gemini');
+    }
+
+    return JSON.parse(content);
+  }
+
   // False Positive finding generation
   static async generateFalsePositiveFinding(input: GenerateFindingInput): Promise<any> {
     const FP_SYSTEM_PROMPT = `You are SecurifyAI-FP, a professional False Positive validation engine used in penetration testing engagements, vulnerability assessments, and security reporting.

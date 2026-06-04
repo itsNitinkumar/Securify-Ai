@@ -14,6 +14,7 @@ import roleRequestRoutes from './role-request.routes';
 import clientRoutes from './client.routes';
 import uploadRoutes from './upload.routes';
 import roleRoutes from './role.routes';
+import searchRoutes from './search.routes';
 
 const router = Router();
 
@@ -61,6 +62,9 @@ router.use('/upload', uploadRoutes);
 
 // Role routes (RBAC admin)
 router.use('/roles', roleRoutes);
+
+// Search routes
+router.use('/search', searchRoutes);
 
 // Health check
 router.get('/health', (_req, res) => {
