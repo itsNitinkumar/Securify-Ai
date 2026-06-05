@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, FileText, Loader2, MoreVertical, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import { Eye, FileText, Loader2, MoreVertical, Pencil, Star, Trash2 } from 'lucide-react';
 import { reportApi, ReportTemplate } from '@/api/reportApi';
-import { Button } from '@/components/ui/button';
 import { toast } from 'react-hot-toast';
 import { buildTemplateContent } from '@/components/templates/templateSchema';
 
@@ -69,23 +68,22 @@ const ReportTemplatesPage = () => {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <Loader2 className="h-8 w-8 animate-spin text-green-600" />
+      <div className="flex min-h-screen items-center justify-center bg-surface">
+        <div className="flex flex-col items-center gap-3 text-on-surface-variant">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm">Loading templates…</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#111111] p-6 text-white">
+    <div className="min-h-screen bg-surface p-6 text-on-surface">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Report Templates</h1>
-          <p className="mt-1 text-gray-300">Manage the static report content that will be rendered into generated reports.</p>
+          <h1 className="text-3xl font-bold text-on-surface">Report Templates</h1>
+          <p className="mt-1 text-on-surface-variant">Manage the static report content that will be rendered into generated reports.</p>
         </div>
-        <Button onClick={() => navigate('/templates/new')} className="bg-green-600 text-white hover:bg-green-700">
-          <Plus className="mr-2 h-4 w-4" />
-          Create Template
-        </Button>
       </div>
 
       <div className="rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] shadow-sm overflow-visible">

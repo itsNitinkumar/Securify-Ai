@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from '../api/axios';
+import { authApi } from '../api/authApi';
 
 interface User {
   id: string;
@@ -35,7 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const path = window.location.pathname;
-    
+
     if (isPublicPath(path)) {
       setIsLoading(false);
       return;
@@ -44,10 +45,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const fetchCurrentUser = async () => {
       try {
         const response = await axios.get('/auth/profile');
-        
+
         if (response.data) {
           const userData: User = response.data.data || response.data.user;
-          
+
           // Fetch permissions alongside profile
           try {
             const permResponse = await axios.get('/auth/permissions');
@@ -57,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch {
             // Permissions endpoint may not exist yet; fallback gracefully
           }
-          
+
           setUser(userData);
           setToken('cookie-based');
         }
@@ -71,27 +72,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchCurrentUser();
   }, []);
 
+  // Re-hydrate permissions when the tab regains focus so role/perm changes
+  // elsewhere are picked up without a full page reload.
+  useEffect(() => {
+    const onFocus = async () => {
+      if (!user) return;
+      try {
+        const permResponse = await axios.get('/auth/permissions');
+        if (permResponse.data?.data) {
+          setUser((prev) => (prev ? { ...prev, permissions: permResponse.data.data } : prev));
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [user?.id]);
+
   const login = async (email: string, password: string) => {
     try {
-      const response = await fetch('http://localhost:3000/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
+      const response = await authApi.signin({ email, password });
+      const payload = (response as any)?.data?.data || (response as any)?.data || {};
+      const userData: User = payload.user;
 
-      if (!response.ok) {
-        throw new Error('Login failed');
+      // Fetch permissions immediately so sidebar / role-gated UI is correct on first render.
+      try {
+        const permResponse = await axios.get('/auth/permissions');
+        if (permResponse.data?.data) {
+          userData.permissions = permResponse.data.data;
+        }
+      } catch (permError) {
+        // Permissions endpoint may not exist; user.role still works for role-based checks.
+        console.warn('Could not load permissions during login:', permError);
       }
 
-      const data = await response.json();
-      
-      setToken(data.token);
-      setUser(data.user);
-      
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      setToken(payload.token || 'cookie-based');
+      setUser(userData);
+
+      if (payload.token) localStorage.setItem('token', payload.token);
+      localStorage.setItem('user', JSON.stringify(userData));
     } catch (error) {
       console.error('Login error:', error);
       throw error;

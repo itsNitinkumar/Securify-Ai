@@ -68,6 +68,11 @@ export const projectApi = {
     return response.data;
   },
 
+  getReviewBundle: async (id: number) => {
+    const response = await axios.get(`/projects/${id}/review-bundle`);
+    return response.data;
+  },
+
   createProject: async (data: CreateProjectData) => {
     const response = await axios.post('/projects', data);
     return response.data;

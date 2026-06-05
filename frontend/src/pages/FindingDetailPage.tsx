@@ -1,33 +1,36 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Edit,
   Trash2,
-  History,
 } from 'lucide-react';
 import { findingApi, Finding } from '@/api/findingApi';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import FindingContent from '@/components/findings/FindingContent';
-import FindingWorkflowButtons from '@/components/findings/FindingWorkflowButtons';
-import VersionHistory from '@/components/findings/VersionHistory';
 import InlineConfirm from '@/components/ui/inline-confirm';
 import { toast } from 'react-hot-toast';
 
 const FindingDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, hasPermission, hasRole } = useAuth();
   const [finding, setFinding] = useState<Finding | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [showVersions, setShowVersions] = useState(false);
+  const [isEditing, setIsEditing] = useState(() => searchParams.get('edit') === 'true');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [lastKnownProjectId, setLastKnownProjectId] = useState<number | null>(null);
   const currentUserId = parseInt(user?.id || '0');
+
+  useEffect(() => {
+    if (searchParams.get('edit') === 'true' && !isEditing && hasPermission('edit_findings')) {
+      setIsEditing(true);
+    }
+  }, [searchParams, isEditing, hasPermission]);
 
   useEffect(() => {
     let isMounted = true;
@@ -121,16 +124,6 @@ const FindingDetailPage = () => {
     }
   };
 
-  const handleRegenerateSection = async (section: string) => {
-    try {
-      await findingApi.regenerateSection(parseInt(id!), section);
-      loadFinding();
-    } catch (error) {
-      console.error('Failed to regenerate section:', error);
-      toast.error('Failed to regenerate section');
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface">
@@ -155,7 +148,10 @@ const FindingDetailPage = () => {
   };
 
   const handleBack = () => {
-    if (finding?.project_id) {
+    const from = searchParams.get('from');
+    if (from === 'review' && finding?.project_id) {
+      navigate(`/projects/${finding.project_id}/review`);
+    } else if (finding?.project_id) {
       navigate(`/projects/${finding.project_id}`);
     } else {
       navigate('/projects');
@@ -191,20 +187,19 @@ const FindingDetailPage = () => {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowVersions(!showVersions)}
-              className="border-outline text-on-surface-variant hover:text-primary"
-            >
-              <History className="w-4 h-4 mr-2" />
-              Versions
-            </Button>
             {hasPermission('edit_findings') && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsEditing(!isEditing)}
+                onClick={() => {
+                  const next = !isEditing;
+                  setIsEditing(next);
+                  if (!next && searchParams.get('edit') === 'true') {
+                    const params = new URLSearchParams(searchParams);
+                    params.delete('edit');
+                    setSearchParams(params, { replace: true });
+                  }
+                }}
                 className="border-outline text-on-surface-variant hover:text-primary"
               >
                 <Edit className="w-4 h-4 mr-2" />
@@ -240,36 +235,20 @@ const FindingDetailPage = () => {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Workflow Buttons */}
-          <FindingWorkflowButtons
-            finding={finding}
-            currentUserId={currentUserId}
-            onUpdate={loadFinding}
-            onEditClick={() => setIsEditing(!isEditing)}
-          />
-
-          {/* Content Sections */}
-          <FindingContent
-            finding={finding}
-            isEditing={isEditing}
-            onUpdate={loadFinding}
-            onRegenerateSection={handleRegenerateSection}
-            onCancelEdit={() => setIsEditing(false)}
-          />
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Version History */}
-          {showVersions && (
-            <VersionHistory findingId={finding.id} />
-          )}
-        </div>
-
-
+      <div className="space-y-6">
+        <FindingContent
+          finding={finding}
+          isEditing={isEditing}
+          onUpdate={loadFinding}
+          onCancelEdit={() => {
+            setIsEditing(false);
+            if (searchParams.get('edit') === 'true') {
+              const params = new URLSearchParams(searchParams);
+              params.delete('edit');
+              setSearchParams(params, { replace: true });
+            }
+          }}
+        />
       </div>
     </div>
   );

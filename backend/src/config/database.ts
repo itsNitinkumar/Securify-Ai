@@ -1,5 +1,15 @@
-import { Pool } from 'pg';
+import { Pool, types } from 'pg';
 import { config } from './env';
+
+// Force the Node process to UTC so that `new Date(naiveTimestampString)` parses the value
+// as UTC (not the server's local timezone). The database stores TIMESTAMP (no tz) values
+// that we want to treat as UTC consistently across environments.
+process.env.TZ = 'UTC';
+
+// Force TIMESTAMPTZ (oid 1184) and TIMESTAMP (oid 1114) to be returned as ISO 8601 UTC strings
+// so the frontend can correctly convert to the user's local timezone.
+types.setTypeParser(1114, (val) => new Date(`${val}Z`).toISOString());
+types.setTypeParser(1184, (val) => new Date(val).toISOString());
 
 const pool = new Pool({
   connectionString: config.database.url,

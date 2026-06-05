@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import CommentModel from '../models/comment.model';
 import FindingModel from '../models/finding.model';
-import ActivityLogService from '../services/activity-log.service';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
 
@@ -25,16 +24,6 @@ class CommentController {
     const newComment = await CommentModel.create(finding_id, user.id, comment);
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'ADD_COMMENT',
-      entity_type: 'finding',
-      entity_id: finding_id,
-      details: { comment: comment.substring(0, 100) },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.status(201).json({
       success: true,
       data: newComment,

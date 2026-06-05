@@ -26,18 +26,6 @@ export interface FindingsByStatus {
   count: number;
 }
 
-export interface RecentActivity {
-  id: number;
-  user_id: number;
-  user_name: string;
-  action: string;
-  entity_type: string;
-  entity_id: number;
-  details: any;
-  timestamp: string;
-  ip_address: string;
-}
-
 export interface TopReporter {
   user_id: number;
   user_name: string;
@@ -72,13 +60,6 @@ export const dashboardApi = {
     return response.data;
   },
 
-  getRecentActivity: async (limit: number = 10) => {
-    const response = await axios.get('/dashboard/activity/recent', {
-      params: { limit },
-    });
-    return response.data;
-  },
-
   getTopReporters: async (limit: number = 5) => {
     const response = await axios.get('/dashboard/reporters/top', {
       params: { limit },
@@ -93,12 +74,6 @@ export const dashboardApi = {
 
   getFindingsTrend: async () => {
     const response = await axios.get('/dashboard/findings/trend');
-    return response.data;
-  },
-
-  getUserActivity: async (userId?: number) => {
-    const url = userId ? `/dashboard/users/${userId}/activity` : '/dashboard/my-activity';
-    const response = await axios.get(url);
     return response.data;
   },
 };

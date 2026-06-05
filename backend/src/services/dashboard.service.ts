@@ -49,21 +49,6 @@ class DashboardService {
     return result.rows;
   }
 
-  // Get recent activity
-  static async getRecentActivity(limit: number = 10): Promise<any[]> {
-    const result = await pool.query(`
-      SELECT 
-        al.*,
-        u.name as user_name,
-        u.email as user_email
-      FROM activity_logs al
-      LEFT JOIN users u ON al.user_id = u.id
-      ORDER BY al.created_at DESC
-      LIMIT $1
-    `, [limit]);
-    return result.rows;
-  }
-
   // Get top reporters by findings
   static async getTopReporters(limit: number = 5): Promise<any[]> {
     const result = await pool.query(`
@@ -129,12 +114,10 @@ class DashboardService {
         u.role,
         COUNT(DISTINCT f.id) as findings_created,
         COUNT(DISTINCT CASE WHEN f.status = 'approved' THEN f.id END) as findings_approved,
-        COUNT(DISTINCT e.id) as evidence_uploaded,
-        COUNT(DISTINCT al.id) as total_actions
+        COUNT(DISTINCT e.id) as evidence_uploaded
       FROM users u
       LEFT JOIN findings f ON u.id = f.created_by
       LEFT JOIN evidence e ON u.id = e.uploaded_by
-      LEFT JOIN activity_logs al ON u.id = al.user_id
       WHERE u.id = $1
       GROUP BY u.id, u.name, u.email, u.role
     `, [userId]);

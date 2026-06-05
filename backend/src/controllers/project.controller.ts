@@ -3,7 +3,10 @@ import ProjectModel from '../models/project.model';
 import UserModel from '../models/user.model';
 import ClientModel from '../models/client.model';
 import WorkflowHistoryModel from '../models/workflow-history.model';
-import ActivityLogService from '../services/activity-log.service';
+import CommentThreadModel from '../models/comment-thread.model';
+import FindingModel from '../models/finding.model';
+import imageUrlService from '../services/image-url.service';
+import { config } from '../config/env';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
 
@@ -114,16 +117,6 @@ class ProjectController {
     });
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'CREATE_PROJECT',
-      entity_type: 'project',
-      entity_id: project.id,
-      details: { name, client_name: project.client_name, client_id: project.client_id },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.status(201).json({
       success: true,
       data: project,
@@ -204,6 +197,65 @@ class ProjectController {
     res.json({
       success: true,
       data: project,
+    });
+  });
+
+  // Get full review bundle for a project: project + all findings (full) + all comment threads (with replies)
+  static getReviewBundle = asyncHandler(async (req: Request, res: Response) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const projectId = parseInt(id);
+
+    const project = await ProjectModel.findById(projectId);
+    if (!project) {
+      throw new ApiError(404, 'Project not found');
+    }
+
+    // Fetch all findings (full detail) for the project.
+    const findings = await FindingModel.findAll({ project_id: projectId });
+
+    // Process image URLs (S3 signed URLs, etc.) — mirror the controller logic in finding.controller.
+    const baseUrl = config.frontendUrl.replace(':5173', ':3000');
+    const processedFindings = await Promise.all(
+      findings.map(async (f: any) => {
+        if (f.steps_to_reproduce && Array.isArray(f.steps_to_reproduce)) {
+          f.steps_to_reproduce = await imageUrlService.processStepsImages(
+            f.steps_to_reproduce,
+            baseUrl
+          );
+        }
+        if (f.evidence_items && Array.isArray(f.evidence_items)) {
+          f.evidence_items = await Promise.all(
+            f.evidence_items.map(async (item: any) => {
+              if (item.imageKey) {
+                const signedUrl = await imageUrlService.getAccessibleUrl(item.imageKey, baseUrl);
+                return { ...item, signedUrl: signedUrl || item.imageKey };
+              }
+              return item;
+            })
+          );
+        }
+        return f;
+      })
+    );
+
+    // Fetch all comment threads for the project (project-level + finding-level).
+    const threads = await CommentThreadModel.findByProject({ project_id: projectId });
+
+    // Fetch replies for every thread and embed them on the thread object.
+    const threadsWithReplies = await Promise.all(
+      threads.map(async (t) => {
+        const replies = await CommentThreadModel.getReplies(t.id);
+        return { ...t, replies };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: {
+        project,
+        findings: processedFindings,
+        threads: threadsWithReplies,
+      },
     });
   });
 
@@ -330,23 +382,6 @@ class ProjectController {
     const updated = await ProjectModel.update(parseInt(id), updatePayload);
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'UPDATE_PROJECT',
-      entity_type: 'project',
-      entity_id: parseInt(id),
-      details: {
-        name,
-        description,
-        client_name: updated.client_name,
-        client_id: updated.client_id,
-        start_date: updated.start_date,
-        end_date: updated.end_date,
-      },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       data: updated,
@@ -357,7 +392,6 @@ class ProjectController {
   static assignReporter = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const { reporter_id } = req.body;
-    const user = (req as any).user;
 
     const project = await ProjectModel.findById(parseInt(id));
     if (!project) {
@@ -384,17 +418,6 @@ class ProjectController {
         ? Number.parseInt(String(reporter_id), 10)
         : null,
     } as any);
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'ASSIGN_REPORTER',
-      entity_type: 'project',
-      entity_id: parseInt(id),
-      details: { project_name: project.name, reporter_id },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       data: updated,
@@ -411,8 +434,8 @@ class ProjectController {
       throw new ApiError(404, 'Project not found');
     }
 
-    if (project.status !== 'draft') {
-      throw new ApiError(400, `Cannot submit project with status: ${project.status}. Only drafts can be submitted.`);
+    if (project.status !== 'draft' && project.status !== 'pending_comment_resolution') {
+      throw new ApiError(400, `Cannot submit project with status: ${project.status}. Only drafts and projects pending changes can be submitted.`);
     }
 
     const updated = await ProjectModel.update(parseInt(id), {
@@ -425,20 +448,9 @@ class ProjectController {
       project_id: parseInt(id),
       from_status: project.status,
       to_status: 'pending_review',
-      action: 'SUBMIT_FOR_REVIEW',
+      action: project.status === 'pending_comment_resolution' ? 'RESUBMIT_FOR_REVIEW' : 'SUBMIT_FOR_REVIEW',
       performed_by: user.id,
     });
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'SUBMIT_PROJECT_FOR_REVIEW',
-      entity_type: 'project',
-      entity_id: parseInt(id),
-      details: { name: project.name, from_status: project.status, to_status: 'pending_review' },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({ success: true, data: updated });
   });
 
@@ -446,6 +458,10 @@ class ProjectController {
   static requestChanges = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = (req as any).user;
+
+    if (user?.role !== 'admin' && user?.role !== 'manager') {
+      throw new ApiError(403, 'Only admins and managers can request changes');
+    }
 
     const project = await ProjectModel.findById(parseInt(id));
     if (!project) {
@@ -465,17 +481,6 @@ class ProjectController {
       action: 'REQUEST_CHANGES',
       performed_by: user.id,
     });
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'REQUEST_PROJECT_CHANGES',
-      entity_type: 'project',
-      entity_id: parseInt(id),
-      details: { name: project.name, from_status: project.status, to_status: 'pending_comment_resolution' },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({ success: true, data: updated });
   });
 
@@ -483,6 +488,10 @@ class ProjectController {
   static markComplete = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = (req as any).user;
+
+    if (user?.role !== 'admin' && user?.role !== 'manager') {
+      throw new ApiError(403, 'Only admins and managers can mark a project complete');
+    }
 
     const project = await ProjectModel.findById(parseInt(id));
     if (!project) {
@@ -506,17 +515,6 @@ class ProjectController {
       action: 'MARK_COMPLETE',
       performed_by: user.id,
     });
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'COMPLETE_PROJECT',
-      entity_type: 'project',
-      entity_id: parseInt(id),
-      details: { name: project.name, from_status: project.status, to_status: 'completed' },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({ success: true, data: updated });
   });
 
@@ -530,7 +528,6 @@ class ProjectController {
   // Delete project
   static deleteProject = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const user = (req as any).user;
 
     const project = await ProjectModel.findById(parseInt(id));
     if (!project) {
@@ -540,16 +537,6 @@ class ProjectController {
     await ProjectModel.delete(parseInt(id));
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'DELETE_PROJECT',
-      entity_type: 'project',
-      entity_id: parseInt(id),
-      details: { name: project.name },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       message: 'Project deleted successfully',

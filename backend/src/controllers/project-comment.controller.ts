@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import ProjectCommentModel from '../models/project-comment.model';
 import ProjectModel from '../models/project.model';
-import ActivityLogService from '../services/activity-log.service';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
 
@@ -33,17 +32,6 @@ class ProjectCommentController {
       comment,
       created_by: user.id,
     });
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'ADD_PROJECT_COMMENT',
-      entity_type: 'project',
-      entity_id: projectId,
-      details: { section_type, comment: comment.substring(0, 100) },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.status(201).json({ success: true, data: newComment });
   });
 
@@ -114,16 +102,6 @@ class ProjectCommentController {
     if (!existingComment) throw new ApiError(404, 'Comment not found');
 
     const updated = await ProjectCommentModel.resolve(id, user.id);
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'RESOLVE_PROJECT_COMMENT',
-      entity_type: 'project',
-      entity_id: existingComment.project_id,
-      details: { comment_id: id },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({ success: true, data: updated });
   });
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, CheckCircle, ExternalLink, Plus, Sparkles, Trash2, FileText, X, Loader2, MessageSquare } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle, ClipboardCheck, ExternalLink, Plus, Sparkles, Trash2, FileText, X, Loader2, MessageSquare, Send } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { projectApi, CreateProjectData } from '@/api/projectApi';
 import { userApi } from '@/api/userApi';
@@ -66,6 +66,8 @@ const ProjectDetailPage = () => {
   const [confirmClientChange, setConfirmClientChange] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [findingIdsWithOpenThreads, setFindingIdsWithOpenThreads] = useState<Set<number>>(new Set());
+  const [actionConfirm, setActionConfirm] = useState<'submit' | 'changes' | 'complete' | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const [editForm, setEditForm] = useState<CreateProjectData>({
     name: '',
     description: '',
@@ -185,6 +187,74 @@ const ProjectDetailPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const runProjectAction = async (action: 'submit' | 'changes' | 'complete') => {
+    if (!project) return;
+    try {
+      setActionLoading(true);
+      if (action === 'submit') await projectApi.submitForReview(project.id);
+      else if (action === 'changes') await projectApi.requestChanges(project.id);
+      else if (action === 'complete') await projectApi.markComplete(project.id);
+      setActionConfirm(null);
+      await load();
+    } catch (error: any) {
+      console.error('Failed to run project action:', error);
+      const msg = error?.response?.data?.message || 'Failed to update project status';
+      toast.error(msg);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const projectActionButton = ({
+    label,
+    icon,
+    className,
+    variant,
+    action,
+    projectId,
+    reload,
+  }: {
+    label: string;
+    icon: React.ReactNode;
+    className: string;
+    variant?: 'outline';
+    action: 'submit' | 'changes' | 'complete';
+    projectId: number;
+    reload: () => void | Promise<void>;
+  }) => {
+    if (actionConfirm === action) {
+      const titles: Record<typeof action, { title: string; desc: string; confirm: string }> = {
+        submit: { title: 'Submit for review?', desc: 'Project will move to Pending Review.', confirm: 'Submit' },
+        changes: { title: 'Request changes?', desc: 'Project will move to Changes Requested.', confirm: 'Request Changes' },
+        complete: { title: 'Mark project complete?', desc: 'This will finalize the project.', confirm: 'Mark Complete' },
+      };
+      const t = titles[action];
+      return (
+        <InlineConfirm
+          title={t.title}
+          description={t.desc}
+          confirmText={t.confirm}
+          busy={actionLoading}
+          onCancel={() => setActionConfirm(null)}
+          onConfirm={() => runProjectAction(action)}
+        />
+      );
+    }
+    return (
+      <Button
+        size="sm"
+        variant={variant}
+        onClick={() => setActionConfirm(action)}
+        disabled={actionLoading}
+        className={className}
+      >
+        {icon}
+        <span className="hidden xs:inline">{label}</span>
+        <span className="xs:hidden">{label.split(' ')[0]}</span>
+      </Button>
+    );
   };
 
   const handleDelete = async () => {
@@ -603,6 +673,41 @@ const ProjectDetailPage = () => {
               </Button>
             </>
           ) : null}
+          {(project.status === 'pending_review' && (hasPermission('approve_findings') || hasRole('manager', 'admin'))) ||
+           (project.status === 'pending_comment_resolution' && (hasRole('reporter') || hasRole('manager', 'admin'))) ? (
+            <Button
+              size="sm"
+              onClick={() => navigate(`/projects/${project.id}/review`)}
+              className="bg-primary text-surface hover:bg-primary/90 text-xs sm:text-sm"
+            >
+              <ClipboardCheck className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 w-4" />
+              <span className="hidden xs:inline">
+                {project.status === 'pending_comment_resolution' ? 'Continue Review' : 'Review Project'}
+              </span>
+              <span className="xs:hidden">Review</span>
+            </Button>
+          ) : null}
+          {project.status === 'draft' && (hasRole('reporter') || hasRole('manager', 'admin') || hasPermission('create_findings')) && (
+            projectActionButton({
+              label: 'Submit For Review',
+              icon: <Send className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 w-4" />,
+              className: 'bg-primary text-surface hover:bg-primary/90 text-xs sm:text-sm',
+              action: 'submit',
+              projectId: project.id,
+              reload: load,
+            })
+          )}
+          {project.status === 'pending_comment_resolution' && (hasRole('reporter') || hasRole('manager', 'admin')) && (
+            projectActionButton({
+              label: 'Re-submit For Review',
+              icon: <Send className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 w-4" />,
+              className: 'bg-primary text-surface hover:bg-primary/90 text-xs sm:text-sm',
+              action: 'submit',
+              projectId: project.id,
+              reload: load,
+            })
+          )}
+
           {(hasPermission('create_findings')) && (
             <Button
               variant="outline"
@@ -1393,27 +1498,8 @@ const ProjectDetailPage = () => {
           <WorkflowPanel
             projectId={project.id}
             status={project.status || 'draft'}
-            submittedBy={(project as any).submitted_by}
-            submittedAt={(project as any).submitted_at}
-            completedBy={(project as any).completed_by}
-            completedAt={(project as any).completed_at}
             onStatusChange={load}
           />
-
-          {hasPermission('edit_projects') ? (
-            <Card className="p-3 sm:p-4 bg-surface-high border-outline">
-              <h3 className="text-sm font-semibold text-on-surface mb-3">Project Actions</h3>
-              <Button
-                variant="outline"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="w-full border-error/30 text-error hover:bg-error/10 text-xs sm:text-sm"
-              >
-                <Trash2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                {deleting ? 'Deleting...' : 'Delete Project'}
-              </Button>
-            </Card>
-          ) : null}
         </div>
       </div>
 

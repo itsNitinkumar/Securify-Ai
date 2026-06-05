@@ -5,7 +5,6 @@ import { AuthRequest } from '../types';
 import FindingModel from '../models/finding.model';
 import pool from '../config/database';
 import VersionService from '../services/version.service';
-import ActivityLogService from '../services/activity-log.service';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
 import imageUrlService from '../services/image-url.service';
@@ -129,16 +128,6 @@ class FindingController {
     await VersionService.createVersion(finding.id, finding, user.id);
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'CREATE_FINDING',
-      entity_type: 'finding',
-      entity_id: finding.id,
-      details: { title: finding.title, severity: finding.severity },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.status(201).json({
       success: true,
       data: finding,
@@ -230,16 +219,6 @@ class FindingController {
 
     // Log activity
     console.log('📝 Logging activity...');
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'CREATE_FINDING',
-      entity_type: 'finding',
-      entity_id: finding.id,
-      details: { title: finding.title, severity: finding.severity },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     console.log('✅ Finding creation complete, sending response');
     res.status(201).json({
       success: true,
@@ -377,16 +356,6 @@ class FindingController {
     await VersionService.createVersion(parseInt(id), updatedFinding, user.id);
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'UPDATE_FINDING',
-      entity_type: 'finding',
-      entity_id: parseInt(id),
-      details: { updates },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       data: updatedFinding,
@@ -435,7 +404,6 @@ class FindingController {
   // Submit finding (makes it final - no more editing)
   static submitFinding = asyncHandler(async (req: Request, res: Response) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const user = (req as any).user;
 
     const finding = await FindingModel.findById(parseInt(id));
 
@@ -450,17 +418,6 @@ class FindingController {
     const updatedFinding = await FindingModel.update(parseInt(id), {
       status: 'submitted',
     });
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'SUBMIT_FINDING',
-      entity_type: 'finding',
-      entity_id: parseInt(id),
-      details: { title: finding.title },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       data: updatedFinding,
@@ -515,16 +472,6 @@ class FindingController {
     await FindingModel.delete(parseInt(id));
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'DELETE_FINDING',
-      entity_type: 'finding',
-      entity_id: parseInt(id),
-      details: { title: finding.title },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       message: 'Finding deleted successfully',

@@ -9,21 +9,19 @@ import {
     ArrowRight,
     Upload
 } from 'lucide-react';
-import { dashboardApi, DashboardStats, RecentActivity } from '@/api/dashboardApi';
+import { dashboardApi, DashboardStats } from '@/api/dashboardApi';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import StatCard from '@/components/dashboard/StatCard';
 import SeverityChart from '@/components/dashboard/SeverityChart';
 import RemediationVelocity from '@/components/dashboard/RemediationVelocity';
-import ActivityFeed from '@/components/dashboard/ActivityFeed';
 import VulnerabilityFeed from '@/components/dashboard/VulnerabilityFeed';
 import AIInsights from '@/components/dashboard/AIInsights';
 
 const DashboardPage = () => {
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [severityData, setSeverityData] = useState<any[]>([]);
-    const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
     const [trendData, setTrendData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [aiQuery, setAiQuery] = useState('');
@@ -35,16 +33,14 @@ const DashboardPage = () => {
     const loadDashboardData = async () => {
         try {
             setLoading(true);
-            const [statsRes, severityRes, activityRes, trendRes] = await Promise.all([
+            const [statsRes, severityRes, trendRes] = await Promise.all([
                 dashboardApi.getOverallStats(),
                 dashboardApi.getFindingsBySeverity(),
-                dashboardApi.getRecentActivity(10),
                 dashboardApi.getFindingsTrend(),
             ]);
 
             setStats(statsRes.data);
             setSeverityData(severityRes.data);
-            setRecentActivity(activityRes.data);
             setTrendData(trendRes.data);
         } catch (error) {
             console.error('Failed to load dashboard data:', error);
@@ -56,13 +52,19 @@ const DashboardPage = () => {
     const calculateRiskScore = () => {
         if (!stats) return 0;
         const total = stats.total_findings || 1;
+        const critical = Number(stats.critical_findings) || 0;
+        const high = Number(stats.high_findings) || 0;
+        const medium = Number(stats.medium_findings) || 0;
+        const low = Number(stats.low_findings) || 0;
+        const info = Number(stats.info_findings) || 0;
         const weighted =
-            (stats.critical_findings * 10) +
-            (stats.high_findings * 7) +
-            (stats.medium_findings * 4) +
-            (stats.low_findings * 2) +
-            (stats.info_findings * 1);
-        return Math.min(100, Math.round((weighted / (total * 10)) * 100));
+            (critical * 10) +
+            (high * 7) +
+            (medium * 4) +
+            (low * 2) +
+            (info * 1);
+        const score = Math.round((weighted / (total * 10)) * 100);
+        return Number.isFinite(score) ? Math.min(100, score) : 0;
     };
 
     if (loading) {
@@ -162,7 +164,7 @@ const DashboardPage = () => {
                 </div>
 
                 {/* Main Content Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                     {/* Severity Distribution */}
                     <div className="lg:col-span-1">
                         <SeverityChart data={severityData} />
@@ -171,11 +173,6 @@ const DashboardPage = () => {
                     {/* Remediation Velocity */}
                     <div className="lg:col-span-1">
                         <RemediationVelocity data={trendData} />
-                    </div>
-
-                    {/* Recent Activity */}
-                    <div className="lg:col-span-1">
-                        <ActivityFeed activities={recentActivity} />
                     </div>
                 </div>
 

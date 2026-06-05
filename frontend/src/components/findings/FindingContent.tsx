@@ -3,10 +3,9 @@ import { Finding, findingApi } from '@/api/findingApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles, Save, X, AlertTriangle, Shield, FileText, Plus } from 'lucide-react';
+import { Save, X, AlertTriangle, Shield, FileText } from 'lucide-react';
 import StepEditor from './StepEditor';
 import EvidenceItemEditor from './EvidenceItemEditor';
-import CommentableSection from '@/components/comments/CommentableSection';
 
 const findingSeverities = ['Critical', 'High', 'Medium', 'Low', 'Informational'] as const;
 const riskSeverities = ['High', 'Medium', 'Low'] as const;
@@ -15,7 +14,6 @@ interface FindingContentProps {
   finding: Finding;
   isEditing: boolean;
   onUpdate: () => void;
-  onRegenerateSection: (section: string) => void;
   onCancelEdit?: () => void;
 }
 
@@ -54,7 +52,6 @@ const FindingContent = ({
   finding,
   isEditing,
   onUpdate,
-  onRegenerateSection,
   onCancelEdit,
 }: FindingContentProps) => {
     const [editData, setEditData] = useState({
@@ -159,16 +156,11 @@ const FindingContent = ({
       )}
 
       {/* Description */}
-      <CommentableSection
-        projectId={finding.project_id!}
-        findingId={finding.id}
-        sectionType="finding"
-        sectionKey="description"
-        label="Description"
-        icon={<FileText className="w-4 h-4" />}
-        className="p-4 md:p-6 bg-surface-high border-outline"
-        actions={!isEditing ? <Button variant="ghost" size="sm" onClick={() => onRegenerateSection('description')} className="text-primary hover:text-primary/80"><Sparkles className="w-4 h-4 mr-2" />AI Regenerate</Button> : undefined}
-      >
+      <Card className="p-4 md:p-6 bg-surface-high border-outline">
+        <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2 mb-3">
+          {<FileText className="w-4 h-4" />}Description
+        </h3>
+
         {isEditing ? (
           <textarea
             value={editData.description}
@@ -181,18 +173,16 @@ const FindingContent = ({
             {finding.description}
           </p>
         )}
-      </CommentableSection>
+      
+      </Card>
 
        {/* Affected Target / URLs */}
        {isEditing || (finding.affected_target && finding.affected_target.length > 0) ? (
-         <CommentableSection
-           projectId={finding.project_id!}
-           findingId={finding.id}
-           sectionType="finding"
-           sectionKey="affected_urls"
-           label="Affected URLs"
-           className="p-4 md:p-6 bg-surface-high border-outline"
-         >
+         <Card className="p-4 md:p-6 bg-surface-high border-outline">
+           <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2 mb-3">
+             Affected URLs
+           </h3>
+
            {isEditing ? (
              <div className="space-y-3">
                {editData.affected_target.map((url, index) => (
@@ -256,32 +246,26 @@ const FindingContent = ({
                    ] : [])}
              </div>
             )}
-          </CommentableSection>
+          
+         </Card>
         ) : (
-          <CommentableSection
-            projectId={finding.project_id!}
-            findingId={finding.id}
-            sectionType="finding"
-            sectionKey="affected_urls"
-            label="Affected URLs"
-            className="p-4 md:p-6 bg-surface-high border-outline"
-          >
+          <Card className="p-4 md:p-6 bg-surface-high border-outline">
+            <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2 mb-3">
+              Affected URLs
+            </h3>
+
             <p className="text-sm text-on-surface-variant">No URLs added yet.</p>
-          </CommentableSection>
+          
+          </Card>
         )}
 
       {/* Impact & Likelihood - hide for false positives */}
       {!isFalsePositive(finding) && (finding.impact || finding.likelihood || isEditing) && (
-        <CommentableSection
-          projectId={finding.project_id!}
-          findingId={finding.id}
-          sectionType="finding"
-          sectionKey="impact_likelihood"
-          label="Impact & Likelihood"
-          icon={<AlertTriangle className="w-4 h-4" />}
-          className="p-4 md:p-6 bg-surface-high border-outline"
-          actions={!isEditing ? <div className="flex gap-2">{finding.impact && <Button variant="ghost" size="sm" onClick={() => onRegenerateSection('impact')} className="text-primary hover:text-primary/80"><Sparkles className="w-4 h-4 mr-2" />Regenerate Impact</Button>}{finding.likelihood && <Button variant="ghost" size="sm" onClick={() => onRegenerateSection('likelihood')} className="text-primary hover:text-primary/80"><Sparkles className="w-4 h-4 mr-2" />Regenerate Likelihood</Button>}</div> : undefined}
-        >
+        <Card className="p-4 md:p-6 bg-surface-high border-outline">
+          <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2 mb-3">
+            {<AlertTriangle className="w-4 h-4" />}Impact & Likelihood
+          </h3>
+
           <div className="space-y-4">
             {(finding.impact || isEditing) && (
               <div className="bg-surface p-4 rounded-lg border border-outline-variant">
@@ -358,20 +342,17 @@ const FindingContent = ({
               </div>
             )}
           </div>
-        </CommentableSection>
+        
+        </Card>
       )}
 
       {/* Steps to Reproduce - for true positive findings */}
       {!isFalsePositive(finding) && (finding.steps_to_reproduce || isEditing) && (
-        <CommentableSection
-          projectId={finding.project_id!}
-          findingId={finding.id}
-          sectionType="finding"
-          sectionKey="steps_to_reproduce"
-          label="Steps to Reproduce"
-          className="p-4 md:p-6 bg-surface-high border-outline"
-          actions={!isEditing ? <Button variant="ghost" size="sm" onClick={() => onRegenerateSection('steps_to_reproduce')} className="text-primary hover:text-primary/80"><Sparkles className="w-4 h-4 mr-2" />AI Regenerate</Button> : undefined}
-        >
+        <Card className="p-4 md:p-6 bg-surface-high border-outline">
+          <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2 mb-3">
+            Steps to Reproduce
+          </h3>
+
           {isEditing ? (
             <StepEditor
               steps={editData.steps_to_reproduce}
@@ -420,19 +401,17 @@ const FindingContent = ({
               )}
             </div>
           )}
-        </CommentableSection>
+        
+        </Card>
       )}
 
       {/* Evidence Items - for false positive findings */}
       {isFalsePositive(finding) && ((finding as any).evidence_items?.length > 0 || isEditing) && (
-        <CommentableSection
-          projectId={finding.project_id!}
-          findingId={finding.id}
-          sectionType="finding"
-          sectionKey="evidence_items"
-          label="Evidence Items"
-          className="p-4 md:p-6 bg-surface-high border-outline"
-        >
+        <Card className="p-4 md:p-6 bg-surface-high border-outline">
+          <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2 mb-3">
+            Evidence Items
+          </h3>
+
           {isEditing ? (
             <div className="text-sm text-on-surface-variant">
               <EvidenceItemEditor
@@ -472,21 +451,17 @@ const FindingContent = ({
               })}
             </div>
           )}
-        </CommentableSection>
+        
+        </Card>
       )}
 
       {/* Recommendations (AI array) - View Mode Only (hide for false positives) */}
       {!isFalsePositive(finding) && finding.recommendation && !isEditing && (
-        <CommentableSection
-          projectId={finding.project_id!}
-          findingId={finding.id}
-          sectionType="finding"
-          sectionKey="recommendation"
-          label="Recommendations"
-          icon={<Shield className="w-4 h-4" />}
-          className="p-4 md:p-6 bg-surface-high border-primary/20"
-          actions={<Button variant="ghost" size="sm" onClick={() => onRegenerateSection('recommendation')} className="text-primary hover:text-primary/80"><Sparkles className="w-4 h-4 mr-2" />AI Regenerate</Button>}
-        >
+        <Card className="p-4 md:p-6 bg-surface-high border-outline">
+          <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2 mb-3">
+            {<Shield className="w-4 h-4" />}Recommendations
+          </h3>
+
           <ul className="space-y-3">
             {finding.recommendation?.map((rec, index) => {
               const match = rec.match(/^\*\*(.+?)\*\*:?\s*(.+)$/s);
@@ -509,7 +484,8 @@ const FindingContent = ({
               );
             })}
           </ul>
-        </CommentableSection>
+        
+        </Card>
       )}
 
       {/* Recommendations - Edit Mode (hide for false positives) */}
@@ -590,7 +566,6 @@ const FindingContent = ({
               }}
               className="text-primary"
             >
-              <Plus className="w-4 h-4 mr-1" />
               Add Recommendation
             </Button>
           </div>
@@ -599,16 +574,11 @@ const FindingContent = ({
 
       {/* Remediation (legacy string) */}
       {finding.remediation && !finding.recommendation && (
-        <CommentableSection
-          projectId={finding.project_id!}
-          findingId={finding.id}
-          sectionType="finding"
-          sectionKey="remediation"
-          label="Remediation Strategy"
-          icon={<Shield className="w-4 h-4" />}
-          className="p-4 md:p-6 bg-surface-high border-primary/20"
-          actions={!isEditing ? <Button variant="ghost" size="sm" onClick={() => onRegenerateSection('remediation')} className="text-primary hover:text-primary/80"><Sparkles className="w-4 h-4 mr-2" />AI Regenerate</Button> : undefined}
-        >
+        <Card className="p-4 md:p-6 bg-surface-high border-outline">
+          <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2 mb-3">
+            {<Shield className="w-4 h-4" />}Remediation Strategy
+          </h3>
+
           {isEditing ? (
             <textarea
               value={editData.remediation}
@@ -621,19 +591,17 @@ const FindingContent = ({
               {finding.remediation}
             </p>
           )}
-        </CommentableSection>
+        
+        </Card>
       )}
 
       {/* References (hide for false positives) */}
       {!isFalsePositive(finding) && (isEditing || (finding.references && finding.references.length > 0)) && (
-        <CommentableSection
-          projectId={finding.project_id!}
-          findingId={finding.id}
-          sectionType="finding"
-          sectionKey="references"
-          label="References"
-          className="p-4 md:p-6 bg-surface-high border-outline"
-        >
+        <Card className="p-4 md:p-6 bg-surface-high border-outline">
+          <h3 className="text-sm font-semibold text-on-surface flex items-center gap-2 mb-3">
+            References
+          </h3>
+
           {isEditing ? (
             <div className="space-y-3">
               {editData.references.map((ref, index) => (
@@ -685,7 +653,8 @@ const FindingContent = ({
               ))}
             </div>
           )}
-        </CommentableSection>
+        
+        </Card>
       )}
 
       {/* Save/Cancel Buttons */}

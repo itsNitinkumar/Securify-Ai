@@ -6,10 +6,11 @@ import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
 import StatusPulse from '../components/common/StatusPulse';
 import Logo from '../components/common/Logo';
-import { authApi } from '../api/authApi';
+import { useAuth } from '../contexts/AuthContext';
 
 const SignInPage = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -22,18 +23,13 @@ const SignInPage = () => {
     setError('');
 
     try {
-      const response = await authApi.signin({ email, password });
-      
-      // Token is set as httpOnly cookie by backend, no need to store in localStorage
-      // Just store user info if needed
-      if (response.data.data?.user) {
-        localStorage.setItem('user', JSON.stringify(response.data.data.user));
-      }
-      
-      // Redirect to dashboard or home
+      // Context login hits /auth/login, sets the httpOnly cookie, fetches
+      // permissions, and updates the AuthContext user — so the sidebar /
+      // role-gated nav items render correctly on first navigation.
+      await login(email, password);
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please try again.');
+      setError(err?.response?.data?.message || err.message || 'Login failed. Please try again.');
       console.error('Login error:', err);
     } finally {
       setLoading(false);

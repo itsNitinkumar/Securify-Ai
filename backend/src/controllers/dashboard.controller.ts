@@ -42,17 +42,6 @@ class DashboardController {
     });
   });
 
-  // Get recent activity
-  static getRecentActivity = asyncHandler(async (req: Request, res: Response) => {
-    const limit = parseInt(req.query.limit as string) || 10;
-    const data = await DashboardService.getRecentActivity(limit);
-
-    res.json({
-      success: true,
-      data,
-    });
-  });
-
   // Get top reporters
   static getTopReporters = asyncHandler(async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 5;
@@ -83,30 +72,6 @@ class DashboardController {
     const data = await DashboardService.getFindingsTrend();
 
     res.json({
-      success: true,
-      data,
-    });
-  });
-
-  // Get user activity summary
-  static getUserActivity = asyncHandler(async (req: Request, res: Response) => {
-    const user = (req as any).user;
-    const permissions = (req as any).permissions || [];
-    const userId = req.params.user_id 
-      ? parseInt(Array.isArray(req.params.user_id) ? req.params.user_id[0] : req.params.user_id)
-      : user.id;
-
-    const canViewAll = permissions.includes('manage_roles') || permissions.includes('approve_findings');
-    if (!canViewAll && userId !== user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
-    const data = await DashboardService.getUserActivitySummary(userId);
-
-    return res.json({
       success: true,
       data,
     });

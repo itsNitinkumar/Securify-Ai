@@ -3,7 +3,6 @@ import { AuthRequest } from '../types';
 import TemplateModel from '../models/template.model';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
-import ActivityLogService from '../services/activity-log.service';
 
 class TemplateController {
   // Create new template
@@ -42,16 +41,6 @@ class TemplateController {
     });
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: req.user!.id,
-      action: 'create_template',
-      entity_type: 'template',
-      entity_id: template.id,
-      details: { template_name: name },
-      ip_address: req.ip,
-      user_agent: req.get('user-agent'),
-    });
-
     res.status(201).json({
       success: true,
       message: 'Template created successfully',
@@ -115,16 +104,6 @@ class TemplateController {
     const template = await TemplateModel.update(parseInt(id as string), updateData);
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: req.user!.id,
-      action: 'update_template',
-      entity_type: 'template',
-      entity_id: parseInt(id as string),
-      details: { changes: updateData },
-      ip_address: req.ip,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       message: 'Template updated successfully',
@@ -148,16 +127,6 @@ class TemplateController {
     await TemplateModel.delete(parseInt(id as string));
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: req.user!.id,
-      action: 'delete_template',
-      entity_type: 'template',
-      entity_id: parseInt(id as string),
-      details: { template_name: template.name },
-      ip_address: req.ip,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       message: 'Template deleted successfully',
@@ -187,16 +156,6 @@ class TemplateController {
     await TemplateModel.update(parseInt(id as string), { is_default: true });
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: req.user!.id,
-      action: 'set_default_template',
-      entity_type: 'template',
-      entity_id: parseInt(id as string),
-      details: { template_name: template.name },
-      ip_address: req.ip,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       message: 'Template set as default successfully',

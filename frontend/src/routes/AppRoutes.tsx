@@ -7,7 +7,6 @@ import SignInPage from '../pages/SignInPage';
 import SignUpPage from '../pages/SignUpPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import ProjectsPage from '../pages/ProjectsPage';
-import ActivityLogsPage from '../pages/ActivityLogsPage';
 import FindingDetailPage from '../pages/FindingDetailPage';
 import ReportBuilderPage from '../pages/ReportBuilderPage';
 import ReportViewPage from '../pages/ReportViewPage';
@@ -20,6 +19,7 @@ import TemplateEditorPage from '../pages/TemplateEditorPage';
 import ReportTemplatesPage from '../pages/ReportTemplatesPage';
 import ImportFindingsPage from '../pages/ImportFindingsPage';
 import ProjectDetailPage from '../pages/ProjectDetailPage';
+import ProjectReviewPage from '../pages/ProjectReviewPage';
 import CreateProjectPage from '../pages/CreateProjectPage';
 import CreateFindingPage from '../pages/CreateFindingPage';
 import GenerateFindingAIPage from '../pages/GenerateFindingAIPage';
@@ -49,6 +49,7 @@ const AppRoutes = () => {
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/new" element={<CreateProjectPage />} />
         <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+        <Route path="projects/:projectId/review" element={<ProjectReviewPage />} />
         <Route path="projects/:projectId/findings/new" element={<CreateFindingPage />} />
         <Route path="projects/:projectId/findings/generate" element={<GenerateFindingAIPage />} />
         <Route path="projects/:projectId/report" element={<ReportBuilderPage />} />
@@ -58,7 +59,6 @@ const AppRoutes = () => {
         <Route path="templates/:templateId" element={<TemplateEditorPage />} />
         <Route path="search" element={<SearchIntelPage />} />
         <Route path="findings/:id" element={<FindingDetailPage />} />
-        <Route path="activity" element={<ActivityLogsPage />} />
         <Route path="users" element={<UsersManagementPage />} />
         <Route path="users/create-manager" element={<CreateManagerPage />} />
         <Route path="users/:userId/approve" element={<ApproveUserPage />} />

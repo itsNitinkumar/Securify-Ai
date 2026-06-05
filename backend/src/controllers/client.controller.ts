@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import ClientModel from '../models/client.model';
-import ActivityLogService from '../services/activity-log.service';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
 
@@ -24,17 +23,6 @@ class ClientController {
     }
 
     const created = await ClientModel.create({ name: String(name), created_by: user.id });
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'CREATE_CLIENT',
-      entity_type: 'client',
-      entity_id: created.id,
-      details: { name: created.name },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.status(201).json({ success: true, data: created });
   });
 }

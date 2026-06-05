@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Search, Loader2, FileText, ExternalLink, X } from 'lucide-react';
+import { Search, Loader2, FileText, ExternalLink } from 'lucide-react';
 import { projectApi, Project } from '@/api/projectApi';
 import { findingApi, Finding } from '@/api/findingApi';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +12,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'react-hot-toast';
+import { templateKeyFromProject } from '@/reportTemplates/registry';
 
 interface ImportFindingsDialogProps {
   isOpen: boolean;
@@ -120,6 +120,9 @@ export const ImportFindingsDialog: React.FC<ImportFindingsDialogProps> = ({
 
     setIsImporting(true);
     try {
+      const targetProject = projects.find((p) => p.id === currentProjectId);
+      const isDast = templateKeyFromProject(targetProject) === 'dast';
+
       const targetFindingsRes = await findingApi.getAllFindings({ project_id: currentProjectId });
       const targetFindings: Finding[] = Array.isArray(targetFindingsRes.data?.data)
         ? targetFindingsRes.data.data
@@ -146,29 +149,39 @@ export const ImportFindingsDialog: React.FC<ImportFindingsDialogProps> = ({
         const sourceFinding = sourceFindings.find((f) => f.id === findingId);
         if (!sourceFinding) continue;
 
-        const likelihoodValue = sourceFinding.likelihood ?? undefined;
-        const impactValue = sourceFinding.impact ?? undefined;
+        const isSourceFP = sourceFinding.finding_type === 'false_positive';
+        const targetIsDast = isDast;
+        const useFPStructure = isSourceFP && targetIsDast;
 
-        await findingApi.create({
+        const basePayload: any = {
           title: sourceFinding.title,
-          severity: sourceFinding.severity,
           description: sourceFinding.description || '',
           affected_target: sourceFinding.affected_target || '',
-          affected_component: sourceFinding.affected_component || '',
-          cvss_score: sourceFinding.cvss_score,
-          cwe_id: sourceFinding.cwe_id || '',
-          owasp_category: sourceFinding.owasp_category || '',
-          likelihood: likelihoodValue,
-          impact: impactValue,
-          steps_to_reproduce: sourceFinding.steps_to_reproduce || [],
-          recommendation: sourceFinding.recommendation || [],
-          remediation: sourceFinding.remediation || '',
-          proof_of_concept: sourceFinding.proof_of_concept || '',
+          evidence_items: sourceFinding.evidence_items || [],
           references: sourceFinding.references || [],
-          tags: sourceFinding.tags || [],
           status: 'approved',
           project_id: currentProjectId,
-        });
+          finding_type: isSourceFP ? 'false_positive' : (sourceFinding.finding_type || 'true_positive'),
+        };
+
+        if (useFPStructure) {
+          basePayload.severity = 'Informational';
+        } else {
+          basePayload.severity = sourceFinding.severity;
+          basePayload.affected_component = sourceFinding.affected_component || '';
+          basePayload.cvss_score = sourceFinding.cvss_score;
+          basePayload.cwe_id = sourceFinding.cwe_id || '';
+          basePayload.owasp_category = sourceFinding.owasp_category || '';
+          basePayload.likelihood = sourceFinding.likelihood ?? undefined;
+          basePayload.impact = sourceFinding.impact ?? undefined;
+          basePayload.steps_to_reproduce = sourceFinding.steps_to_reproduce || [];
+          basePayload.recommendation = sourceFinding.recommendation || [];
+          basePayload.remediation = sourceFinding.remediation || '';
+          basePayload.proof_of_concept = sourceFinding.proof_of_concept || '';
+          basePayload.tags = sourceFinding.tags || [];
+        }
+
+        await findingApi.create(basePayload);
       }
 
       toast.success(`Successfully imported ${selectedFindings.length} finding(s)`);
@@ -431,6 +444,11 @@ export const ImportFindingsDialog: React.FC<ImportFindingsDialogProps> = ({
                             {finding.affected_target || 'No target'}
                           </div>
                         </div>
+                        {finding.finding_type === 'false_positive' && (
+                          <span className="px-2 py-1 text-xs rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                            FP
+                          </span>
+                        )}
                         <span className={`px-2 py-1 text-xs rounded ${severityColors[finding.severity] || ''}`}>
                           {finding.severity}
                         </span>

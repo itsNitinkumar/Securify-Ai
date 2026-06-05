@@ -1,12 +1,40 @@
 import { Request, Response } from 'express';
 import EvidenceModel from '../models/evidence.model';
 import FindingModel from '../models/finding.model';
-import ActivityLogService from '../services/activity-log.service';
+import ProjectModel from '../models/project.model';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
 import fs from 'fs';
 
 class EvidenceController {
+  /**
+   * Helper: A reporter (create_findings permission, no approve_findings) can act on
+   * any finding in a project while it is in `pending_comment_resolution` (i.e. the
+   * manager sent it back for changes) AND the reporter is the project's assignee.
+   * This lets the reporter address review comments across the whole project.
+   */
+  private static async canReporterActOnFinding(
+    user: any,
+    permissions: string[],
+    finding: any
+  ): Promise<boolean> {
+    if (permissions.includes('approve_findings') || permissions.includes('manage_roles')) {
+      return true;
+    }
+    if (!permissions.includes('create_findings')) {
+      return false;
+    }
+    if (finding.created_by === user.id) {
+      return true;
+    }
+    const project = await ProjectModel.findById(finding.project_id);
+    if (!project) return false;
+    return (
+      project.status === 'pending_comment_resolution' &&
+      project.assigned_reporter_id === user.id
+    );
+  }
+
   // Upload evidence
   static uploadEvidence = asyncHandler(async (req: Request, res: Response) => {
     const { finding_id, caption } = req.body;
@@ -31,9 +59,10 @@ class EvidenceController {
       throw new ApiError(404, 'Finding not found');
     }
 
-    // Access control - reporter can only upload to own findings
-    const canUploadAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
-    if (!canUploadAll && finding.created_by !== user.id) {
+    // Access control - reporter can upload to any finding in their project
+    // when the project is in pending_comment_resolution (manager sent back for changes).
+    const canAct = await EvidenceController.canReporterActOnFinding(user, permissions, finding);
+    if (!canAct) {
       fs.unlinkSync(file.path);
       throw new ApiError(403, 'Access denied');
     }
@@ -51,16 +80,6 @@ class EvidenceController {
     });
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'UPLOAD_EVIDENCE',
-      entity_type: 'evidence',
-      entity_id: evidence.id,
-      details: { finding_id, filename: file.originalname },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.status(201).json({
       success: true,
       data: evidence,
@@ -79,9 +98,10 @@ class EvidenceController {
       throw new ApiError(404, 'Finding not found');
     }
 
-    // Access control
-    const canViewAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
-    if (!canViewAll && permissions.includes('create_findings') && finding.created_by !== user.id) {
+    // Access control - reporter can view evidence for any finding in their project
+    // when the project is in pending_comment_resolution.
+    const canView = await EvidenceController.canReporterActOnFinding(user, permissions, finding);
+    if (!canView) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -115,8 +135,8 @@ class EvidenceController {
     }
 
     // Access control
-    const canViewAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
-    if (!canViewAll && permissions.includes('create_findings') && finding.created_by !== user.id) {
+    const canDownload = await EvidenceController.canReporterActOnFinding(user, permissions, finding);
+    if (!canDownload) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -151,24 +171,14 @@ class EvidenceController {
     }
 
     const permissions = (req as any).permissions || [];
-    const canEditAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
-    if (!canEditAll && finding.created_by !== user.id) {
+    const canEdit = await EvidenceController.canReporterActOnFinding(user, permissions, finding);
+    if (!canEdit) {
       throw new ApiError(403, 'Access denied');
     }
 
     const updated = await EvidenceModel.updateCaption(parseInt(id), caption);
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'UPDATE_EVIDENCE_CAPTION',
-      entity_type: 'evidence',
-      entity_id: parseInt(id),
-      details: { caption },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       data: updated,
@@ -192,8 +202,8 @@ class EvidenceController {
     }
 
     const permissions = (req as any).permissions || [];
-    const canDeleteAll = permissions.includes('manage_roles') || permissions.includes('approve_findings');
-    if (!canDeleteAll && finding.created_by !== user.id) {
+    const canDelete = await EvidenceController.canReporterActOnFinding(user, permissions, finding);
+    if (!canDelete) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -206,16 +216,6 @@ class EvidenceController {
     await EvidenceModel.delete(parseInt(id));
 
     // Log activity
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'DELETE_EVIDENCE',
-      entity_type: 'evidence',
-      entity_id: parseInt(id),
-      details: { filename: evidence.original_filename },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({
       success: true,
       message: 'Evidence deleted successfully',

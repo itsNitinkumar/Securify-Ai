@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Activity, Settings, Bell, HelpCircle, FolderOpen, Search, FileText, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Settings, FolderOpen, Search, FileText, LogOut } from 'lucide-react';
 import Logo from '@/components/common/Logo';
 import { useEffect, useState } from 'react';
 import { authApi } from '@/api/authApi';
@@ -41,7 +41,6 @@ const MainLayout = () => {
     { path: '/projects', label: 'Projects', icon: FolderOpen, show: hasPermission('view_projects') },
     { path: '/templates', label: 'Templates', icon: FileText, show: hasPermission('view_templates') || isAdminOrManager },
     { path: '/search', label: 'Search', icon: Search, show: true },
-    { path: '/activity', label: 'Activity Logs', icon: Activity, show: isAdminOrManager },
     { path: '/users', label: 'Users', icon: Users, show: hasPermission('view_users') },
     { path: '/settings', label: 'RBAC Settings', icon: Settings, show: hasPermission('manage_roles') || hasRole('admin') },
   ].filter(item => item.show);
@@ -107,11 +106,7 @@ const MainLayout = () => {
 
         {/* Bottom Actions */}
         <div className="p-4 border-t border-outline space-y-1 shrink-0">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-high hover:text-on-surface transition-all">
-            <HelpCircle className="w-5 h-5" />
-            <span className="text-sm">Support</span>
-          </button>
-          <button 
+          <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-error hover:bg-error/10 transition-all"
           >
@@ -131,13 +126,6 @@ const MainLayout = () => {
             </h2>
           </div>
           <div className="flex items-center gap-4">
-            <button className="relative p-2 rounded-lg hover:bg-surface-high transition-colors">
-              <Bell className="w-5 h-5 text-on-surface-variant" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
-            </button>
-            <button className="p-2 rounded-lg hover:bg-surface-high transition-colors">
-              <HelpCircle className="w-5 h-5 text-on-surface-variant" />
-            </button>
             <div className="flex items-center gap-3 pl-4 border-l border-outline">
               <button
                 onClick={() => navigate('/profile')}

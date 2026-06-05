@@ -56,6 +56,7 @@ router.post('/', authorize(Permissions.CREATE_PROJECTS), ProjectController.creat
 router.get('/', authorize(Permissions.VIEW_PROJECTS), ProjectController.getAllProjects);
 router.get('/:id', authorize(Permissions.VIEW_PROJECTS), authorizeProjectAccess('id'), ProjectController.getProject);
 router.get('/:id/with-findings', authorize(Permissions.VIEW_PROJECTS), authorizeProjectAccess('id'), ProjectController.getProjectWithFindings);
+router.get('/:id/review-bundle', authorize(Permissions.VIEW_PROJECTS), authorizeProjectAccess('id'), ProjectController.getReviewBundle);
 router.put('/:id', canEditProject, authorizeProjectAccess('id'), ProjectController.updateProject);
 router.patch('/:id/assign-reporter', authorize(Permissions.ASSIGN_PROJECTS), ProjectController.assignReporter);
 router.delete('/:id', authorize(Permissions.DELETE_PROJECTS), ProjectController.deleteProject);

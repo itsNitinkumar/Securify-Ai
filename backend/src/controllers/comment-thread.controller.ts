@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import CommentThreadModel from '../models/comment-thread.model';
 import ProjectModel from '../models/project.model';
 import FindingModel from '../models/finding.model';
-import ActivityLogService from '../services/activity-log.service';
 import ApiError from '../utils/ApiError';
 import asyncHandler from '../utils/asyncHandler';
 
@@ -62,17 +61,6 @@ class CommentThreadController {
     if (project.status === 'completed') {
       await ProjectModel.update(project_id, { status: 'pending_comment_resolution' });
     }
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: existingThread ? 'ADD_COMMENT_REPLY' : 'CREATE_COMMENT_THREAD',
-      entity_type: finding_id ? 'finding' : 'project',
-      entity_id: finding_id || project_id,
-      details: { section_type, section_key, thread_id: thread.id, message: message.substring(0, 100) },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.status(existingThread ? 200 : 201).json({
       success: true,
       data: { ...thread, replies },
@@ -116,23 +104,11 @@ class CommentThreadController {
     }
 
     await CommentThreadModel.deleteThread(id);
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'DELETE_COMMENT_THREAD',
-      entity_type: thread.finding_id ? 'finding' : 'project',
-      entity_id: thread.finding_id || thread.project_id,
-      details: { thread_id: id, section_type: thread.section_type, section_key: thread.section_key },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({ success: true, message: 'Thread deleted' });
   });
 
   static resolveThread = asyncHandler(async (req: Request, res: Response) => {
     const id = toId(req.params.id);
-    const user = (req as any).user;
 
     if (isNaN(id)) throw new ApiError(400, 'Invalid thread ID');
 
@@ -140,17 +116,6 @@ class CommentThreadController {
     if (!thread) throw new ApiError(404, 'Thread not found');
 
     const updated = await CommentThreadModel.updateStatus(id, 'RESOLVED');
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'RESOLVE_COMMENT_THREAD',
-      entity_type: thread.finding_id ? 'finding' : 'project',
-      entity_id: thread.finding_id || thread.project_id,
-      details: { thread_id: id },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
     res.json({ success: true, data: updated });
   });
 
@@ -201,18 +166,8 @@ class CommentThreadController {
     }
 
     const reply = await CommentThreadModel.addReply(threadId, user.id, message);
-
-    await ActivityLogService.log({
-      user_id: user.id,
-      action: 'ADD_COMMENT_REPLY',
-      entity_type: thread.finding_id ? 'finding' : 'project',
-      entity_id: thread.finding_id || thread.project_id,
-      details: { thread_id: threadId, reply_id: reply.id, message: message.substring(0, 100) },
-      ip_address: req.ip || req.socket.remoteAddress,
-      user_agent: req.get('user-agent'),
-    });
-
-    res.status(201).json({ success: true, data: reply });
+    const enriched = await CommentThreadModel.findReplyById(reply.id);
+    res.status(201).json({ success: true, data: enriched || reply });
   });
 
   static deleteReply = asyncHandler(async (req: Request, res: Response) => {
