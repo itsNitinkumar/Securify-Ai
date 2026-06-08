@@ -141,8 +141,6 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
   const { templatePath, data } = args;
   const templateBuf = fs.readFileSync(templatePath);
   const templateZip = await JSZip.loadAsync(templateBuf);
-  const isDast = matches(data.template);
-
   const templateXml = await templateZip.file('word/document.xml')?.async('string');
   if (!templateXml) throw new Error('word/document.xml not found in template');
   const $ = cheerioLoad(templateXml);
@@ -186,15 +184,21 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
       const $settings = cheerioLoad(settingsStr);
       const settingsEl = $settings('w\\:settings').first();
       if (settingsEl.length) {
-        if (isDast) {
-          settingsEl.find('w\\:updateFields').remove();
-        } else if (!settingsEl.find('w\\:updateFields').length) {
+        if (!settingsEl.find('w\\:updateFields').length) {
           settingsEl.prepend('<w:updateFields w:val="true"/>');
         }
         templateZip.file('word/settings.xml', Buffer.from($settings.xml()));
       }
     }
   }
+
+  // --- Recolor the "key" logo + header/footer gradient bars from blue to green ---
+  const recolorKeyAndGrad = (xmlStr: string): string => {
+    if (!xmlStr) return xmlStr;
+    return xmlStr
+      .replace(/<a:schemeClr val="accent1"\/>/g, '<a:srgbClr val="4ebc22"/>')
+      .replace(/<a:schemeClr val="accent1"><\/a:schemeClr>/g, '<a:srgbClr val="4ebc22"/>');
+  };
 
   // --- Replace placeholders ---
   const clientName = String(data.project?.client_name || 'Client');
@@ -262,24 +266,12 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
   });
   let nextBmId = maxBmId + 1;
 
-  // Map: TOC entry title -> bookmark name
+  // Map: TOC entry title -> bookmark name (used for TP/FP finding bookmarks)
   const bookmarkNameMap = new Map<string, string>();
-
-  // --- Regenerate TOC entries based on actual findings ---
-  const tpFindingsToc = (data.findings || []).filter((f: any) => String(f.finding_type || '') !== 'false_positive');
-  const fpFindingsToc = (data.findings || []).filter((f: any) => String(f.finding_type || '') === 'false_positive');
-  const tocEntries = [
-    'Scope', 'Application Details', 'User Roles', 'Tools',
-    'Assessment Limitation', 'Vulnerabilities', 'Summary',
-    'Detailed Vulnerabilities',
-  ];
-  if (tpFindingsToc.length) tocEntries.push('True Positive');
-  for (const f of tpFindingsToc) tocEntries.push(cleanTitle(f.title, false));
-  if (fpFindingsToc.length) tocEntries.push('False Positive');
-  for (const f of fpFindingsToc) tocEntries.push(cleanTitle(f.title, true));
 
   // --- Wrap static section headings with unique bookmarks ---
   // These headings exist in the template body and won't be removed.
+  // Bookmarks allow Word/Google Docs native TOC to detect them.
   const staticBookmarkTitles = [
     'Scope', 'Application Details', 'User Roles', 'Tools',
     'Assessment Limitation', 'Vulnerabilities', 'Summary', 'Detailed Vulnerabilities',
@@ -297,45 +289,6 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
     } else {
       console.warn(`[DAST TOC] Could not find heading paragraph for "${title}"`);
     }
-  }
-
-  // Pre-generate bookmark names for all TOC entries
-  for (const title of tocEntries) {
-    if (!bookmarkNameMap.has(title)) {
-      const bmName = slugifyBookmark(title);
-      bookmarkNameMap.set(title, bmName);
-      console.log(`[DAST TOC] Generated bookmark name for "${title}" → ${bmName}`);
-    }
-  }
-
-  // --- Clear stale TOC entries (rebuild later with calculated page numbers) ---
-  const tocSdt = body.find('w\\:sdt').filter((_: number, el: any) => {
-    return $(el).find('w\\:sdtPr w\\:docPartObj w\\:docPartGallery').length > 0;
-  }).first();
-
-  let $template: any = null;
-
-  if (tocSdt.length) {
-    const sdtContent = tocSdt.find('w\\:sdtContent').first();
-
-    let templateEntryEl: any = null;
-    sdtContent.find('w\\:p').each((_: number, p: any) => {
-      const hasInstrText = $(p).find('w\\:instrText').length > 0;
-      if (!hasInstrText && !templateEntryEl) {
-        templateEntryEl = p;
-      }
-    });
-
-    if (templateEntryEl) {
-      $template = $(templateEntryEl).clone();
-    }
-
-    sdtContent.find('w\\:p').each((_: number, p: any) => {
-      const hasInstrText = $(p).find('w\\:instrText').length > 0;
-      if (!hasInstrText) $(p).remove();
-    });
-
-    console.log('[DAST TOC] Cleared stale entries from SDT, template saved');
   }
 
   // Remove yellow highlights
@@ -554,7 +507,7 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
     const tpHeadingEl = tpHeading >= 0 ? detailNodes[tpHeading] : null;
     const fpHeadingEl = fpHeading >= 0 ? detailNodes[fpHeading] : null;
 
-    // Force Heading1 style on TP heading element
+    // Force Heading2 style on TP heading element (no bottom border, smaller size)
     if (tpHeadingEl) {
       let pPr = $(tpHeadingEl).children('w\\:pPr').first();
       if (!pPr.length) {
@@ -563,13 +516,16 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
       }
       const pStyle = pPr.find('w\\:pStyle');
       if (pStyle.length) {
-        pStyle.attr('w:val', 'Heading1');
+        pStyle.attr('w:val', 'Heading2');
       } else {
-        pPr.prepend('<w:pStyle w:val="Heading1"/>');
+        pPr.prepend('<w:pStyle w:val="Heading2"/>');
       }
+      // Explicitly suppress the bottom border (Heading1 in this template draws
+      // a green underline; we want TP/FP to be flush).
+      pPr.find('w\\:pBdr').remove();
     }
 
-    // Force Heading1 style on FP heading element
+    // Force Heading2 style on FP heading element (no bottom border, smaller size)
     if (fpHeadingEl) {
       let pPr = $(fpHeadingEl).children('w\\:pPr').first();
       if (!pPr.length) {
@@ -578,10 +534,11 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
       }
       const pStyle = pPr.find('w\\:pStyle');
       if (pStyle.length) {
-        pStyle.attr('w:val', 'Heading1');
+        pStyle.attr('w:val', 'Heading2');
       } else {
-        pPr.prepend('<w:pStyle w:val="Heading1"/>');
+        pPr.prepend('<w:pStyle w:val="Heading2"/>');
       }
+      pPr.find('w\\:pBdr').remove();
     }
 
     // Find sectPr before removing detail nodes
@@ -688,7 +645,7 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
           // Remove any stray bullet glyphs from the template content so the new
           // bullet stays at the front of the paragraph, not the end.
           for (const tNode of tNodes) {
-            const cleaned = String(sd(tNode).text() || '').replace(/•/g, '').trimStart();
+            const cleaned = String(sd(tNode).text() || '').replace(/[•●]/g, '').trimStart();
             sd(tNode).text(cleaned);
           }
           sd(tNodes[0]).replaceWith(`<w:t xml:space="preserve">${escapeXmlText(String(item ?? ''))}</w:t>`);
@@ -697,8 +654,10 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
 
         if (opts?.bullet) {
           const pPr = p.children('w\\:pPr').first();
-          if (pPr.length) {
+           if (pPr.length) {
             pPr.find('w\\:numPr').remove();
+            // Use the template's built-in numbering (numId=7 = green bullet ●)
+            pPr.append('<w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr>');
             let ind = pPr.find('w\\:ind').first();
             if (!ind.length) {
               pPr.append('<w:ind w:left="720" w:hanging="360"/>');
@@ -707,9 +666,6 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
               ind.attr('w:hanging', '360');
             }
           }
-          const bulletRun = '<w:r><w:rPr><w:color w:val="4ebc22"/></w:rPr><w:t xml:space="preserve">•\t</w:t></w:r>';
-          if (pPr.length) pPr.after(bulletRun);
-          else p.prepend(bulletRun);
         }
         sd(insertAnchor).after(p);
         insertAnchor = p.get(0);
@@ -732,7 +688,7 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
         const tpBmName = bookmarkNameMap.get('True Positive') || '_true_positive';
         $(insertTarget).before($.xml(tpHeadingEl));
         const insertedTp = body.find('w\\:p').filter((_: number, el: any) => {
-          return paraText($, el) === 'True Positive' && $(el).find('w\\:pStyle[w\\:val="Heading1"]').length > 0;
+          return paraText($, el) === 'True Positive' && $(el).find('w\\:pStyle[w\\:val="Heading2"]').length > 0;
         }).first();
         if (insertedTp.length) {
           const tpBmId = nextBmId++;
@@ -821,13 +777,13 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
           if (impact) {
             const sev = String(finding.impact?.severity || '').trim();
             const sevPrefix = sev ? `${sev} – ` : '';
-            const xml = `<w:p><w:pPr><w:spacing w:after="120" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:color w:val="4EBc22"/></w:rPr><w:t xml:space="preserve">• </w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">Impact:</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${sevPrefix}</w:t></w:r><w:r><w:rPr><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${escapeXmlText(impact)}</w:t></w:r></w:p>`;
+            const xml = `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr><w:spacing w:after="120" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">Impact:</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${sevPrefix}</w:t></w:r><w:r><w:rPr><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${escapeXmlText(impact)}</w:t></w:r></w:p>`;
             sd(insertPt).after(xml);
             insertPt = sd(insertPt).next().get(0);
           }
           if (likelihood) {
             const sev = String(finding.likelihood?.severity || '').trim();
-            const xml = `<w:p><w:pPr><w:spacing w:after="120" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:color w:val="4EBc22"/></w:rPr><w:t xml:space="preserve">• </w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">Likelihood:</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${sev ? `${sev} – ` : ''}</w:t></w:r><w:r><w:rPr><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${escapeXmlText(likelihood)}</w:t></w:r></w:p>`;
+            const xml = `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr><w:spacing w:after="120" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">Likelihood:</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${sev ? `${sev} – ` : ''}</w:t></w:r><w:r><w:rPr><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${escapeXmlText(likelihood)}</w:t></w:r></w:p>`;
             sd(insertPt).after(xml);
           }
         }
@@ -999,7 +955,7 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
             ? (finding.references || finding.finding_references) : [];
           const refTemplateXml = refTemplate || undefined;
           if (refTemplateXml) {
-            const cleanRefTemplateXml = refTemplateXml.replace(/<w:t[^>]*>\s*•\s*<\/w:t>/g, '');
+            const cleanRefTemplateXml = refTemplateXml.replace(/<w:t[^>]*>\s*[•●]\s*<\/w:t>/g, '');
             removeBetweenLabels(sd, sr, refLabel, refs.map((r: any) => String(r || '')), cleanRefTemplateXml, { bullet: true });
           } else {
             removeBetweenLabels(sd, sr, refLabel, refs.map((r: any) => String(r || '')), undefined, { bullet: true });
@@ -1042,7 +998,7 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
         $(insertTarget).before($.xml(pageBreakP));
         $(insertTarget).before($.xml(fpHeadingEl));
         const insertedFp = body.find('w\\:p').filter((_: number, el: any) => {
-          return paraText($, el) === 'False Positive' && $(el).find('w\\:pStyle[w\\:val="Heading1"]').length > 0;
+          return paraText($, el) === 'False Positive' && $(el).find('w\\:pStyle[w\\:val="Heading2"]').length > 0;
         }).first();
         if (insertedFp.length) {
           const fpBmId = nextBmId++;
@@ -1195,83 +1151,21 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
     }
   }
 
-  // --- Late phase: Rebuild TOC with static page numbers (Google Docs compatible) ---
-  if (tocSdt.length && $template) {
-    const bmNameToTitle = new Map<string, string>();
-    for (const [title, bmName] of bookmarkNameMap.entries()) {
-      bmNameToTitle.set(bmName, title);
-    }
+  // NOTE: The template's native TOC SDT block is preserved as-is.
+  // Word / Google Docs will auto-populate it when the user clicks "Update TOC".
+  // We do NOT rebuild or touch the TOC entries here.
 
-    const tocTitlePage = new Map<string, number>();
-    let currentPage = 2;
-    const level1Titles = new Set([
-      'Scope', 'Vulnerabilities', 'True Positive', 'False Positive',
-    ]);
-
-    body.children().each((_: number, el: any) => {
-      const tag = (el.tagName || '').toLowerCase();
-      if (tag === 'w:sectpr') { currentPage++; return; }
-      if (tag !== 'w:p') return;
-
-      const $p = $(el);
-      if ($p.find('w\\:pPr w\\:pageBreakBefore').length > 0) currentPage++;
-      if ($p.find('w\\:br[w\\:type="page"]').length > 0) currentPage++;
-
-      $p.find('w\\:bookmarkStart').each((__: number, bm: any) => {
-        const name = String($(bm).attr('w:name') || '');
-        if (!name) return;
-        const title = bmNameToTitle.get(name);
-        if (title && !tocTitlePage.has(title)) {
-          tocTitlePage.set(title, currentPage);
-        }
-      });
-    });
-
-    const sdtContent = tocSdt.find('w\\:sdtContent').first();
-    const firstP = sdtContent.find('w\\:p').first();
-    sdtContent.find('w\\:p').each((_: number, p: any) => {
-      if (p !== firstP.get(0)) $(p).remove();
-    });
-
-    for (const title of tocEntries) {
-      const bmName = bookmarkNameMap.get(title) || slugifyBookmark(title);
-      const pageNum = tocTitlePage.get(title) || 1;
-
-      const newEntry = $template.clone();
-      const hyperlink = newEntry.find('w\\:hyperlink');
-      if (hyperlink.length) hyperlink.attr('w:anchor', bmName);
-
-      const tNodes = newEntry.find('w\\:t').toArray();
-      if (tNodes.length >= 2) {
-        $(tNodes[0]).text(title);
-        $(tNodes[tNodes.length - 1]).text(String(pageNum));
-      } else if (tNodes.length === 1) {
-        $(tNodes[0]).text(title + '\t' + pageNum);
-      }
-
-      if (level1Titles.has(title)) {
-        newEntry.find('w\\:b, w\\:bCs').attr('w:val', '1');
-        newEntry.find('w\\:ind').remove();
-      } else {
-        newEntry.find('w\\:b, w\\:bCs').attr('w:val', '0');
-        let pPr = newEntry.find('w\\:pPr').first();
-        if (!pPr.length) { newEntry.prepend('<w:pPr/>'); pPr = newEntry.find('w\\:pPr').first(); }
-        let ind = pPr.find('w\\:ind');
-        if (!ind.length) {
-          pPr.append('<w:ind w:left="720" w:firstLine="0"/>');
-        } else {
-          ind.attr('w:left', '720');
-          ind.attr('w:firstLine', '0');
-        }
-      }
-
-      sdtContent.append(newEntry);
+  // Write full document.xml back to zip (with green recolor applied to the
+  // "key" shape and the header/footer gradient bars)
+  const documentXmlFinal = recolorKeyAndGrad($.xml());
+  templateZip.file('word/document.xml', Buffer.from(documentXmlFinal));
+  templateZip.file(relsPath, Buffer.from($rels.xml()));
+  for (const partName of ['word/header1.xml', 'word/header2.xml', 'word/header3.xml', 'word/footer1.xml', 'word/footer2.xml', 'word/footer3.xml']) {
+    const partXml = await templateZip.file(partName)?.async('string');
+    if (partXml && partXml.includes('accent1')) {
+      templateZip.file(partName, Buffer.from(recolorKeyAndGrad(partXml)));
     }
   }
-
-  // Write full document.xml back to zip
-  templateZip.file('word/document.xml', Buffer.from($.xml()));
-  templateZip.file(relsPath, Buffer.from($rels.xml()));
 
   const outBuf = await templateZip.generateAsync({ type: 'nodebuffer' });
   return outBuf;
