@@ -1394,14 +1394,10 @@ class ReportService {
             ind.attr('w:hanging', '360');
 
             const bulletRun = '<w:r><w:rPr><w:color w:val="4EBc22"/></w:rPr><w:t xml:space="preserve">•\t</w:t></w:r>';
-            const firstR = $d(p).children('w\\:r').first();
-            if (firstR.length) {
-              firstR.before(bulletRun);
-            } else {
-              const pPrNode = pPr.get(0);
-              if (pPrNode) $d(pPrNode).after(bulletRun);
-              else $d(p).prepend(bulletRun);
-            }
+            // Always insert bullet after pPr, before any content (hyperlinks, runs, etc.)
+            const pPrNode = pPr.get(0);
+            if (pPrNode) $d(pPrNode).after(bulletRun);
+            else $d(p).prepend(bulletRun);
             bulletsConverted++;
           });
 
@@ -1562,6 +1558,86 @@ class ReportService {
           zip.file(docPath, $.xml());
         } else {
           console.log('[DAST Patch] document.xml not found');
+        }
+      }
+
+      // 3) DAST PDF-only TOC: Replace the native SDT TOC with hardcoded TOC entries
+      //    with calculated page numbers. LibreOffice headless can't resolve TOC fields,
+      //    so we must pre-render the entries. This only runs on the PDF copy.
+      {
+        const docPath = 'word/document.xml';
+        const docXml = zip.file(docPath)?.asText() || '';
+        if (docXml) {
+          const $d = cheerio.load(docXml, { xmlMode: true });
+          const tocSdt = $d('w\\:body w\\:sdt').filter((_: number, el: any) => $d(el).find('w\\:docPartGallery').length > 0).first();
+          if (tocSdt.length) {
+            // 1) Collect all headings with their page numbers
+            const tocEntries: Array<{ title: string; level: number; page: number }> = [];
+            let currentPage = 2;
+
+            $d('w\\:body').children().each((_: number, el: any) => {
+              const tag = ($d(el).prop('tagName') || '').toLowerCase();
+              if (tag === 'w:sectpr') { currentPage++; return; }
+              if (tag !== 'w:p') return;
+
+              // Detect page breaks
+              const pb = $d(el).find('w\\:pPr w\\:pageBreakBefore');
+              if (pb.length > 0) currentPage++;
+              const br = $d(el).find('w\\:br[w\\:type="page"]');
+              if (br.length > 0) currentPage++;
+
+              // Detect heading style
+              const pPr = $d(el).children('w\\:pPr').first();
+              if (!pPr.length) return;
+              const pStyle = String(pPr.find('w\\:pStyle').first().attr('w:val') || '');
+              const lvlMatch = pStyle.match(/^Heading(\d)$/);
+              if (!lvlMatch) return;
+              const level = parseInt(lvlMatch[1], 10);
+              const title = $d(el).find('w\\:t').toArray().map((n: any) => $d(n).text()).join('').trim();
+              if (title && title.toLowerCase() !== 'table of contents') tocEntries.push({ title, level, page: currentPage });
+            });
+
+            // 2) Remove all existing SDT content
+            const sdtContent = tocSdt.find('w\\:sdtContent').first();
+            sdtContent.children().each((_: number, el: any) => { $d(el).remove(); });
+
+            // 3) Build TOC entry paragraphs matching the original template format
+            const level1Titles = new Set(['Scope', 'Vulnerabilities', 'True Positive', 'False Positive']);
+            const entryParagraphs: string[] = [];
+
+            for (const entry of tocEntries) {
+              const isLevel1 = level1Titles.has(entry.title);
+              const fontWeight = isLevel1 ? '1' : '0';
+              const fontSize = '22';
+              const indentLeft = isLevel1 ? '0' : '360';
+              // XML-escape the title
+              const safeTitle = entry.title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+              const entryP =
+                '<w:p><w:pPr>' +
+                '<w:tabs><w:tab w:val="right" w:leader="none" w:pos="12000"/></w:tabs>' +
+                '<w:spacing w:line="240" w:lineRule="auto"/>' +
+                `<w:ind w:left="${indentLeft}" w:firstLine="0"/>` +
+                '<w:jc w:val="left"/>' +
+                '<w:rPr><w:rFonts w:ascii="Roboto" w:cs="Roboto" w:eastAsia="Roboto" w:hAnsi="Roboto"/>' +
+                `<w:b w:val="${fontWeight}"/><w:bCs w:val="${fontWeight}"/>` +
+                '<w:color w:val="000000"/><w:sz w:val="' + fontSize + '"/><w:szCs w:val="' + fontSize + '"/>' +
+                '<w:u w:val="none"/></w:rPr></w:pPr>' +
+                '<w:r><w:rPr><w:rFonts w:ascii="Roboto" w:cs="Roboto" w:eastAsia="Roboto" w:hAnsi="Roboto"/>' +
+                `<w:b w:val="${fontWeight}"/><w:bCs w:val="${fontWeight}"/>` +
+                '<w:color w:val="000000"/><w:sz w:val="' + fontSize + '"/><w:szCs w:val="' + fontSize + '"/>' +
+                '<w:u w:val="none"/></w:rPr>' +
+                `<w:t xml:space="preserve">${safeTitle}</w:t>` +
+                '<w:tab/>' +
+                `<w:t xml:space="preserve">${entry.page}</w:t></w:r></w:p>`;
+
+              entryParagraphs.push(entryP);
+            }
+
+            sdtContent.append(entryParagraphs.join(''));
+            console.log(`[DAST PDF Patch] Replaced TOC with ${tocEntries.length} dynamic entries`);
+            zip.file(docPath, $d.xml());
+          }
         }
       }
 

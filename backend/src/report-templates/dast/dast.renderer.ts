@@ -1025,6 +1025,14 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
           if (!fpPPr.find('w\\:pStyle').length) {
             fpPPr.prepend('<w:pStyle w:val="Heading2"/>');
           }
+          // Ensure FP finding titles have no extra indentation (match TP alignment)
+          let fpInd = fpPPr.find('w\\:ind').first();
+          if (fpInd.length) {
+            fpInd.attr('w:left', '0');
+            fpInd.attr('w:firstLine', '0');
+          }
+          // Clear any hyperlinks, tabs, or stray formatting from stale template content
+          sd(titlePara).find('w\\:hyperlink').remove();
         }
 
         if (descLabel) {
