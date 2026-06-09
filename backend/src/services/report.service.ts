@@ -1075,7 +1075,7 @@ class ReportService {
       doc.image(bg, 0, 0, { width: 612, height: 792 });
 
       // Top URL (white, top-right)
-      doc.fillColor('#ffffff').fontSize(12).font('Times-Bold');
+      doc.fillColor('#ffffff').fontSize(12).font('/home/nitin/.local/share/fonts/spectral/Spectral-Bold.ttf');
       doc.text('blueally.com', 48, 28, { width: pageW - 96, align: 'right' });
 
       // Logo (3-leaf flower). Reduce width and move lower so it sits on the white area
@@ -1087,13 +1087,13 @@ class ReportService {
       doc.image(logo, logoX, logoY, { width: logoW });
 
       // Middle texts
-      doc.fillColor('#001278').font('Times-Bold').fontSize(24);
+      doc.fillColor('#001278').font('/home/nitin/.local/share/fonts/spectral/Spectral-Bold.ttf').fontSize(24);
       doc.text('blueAlly', 0, 415, { width: pageW, align: 'center' });
 
       doc.fontSize(16);
       doc.text(`Prepared for: ${clientName}`, 0, 460, { width: pageW, align: 'center' });
 
-      doc.font('Times-Roman').fontSize(16);
+      doc.font('/home/nitin/.local/share/fonts/spectral/Spectral-Regular.ttf').fontSize(16);
       doc.text(originalTest, 0, 505, { width: pageW, align: 'center' });
 
       doc.end();
@@ -1763,6 +1763,48 @@ class ReportService {
       const zip = new PizZip(docxBuffer);
       console.log('[BlueAlly Patch] Starting patch for LibreOffice PDF conversion');
 
+      // 0a) Font normalization: the template declares Verdana/Arial/Calibri in runs
+      // but the actual body font is Spectral (installed on system). LibreOffice resolves
+      // Verdana/Arial/Calibri to different system fonts (NotoSans, LiberationSans, NotoSerif),
+      // creating mismatched fonts. Google Docs renders the template with Spectral.
+      // Fix: replace all declared fonts with "Spectral" so LO renders consistently.
+      // This is PDF-only; DOCX output keeps original fonts.
+      {
+        const targetFont = 'Spectral';
+        const skipFonts = new Set(['Noto Sans Symbols', 'Spectral']);
+
+        const patchFontsCheerio = (xmlContent: string): string => {
+          if (!xmlContent) return xmlContent;
+          const $ = cheerio.load(xmlContent, { xmlMode: true });
+          $('w\\:rFonts').each((_: number, el: any) => {
+            for (const attr of ['w:ascii', 'w:hAnsi', 'w:eastAsia', 'w:cs']) {
+              const val = $(el).attr(attr);
+              if (val && !skipFonts.has(val)) {
+                $(el).attr(attr, targetFont);
+              }
+            }
+          });
+          return $.xml();
+        };
+
+        for (const fp of ['word/document.xml', 'word/styles.xml', 'word/header1.xml',
+          'word/footer1.xml', 'word/footer2.xml', 'word/footer3.xml', 'word/footer4.xml', 'word/footer5.xml']) {
+          const content = zip.file(fp)?.asText();
+          if (content) zip.file(fp, patchFontsCheerio(content));
+        }
+
+        const themeContent = zip.file('word/theme/theme1.xml')?.asText();
+        if (themeContent) {
+          const $t = cheerio.load(themeContent, { xmlMode: true });
+          $t('a\\:latin').each((_: number, el: any) => { $t(el).attr('typeface', targetFont); });
+          $t('a\\:ea').each((_: number, el: any) => { $t(el).attr('typeface', targetFont); });
+          $t('a\\:cs').each((_: number, el: any) => { $t(el).attr('typeface', targetFont); });
+          zip.file('word/theme/theme1.xml', $t.xml());
+        }
+
+        console.log('[BlueAlly Patch] Normalized all fonts to Spectral for LO PDF conversion');
+      }
+
       // 0) LibreOffice can drop bullet glyphs entirely for some Word-style bullet lists.
       // As a PDF-only workaround, convert *bullet* list paragraphs to plain paragraphs with an explicit "• ".
       // IMPORTANT: Do not touch numbered headings/TOC, otherwise headings like "1. Introduction" become bulleted.
@@ -1902,44 +1944,32 @@ class ReportService {
           }
 
           // If we're in the reference section, add a bullet to this paragraph if it contains a hyperlink
-          // and doesn't already have a bullet.
-          if (inReferenceSection && !referenceMarkEnd) {
-            // Skip if inside a table cell or already has numbering.
-            if ($p.parents('w\\:tc').length) return;
-            const pPr = $p.children('w\\:pPr').first();
-            if (pPr.find('w\\:numPr').length) return;
+           // and doesn't already have a bullet.
+           if (inReferenceSection && !referenceMarkEnd) {
+             // Skip if inside a table cell or already has numbering.
+             if ($p.parents('w\\:tc').length) return;
+             const pPr = $p.children('w\\:pPr').first();
+             if (pPr.find('w\\:numPr').length) return;
 
-            // If this paragraph contains a hyperlink, add a bullet.
-            if ($p.find('w\\:hyperlink').length) {
-              // Avoid double-inserting if already starts with a bullet.
-              const firstTxt = $p.find('w\\:t').first().text() || '';
-              if (/^\s*\u2022\s*/.test(firstTxt)) return;
+             // If this paragraph contains a hyperlink, add a bullet.
+             if ($p.find('w\\:hyperlink').length) {
+               // Avoid double-inserting if already starts with a bullet.
+               const firstTxt = $p.find('w\\:t').first().text() || '';
+               if (/^\s*\u2022\s*/.test(firstTxt)) return;
 
-              // Ensure pPr exists and set hanging indent for wrapped lines.
-              if (!pPr.length) { $p.prepend('<w:pPr/>'); }
-              const pPr2 = $p.children('w\\:pPr').first();
-              pPr2.find('w\\:numPr').remove();
-              pPr2.find('w\\:ind').remove();
-              pPr2.append('<w:ind w:left="720" w:hanging="360"/>');
+                // Ensure pPr exists and add the reference bullet numPr (numId=2 from template).
+               if (!pPr.length) { $p.prepend('<w:pPr/>'); }
+               const pPr2 = $p.children('w\\:pPr').first();
+                pPr2.find('w\\:numPr').remove();
+                pPr2.find('w\\:ind').remove();
+                pPr2.append('<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>');
+                pPr2.append('<w:ind w:left="720" w:hanging="360"/>');
+                // Strip paragraph-level rPr color so the bullet marker renders black.
+                pPr2.children('w\\:rPr').remove();
 
-              const bulletRun = '<w:r><w:t xml:space="preserve">\u2022\t</w:t></w:r>';
-              // Insert bullet before the first hyperlink.
-              const firstHyper = $p.children('w\\:hyperlink').first();
-              if (firstHyper.length) {
-                firstHyper.before(bulletRun);
-              } else {
-                const firstR = $p.children('w\\:r').first();
-                if (firstR.length) {
-                  firstR.before(bulletRun);
-                } else {
-                  const pPrNode = pPr2.get(0);
-                  if (pPrNode) $d2(pPrNode).after(bulletRun);
-                  else $p.prepend(bulletRun);
-                }
-              }
-              added++;
-            }
-          }
+               added++;
+             }
+           }
         });
 
         if (added) {

@@ -180,7 +180,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
         '<w:p>',
         '  <w:pPr>',
         '    <w:jc w:val="center"/>',
-        '    <w:spacing w:before="60" w:after="120" w:lineRule="auto"/>',
+        '    <w:spacing w:line="276" w:lineRule="auto"/>',
         '  </w:pPr>',
         '  <w:r>',
         '    <w:drawing>',
@@ -375,9 +375,6 @@ export const BlueAllyRenderer: TemplateRenderer = {
     };
 
     const tightenParagraphSpacing = (pNode: any, opts?: { before?: number; after?: number; line?: number }) => {
-      const before = typeof opts?.before === 'number' ? opts!.before : 0;
-      const after = typeof opts?.after === 'number' ? opts!.after : 60;
-      const line = typeof opts?.line === 'number' ? opts!.line : 240;
       const el = (pNode && typeof pNode === 'object' && 'length' in pNode && (pNode as any)[0]) ? (pNode as any)[0] : pNode;
       let pPr = $(el).children('w\\:pPr').first();
       if (!pPr.length) {
@@ -389,10 +386,12 @@ export const BlueAllyRenderer: TemplateRenderer = {
         pPr.append('<w:spacing/>');
         spacing = pPr.children('w\\:spacing').first();
       }
-      spacing.attr('w:before', String(before));
-      spacing.attr('w:after', String(after));
-      spacing.attr('w:line', String(line));
-      spacing.attr('w:lineRule', 'auto');
+      if (typeof opts?.before === 'number') spacing.attr('w:before', String(opts.before));
+      if (typeof opts?.after === 'number') spacing.attr('w:after', String(opts.after));
+      if (typeof opts?.line === 'number') {
+        spacing.attr('w:line', String(opts.line));
+        spacing.attr('w:lineRule', 'auto');
+      }
       return el;
     };
 
@@ -1034,7 +1033,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
           const sev = String(f?.severity || 'Informational');
 
           if (tplHeading2 && tplHeading2.length) {
-            const headingNode = insertAfter(anchor, tightenParagraphSpacing(clearAndSetParagraphText(tplHeading2, `7.${idx + 1}. ${title}`), { before: 120, after: 60 }));
+            const headingNode = insertAfter(anchor, clearAndSetParagraphText(tplHeading2, `7.${idx + 1}. ${title}`));
             anchor = headingNode;
             const headingTitle = `7.${idx + 1}. ${title}`;
             const fBmName = slugifyBookmark(headingTitle);
@@ -1043,20 +1042,35 @@ export const BlueAllyRenderer: TemplateRenderer = {
             tocEntries.push({ title: headingTitle, level: 1 });
           }
           if (tplRisk && (tplRisk as any).length) {
-            anchor = insertAfter(anchor, tightenParagraphSpacing(patchRiskParagraph(tplRisk, sev), { before: 60, after: 120 }));
+            anchor = insertAfter(anchor, patchRiskParagraph(tplRisk, sev));
+          }
+          // Insert blank line after Risk (matches template spacing).
+          if (tplRisk && (tplRisk as any).length) {
+            const blankAfterRisk = clearAndSetParagraphText(tplRisk, '');
+            anchor = insertAfter(anchor, blankAfterRisk);
           }
 
           if (tplDescLabel && (tplDescLabel as any).length) {
-            anchor = insertAfter(anchor, tightenParagraphSpacing(cloneNodeXml(tplDescLabel), { before: 60, after: 120 }));
+            anchor = insertAfter(anchor, cloneNodeXml(tplDescLabel));
           }
           const desc = String(f?.description || '').trim();
           const descParts = desc ? desc.split(/\n+/).map((s) => s.trim()).filter(Boolean) : ['No description provided.'];
           descParts.forEach((part) => {
               if (tplDescText && (tplDescText as any).length) {
-                anchor = insertAfter(anchor, tightenParagraphSpacing(clearAndSetParagraphText(tplDescText, part), { before: 0, after: 120 }));
+                anchor = insertAfter(anchor, clearAndSetParagraphText(tplDescText, part));
               }
             });
 
+          // Insert blank line before Affected URL (matches template spacing).
+          // Template blank line has ind left=0 firstLine=0, no right, no spacing.
+          if (tplDescText && (tplDescText as any).length) {
+            const blankBeforeUrl = clearAndSetParagraphText(tplDescText, '');
+            const $bUrl = cheerio.load($.xml(blankBeforeUrl), { xmlMode: true });
+            $bUrl('w\\:pPr > w\\:ind').remove();
+            $bUrl('w\\:pPr').first().append('<w:ind w:left="0" w:firstLine="0"/>');
+            $bUrl('w\\:pPr > w\\:spacing').remove();
+            anchor = insertAfter(anchor, $bUrl.root().children().first());
+          }
           if (tplAffectedUrl && (tplAffectedUrl as any).length) {
             const url = String(f?.affected_target || 'N/A').trim();
             const pNode = clearAndSetParagraphText(tplAffectedUrl, '');
@@ -1064,11 +1078,20 @@ export const BlueAllyRenderer: TemplateRenderer = {
               { text: 'Affected URL:', bold: true },
               { text: ` ${url || 'N/A'}`, bold: false },
             ]);
-            anchor = insertAfter(anchor, tightenParagraphSpacing(out, { before: 60, after: 120 }));
+            anchor = insertAfter(anchor, out);
           }
 
+          // Insert blank line before Steps to reproduce (matches template spacing).
+          // Template blank line has ind left=0 right=288 firstLine=0, sp after=120.
           if (tplStepsLabel && (tplStepsLabel as any).length) {
-            anchor = insertAfter(anchor, tightenParagraphSpacing(cloneNodeXml(tplStepsLabel), { before: 60, after: 120 }));
+            const blankBeforeSteps = clearAndSetParagraphText(tplStepsLabel, '');
+            const $bSteps = cheerio.load($.xml(blankBeforeSteps), { xmlMode: true });
+            $bSteps('w\\:pPr > w\\:ind').remove();
+            $bSteps('w\\:pPr').first().append('<w:ind w:left="0" w:right="288" w:firstLine="0"/>');
+            anchor = insertAfter(anchor, $bSteps.root().children().first());
+          }
+          if (tplStepsLabel && (tplStepsLabel as any).length) {
+            anchor = insertAfter(anchor, cloneNodeXml(tplStepsLabel));
           }
           const stepsRaw = f?.steps_to_reproduce;
           const stepsArr = tryParseJsonArray(stepsRaw) || (Array.isArray(stepsRaw) ? stepsRaw : null);
@@ -1090,7 +1113,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
                   { text: `Step ${si + 1}:`, bold: true },
                   { text: ` ${line}`, bold: false },
                 ]);
-                anchor = insertAfter(anchor, tightenParagraphSpacing(out, { before: 0, after: 120 }));
+                anchor = insertAfter(anchor, out);
 
                 // Embed step screenshot if present.
                 const stepObj = Array.isArray(stepsArr) ? (stepsArr as any[])[si] : null;
@@ -1103,7 +1126,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
                   if (!img) continue;
                   const imgParaXml = buildImageParagraphXml(img.rId, img.cx, img.cy);
                   const $imgP = cheerio.load(imgParaXml, { xmlMode: true });
-                  anchor = insertAfter(anchor, tightenParagraphSpacing($imgP.root().children().first(), { before: 60, after: 120 }));
+                  anchor = insertAfter(anchor, tightenParagraphSpacing($imgP.root().children().first(), { line: 276 }));
                   embedded = true;
                   break;
                 }
@@ -1117,7 +1140,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
                       if (!img) continue;
                       const imgParaXml = buildImageParagraphXml(img.rId, img.cx, img.cy);
                       const $imgP = cheerio.load(imgParaXml, { xmlMode: true });
-                      anchor = insertAfter(anchor, tightenParagraphSpacing($imgP.root().children().first(), { before: 60, after: 120 }));
+                      anchor = insertAfter(anchor, tightenParagraphSpacing($imgP.root().children().first(), { line: 276 }));
                       embedded = true;
                       break;
                     } catch {
@@ -1131,7 +1154,10 @@ export const BlueAllyRenderer: TemplateRenderer = {
                   if (caption) {
                     const capNode = clearAndSetParagraphText(tplStepText, '');
                     const capOut = setParagraphRuns(capNode, [{ text: `Fig ${si + 1}: ${caption}`, bold: false }]);
-                    const capEl = insertAfter(anchor, tightenParagraphSpacing(capOut, { before: 0, after: 120 }));
+                    const capEl = insertAfter(anchor, tightenParagraphSpacing(capOut, { line: 276 }));
+                    // Match template fig captions: line=276, jc=center, no indentation, no after spacing.
+                    $(capEl).find('w\\:pPr > w\\:spacing').removeAttr('w:after');
+                    $(capEl).find('w\\:pPr > w\\:ind').remove();
                     // caption style
                     $(capEl).find('w\\:pPr').each((_: number, pPr: any) => {
                       let jc = $(pPr).children('w\\:jc').first();
@@ -1164,14 +1190,16 @@ export const BlueAllyRenderer: TemplateRenderer = {
                     if (!img) continue;
                     const imgParaXml = buildImageParagraphXml(img.rId, img.cx, img.cy);
                     const $imgP = cheerio.load(imgParaXml, { xmlMode: true });
-                    anchor = insertAfter(anchor, tightenParagraphSpacing($imgP.root().children().first(), { before: 60, after: 120 }));
+                    anchor = insertAfter(anchor, tightenParagraphSpacing($imgP.root().children().first(), { line: 276 }));
 
                     const caption = String(e?.caption || '').trim();
                     if (caption) {
                       const capNode = clearAndSetParagraphText(tplStepText, '');
-                      // BlueAlly style: centered, gray, italic, with "Fig N:" prefix.
                       const capOut = setParagraphRuns(capNode, [{ text: `Fig ${figNo}: ${caption}`, bold: false }]);
-                      const capEl = insertAfter(anchor, tightenParagraphSpacing(capOut, { before: 0, after: 120 }));
+                      const capEl = insertAfter(anchor, tightenParagraphSpacing(capOut, { line: 276 }));
+                      // Match template fig captions: line=276, jc=center, no indentation, no after spacing.
+                      $(capEl).find('w\\:pPr > w\\:spacing').removeAttr('w:after');
+                      $(capEl).find('w\\:pPr > w\\:ind').remove();
                       // Apply caption styling on the inserted element.
                       $(capEl).find('w\\:pPr').each((_: number, pPr: any) => {
                         let jc = $(pPr).children('w\\:jc').first();
@@ -1197,11 +1225,11 @@ export const BlueAllyRenderer: TemplateRenderer = {
              const pNode = clearAndSetParagraphText(tplStepText, 'No steps to reproduce were provided.');
              const $p = cheerio.load($.xml(pNode), { xmlMode: true });
              removeBoldFromParagraph($p);
-              anchor = insertAfter(anchor, tightenParagraphSpacing($p.root().children().first(), { before: 60, after: 120 }));
+               anchor = insertAfter(anchor, $p.root().children().first());
             }
 
           if (tplImpactLabel && (tplImpactLabel as any).length) {
-            anchor = insertAfter(anchor, tightenParagraphSpacing(cloneNodeXml(tplImpactLabel), { before: 60, after: 120 }));
+            anchor = insertAfter(anchor, cloneNodeXml(tplImpactLabel));
           }
           const impact = extractValue(f?.impact);
           const likelihood = extractValue(f?.likelihood);
@@ -1215,20 +1243,24 @@ export const BlueAllyRenderer: TemplateRenderer = {
             const likLine = likelihoodSev ? ` (${likelihoodSev})` : '';
 
             const iNode = clearAndSetParagraphText(tplImpactText, '');
-            anchor = insertAfter(anchor, tightenParagraphSpacing(setParagraphRuns(iNode, [
+            anchor = insertAfter(anchor, setParagraphRuns(iNode, [
               { text: 'Impact', bold: true },
               { text: `${impactLine}: ${impact}`, bold: false },
-            ]), { before: 0, after: 30 }));
+            ]));
 
             const lNode = clearAndSetParagraphText(tplImpactText, '');
             anchor = insertAfter(anchor, tightenParagraphSpacing(setParagraphRuns(lNode, [
               { text: 'Likelihood', bold: true },
               { text: `${likLine}: ${likelihood}`, bold: false },
-            ]), { before: 0, after: 60 }));
+            ]), { after: 120 }));
           }
 
+          // Insert blank line before Recommendations (matches template spacing).
           if (tplRecsLabel && (tplRecsLabel as any).length) {
-            anchor = insertAfter(anchor, tightenParagraphSpacing(cloneNodeXml(tplRecsLabel), { before: 60, after: 120 }));
+            anchor = insertAfter(anchor, clearAndSetParagraphText(tplRecsLabel, ''));
+          }
+          if (tplRecsLabel && (tplRecsLabel as any).length) {
+            anchor = insertAfter(anchor, cloneNodeXml(tplRecsLabel));
           }
           const recRaw = f?.recommendation;
           const recArr = tryParseJsonArray(recRaw) || (Array.isArray(recRaw) ? recRaw : null);
@@ -1250,17 +1282,17 @@ export const BlueAllyRenderer: TemplateRenderer = {
                 anchor = insertAfter(anchor, tightenParagraphSpacing(setParagraphRuns(pNode, [
                   { text: left, bold: true },
                   { text: right ? ` ${right.trimStart()}` : '', bold: false },
-                ]), { before: 0, after: 120 }));
+                ]), { line: 276 }));
               } else {
-                anchor = insertAfter(anchor, tightenParagraphSpacing(setParagraphRuns(pNode, [{ text: cleaned, bold: false }]), { before: 0, after: 120 }));
+                anchor = insertAfter(anchor, tightenParagraphSpacing(setParagraphRuns(pNode, [{ text: cleaned, bold: false }]), { line: 276 }));
               }
             });
           } else if (tplRecText && (tplRecText as any).length) {
-            anchor = insertAfter(anchor, tightenParagraphSpacing(clearAndSetParagraphText(tplRecText, 'No recommendations provided.'), { before: 0, after: 120 }));
+            anchor = insertAfter(anchor, tightenParagraphSpacing(clearAndSetParagraphText(tplRecText, 'No recommendations provided.'), { line: 276 }));
           }
 
           if (tplRefLabel && (tplRefLabel as any).length) {
-            anchor = insertAfter(anchor, tightenParagraphSpacing(cloneNodeXml(tplRefLabel), { before: 60, after: 120 }));
+            anchor = insertAfter(anchor, cloneNodeXml(tplRefLabel));
           }
           const refs = Array.isArray(f?.references || f?.finding_references)
             ? (f.references || f.finding_references)
@@ -1281,27 +1313,34 @@ export const BlueAllyRenderer: TemplateRenderer = {
               if (/^(https?:\/\/|www\.)/i.test(refText) && refText.endsWith('.')) {
                 refText = refText.replace(/\.+$/g, '');
               }
-              // Use clearAndSetParagraphText to preserve template font properties,
-              // then modify text in-place instead of setParagraphRuns which strips fonts.
+              // Clone the template reference paragraph and apply real Word bullet formatting.
+              // Uses numId=2 (the reference bullet list in the BlueAlly template).
               const pNode = clearAndSetParagraphText(tplRefText, '');
               {
                 const $pLocal = cheerio.load($.xml(pNode), { xmlMode: true });
+                // Remove any existing numPr and set the reference bullet numPr.
                 $pLocal('w\\:pPr > w\\:numPr').remove();
-                // Set text directly on the first text element to preserve template font size/face
-                const firstT = $pLocal('w\\:t').first();
-                if (firstT.length) {
-                  $pLocal(firstT).text(`• ${refText}`);
+                const pPrEl = $pLocal('w\\:pPr').first();
+                if (pPrEl.length) {
+                  pPrEl.append('<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>');
+                  // Strip paragraph-level rPr color so the bullet marker renders black, not gray.
+                  pPrEl.children('w\\:rPr').remove();
                 }
-                // Remove any extra runs beyond the first (template may have multiple)
-                $pLocal('w\\:r').slice(1).remove();
+                // Remove all existing runs and hyperlinks, then add URL text as blue underlined hyperlink.
+                $pLocal('w\\:r').remove();
+                $pLocal('w\\:hyperlink').remove();
+                $pLocal('w\\:pPr').after(
+                  `<w:r><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr>` +
+                  `<w:t xml:space="preserve">${refText}</w:t></w:r>`
+                );
                 const cleaned = $pLocal.root().children().first();
-                anchor = insertAfter(anchor, tightenParagraphSpacing(cleaned, { before: 0, after: 120 }));
+                anchor = insertAfter(anchor, cleaned);
               }
             });
           }
 
           if (tplBack && (tplBack as any).length) {
-            anchor = insertAfter(anchor, tightenParagraphSpacing(cloneNodeXml(tplBack), { before: 60, after: 120 }));
+            anchor = insertAfter(anchor, cloneNodeXml(tplBack));
           }
         }
       }
