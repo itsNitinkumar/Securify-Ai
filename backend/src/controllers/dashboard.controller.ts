@@ -3,12 +3,10 @@ import DashboardService from '../services/dashboard.service';
 import asyncHandler from '../utils/asyncHandler';
 
 class DashboardController {
-  // Get overall dashboard statistics
   static getOverallStats = asyncHandler(async (req: Request, res: Response) => {
     const user = (req as any).user;
     const permissions = (req as any).permissions || [];
 
-    // Reporters see their own stats; managers/admins see overall
     let stats;
     if (permissions.includes('create_findings') && !permissions.includes('approve_findings')) {
       stats = await DashboardService.getUserActivitySummary(user.id);
@@ -16,65 +14,77 @@ class DashboardController {
       stats = await DashboardService.getOverallStats();
     }
 
-    res.json({
-      success: true,
-      data: stats,
-    });
+    res.json({ success: true, data: stats });
   });
 
-  // Get findings by severity
   static getFindingsBySeverity = asyncHandler(async (_req: Request, res: Response) => {
     const data = await DashboardService.getFindingsBySeverity();
-
-    res.json({
-      success: true,
-      data,
-    });
+    res.json({ success: true, data });
   });
 
-  // Get findings by status
   static getFindingsByStatus = asyncHandler(async (_req: Request, res: Response) => {
     const data = await DashboardService.getFindingsByStatus();
-
-    res.json({
-      success: true,
-      data,
-    });
+    res.json({ success: true, data });
   });
 
-  // Get top reporters
   static getTopReporters = asyncHandler(async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 5;
     const data = await DashboardService.getTopReporters(limit);
-
-    return res.json({
-      success: true,
-      data,
-    });
+    res.json({ success: true, data });
   });
 
-  // Get project statistics
   static getProjectStats = asyncHandler(async (req: Request, res: Response) => {
-    const projectId = Array.isArray(req.params.project_id) 
-      ? req.params.project_id[0] 
+    const projectId = Array.isArray(req.params.project_id)
+      ? req.params.project_id[0]
       : req.params.project_id;
-
     const data = await DashboardService.getProjectStats(parseInt(projectId));
-
-    res.json({
-      success: true,
-      data,
-    });
+    res.json({ success: true, data });
   });
 
-  // Get findings trend
   static getFindingsTrend = asyncHandler(async (_req: Request, res: Response) => {
     const data = await DashboardService.getFindingsTrend();
+    res.json({ success: true, data });
+  });
 
-    res.json({
-      success: true,
-      data,
-    });
+  static getMttr = asyncHandler(async (_req: Request, res: Response) => {
+    const data = await DashboardService.getMttr();
+    res.json({ success: true, data });
+  });
+
+  static getRemediationVelocity = asyncHandler(async (_req: Request, res: Response) => {
+    const data = await DashboardService.getRemediationVelocity();
+    res.json({ success: true, data });
+  });
+
+  static getFindingsByCategory = asyncHandler(async (_req: Request, res: Response) => {
+    const data = await DashboardService.getFindingsByCategory();
+    res.json({ success: true, data });
+  });
+
+  static getFindingsByDomain = asyncHandler(async (_req: Request, res: Response) => {
+    const data = await DashboardService.getFindingsByDomain();
+    res.json({ success: true, data });
+  });
+
+  static getClientRiskBreakdown = asyncHandler(async (_req: Request, res: Response) => {
+    const data = await DashboardService.getClientRiskBreakdown();
+    res.json({ success: true, data });
+  });
+
+  static getRecentFindings = asyncHandler(async (req: Request, res: Response) => {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const data = await DashboardService.getRecentFindings(limit);
+    res.json({ success: true, data });
+  });
+
+  static getCommentActivity = asyncHandler(async (_req: Request, res: Response) => {
+    const data = await DashboardService.getCommentActivity();
+    res.json({ success: true, data });
+  });
+
+  static getProjectsByStatus = asyncHandler(async (_req: Request, res: Response) => {
+    const data = await DashboardService.getProjectsByStatus();
+    res.json({ success: true, data });
   });
 }
 
