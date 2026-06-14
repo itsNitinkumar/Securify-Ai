@@ -124,9 +124,16 @@ class TemplateController {
       throw new ApiError(400, 'Cannot delete default template');
     }
 
+    const usage = await TemplateModel.getUsageCount(parseInt(id as string));
+    if (usage.projectCount > 0) {
+      throw new ApiError(
+        409,
+        `Cannot delete template "${template.name}": it is still assigned to ${usage.projectCount} project(s). Reassign those projects to a different template first.`
+      );
+    }
+
     await TemplateModel.delete(parseInt(id as string));
 
-    // Log activity
     res.json({
       success: true,
       message: 'Template deleted successfully',

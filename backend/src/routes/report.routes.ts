@@ -92,4 +92,11 @@ router.delete(
   ReportController.deleteTemplate
 );
 
+router.post(
+  '/templates/:id/clone',
+  authorize(Permissions.MANAGE_TEMPLATES),
+  apiLimiter,
+  ReportController.cloneTemplate
+);
+
 export default router;

@@ -37,10 +37,10 @@ const MainLayout = () => {
   const isAdminOrManager = hasRole('admin', 'manager') || hasPermission('manage_roles');
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard, show: true },
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard, show: isAdminOrManager },
     { path: '/projects', label: 'Projects', icon: FolderOpen, show: hasPermission('view_projects') },
     { path: '/templates', label: 'Templates', icon: FileText, show: hasPermission('view_templates') || isAdminOrManager },
-    { path: '/search', label: 'Search', icon: Search, show: true },
+    { path: '/search', label: 'Search', icon: Search, show: isAdminOrManager },
     { path: '/users', label: 'Users', icon: Users, show: hasPermission('view_users') },
     { path: '/settings', label: 'RBAC Settings', icon: Settings, show: hasPermission('manage_roles') || hasRole('admin') },
   ].filter(item => item.show);

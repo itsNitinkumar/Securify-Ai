@@ -1,4 +1,6 @@
-const API_BASE_URL = 'http://localhost:3000/api';
+import { API_URL } from '@/config/env';
+
+const API_BASE_URL = API_URL.replace('/api/v1', '/api');
 
 export const api = {
   get: async (endpoint: string) => {

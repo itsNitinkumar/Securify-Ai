@@ -358,7 +358,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
       const insertAfter = pPr.length ? pPr : null;
       const mkRun = (text: string, bold?: boolean) => {
         const safe = String(text ?? '');
-        const b = bold ? '<w:rPr><w:b/></w:rPr>' : '';
+        const b = bold ? '<w:rPr><w:b/><w:bCs/><w:rFonts w:ascii="Verdana" w:hAnsi="Verdana"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>' : '<w:rPr><w:rFonts w:ascii="Verdana" w:hAnsi="Verdana"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>';
         return `<w:r>${b}<w:t xml:space="preserve">${safe
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
@@ -405,13 +405,15 @@ export const BlueAllyRenderer: TemplateRenderer = {
     };
 
     const replaceClientTokens = () => {
-      // Replace all occurrences of the sample client name "PubNub" with the actual client name.
-      // This applies across the whole document.
+      // Replace {{CLIENT_NAME}}, {{COMPANY_NAME}}, {{PROJECT_NAME}} placeholders.
       $('w\\:t').each((_: number, t: any) => {
         const v = String($(t).text() || '');
         if (!v) return;
-        // Replace possessive and plain forms.
         let next = v
+          .replace(/\{\{CLIENT_NAME\}\}/g, clientName)
+          .replace(/\{\{COMPANY_NAME\}\}/g, clientName)
+          .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
+          .replace(/\{\{DATE\}\}/g, startDate || '')
           .replace(/\bpubnub's\b/gi, `${clientName}'s`)
           .replace(/\bpubnub\b/gi, clientName);
         if (next !== v) $(t).text(next);
@@ -429,7 +431,69 @@ export const BlueAllyRenderer: TemplateRenderer = {
       return parts.join('').replace(/\s+/g, ' ').trim();
     };
 
-    // ── Initialize bookmark ID counter and TOC tracking (DAST-style) ──
+    // Extract plain text from BlockNote rich_body JSON
+    const richBodyToText = (richBody: any): string => {
+      if (!richBody) return '';
+      if (typeof richBody === 'string') return richBody;
+      const walk = (node: any): string => {
+        if (!node) return '';
+        if (node.type === 'text') return node.text || '';
+        if (node.type === 'paragraph' || node.type === 'heading') {
+          return (node.content || []).map(walk).join('');
+        }
+        if (node.type === 'bulletListItem' || node.type === 'numberedListItem' || node.type === 'listItem') {
+          return '- ' + (node.content || []).map(walk).join('');
+        }
+        if (Array.isArray(node)) return node.map(walk).join('\n');
+        if (Array.isArray(node.content)) return node.content.map(walk).join('\n');
+        return '';
+      };
+      try {
+        const text = walk(richBody).trim();
+        // Also detect paragraphs whose text starts with "- " (saved as paragraph not bulletListItem)
+        return text.split('\n').map((line: string) => {
+          if (line.startsWith('- ') || line.startsWith('\u2022 ')) return line;
+          return line;
+        }).join('\n');
+      } catch { return ''; }
+    };
+
+    // Get effective body text: use body if set, otherwise extract from rich_body.
+    // Also appends items array as bullet points if present.
+      const getBodyText = (sec: any): string => {
+        let text = '';
+        if (sec.body) text = sec.body;
+      else if (sec.rich_body) text = richBodyToText(sec.rich_body);
+      if (sec.items && Array.isArray(sec.items) && sec.items.length > 0) {
+        const hasBullets = text.split('\n').some((line: string) => /^\s*(-|•)\s+/.test(line));
+        if (!hasBullets) {
+          const bulletLines = sec.items.map((item: string) => '- ' + item);
+          text = text ? text + '\n' + bulletLines.join('\n') : bulletLines.join('\n');
+        }
+        }
+        return text;
+      };
+
+      // Reuse the exact paragraph properties from the reference DOCX where possible.
+      {
+        const findPara = (needle: string): any => {
+          return body.find('w\\:p').toArray().find((p: any) => paraText(p) === needle) || null;
+        };
+
+        const bodySample = findPara('As part of an ongoing security program, PubNub identified the need to conduct an application security assessment and penetration test of its web application.');
+        if (bodySample) {
+          const pPr = $(bodySample).children('w\\:pPr').first();
+          if (pPr.length) blueAllyBodyPPr = `<w:pPr>${pPr.children().toArray().map((n: any) => $.xml(n)).join('')}</w:pPr>`;
+        }
+
+        const bulletSample = findPara('Nmap');
+        if (bulletSample) {
+          const pPr = $(bulletSample).children('w\\:pPr').first();
+          if (pPr.length) blueAllyBulletPPr = `<w:pPr>${pPr.children().toArray().map((n: any) => $.xml(n)).join('')}</w:pPr>`;
+        }
+      }
+
+      // ── Initialize bookmark ID counter and TOC tracking (DAST-style) ──
     let maxBmId = -1;
     body.find('w\\:bookmarkStart, w\\:bookmarkEnd').each((_: number, el: any) => {
       const id = parseInt(String($(el).attr('w:id') || '-1'), 10);
@@ -454,14 +518,16 @@ export const BlueAllyRenderer: TemplateRenderer = {
       }
     }
 
-    // Ensure Executive Summary starts on a new page (after TOC).
+    // Ensure ALL H1 sections start on a new page.
     {
       const allParas = $('w\\:p').toArray();
       const isH1 = (p: any) => $(p).find('w\\:pPr > w\\:pStyle').attr('w:val') === 'Heading1';
+      let firstH1 = true;
       for (const p of allParas) {
         if (!isH1(p)) continue;
         const t = paraText(p);
-        if (!t || !/^Executive Summary$/i.test(t)) continue;
+        if (!t || /^Table of Contents$/i.test(t)) continue;
+        if (firstH1) { firstH1 = false; continue; }
         let pPr = $(p).children('w\\:pPr').first();
         if (!pPr.length) {
           $(p).prepend('<w:pPr/>');
@@ -470,7 +536,381 @@ export const BlueAllyRenderer: TemplateRenderer = {
         if (!pPr.children('w\\:pageBreakBefore').length) {
           pPr.prepend('<w:pageBreakBefore/>');
         }
-        break;
+      }
+    }
+
+    // ── Section content override from template_data.sections (single source of truth) ──
+    // When a cloned template has custom content in template_data.sections[key],
+    // replace the DOCX content with the DB content for that section.
+    // If no custom content exists, the DOCX content is preserved (backward compatible).
+    {
+      const escapeXml = (s: string) =>
+        s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      const buildFormattedRuns = (text: string, opts: { bold?: boolean; italic?: boolean; underline?: boolean; color?: string; font?: string; size?: number } = {}): string => {
+        const font = opts.font || 'Verdana';
+        const makeR = (t: string, b: boolean, i: boolean, u: boolean): string => {
+          const safe = escapeXml(t);
+          if (!safe) return '';
+          const rPr: string[] = [];
+          if (b) rPr.push('<w:b/><w:bCs/>');
+          if (i) rPr.push('<w:i/><w:iCs/>');
+          if (u) rPr.push('<w:u w:val="single"/>');
+          if (opts.color) rPr.push(`<w:color w:val="${opts.color}"/>`);
+          rPr.push(`<w:rFonts w:ascii="${font}" w:hAnsi="${font}"/>`);
+          const size = typeof opts.size === 'number' ? opts.size : 22;
+          rPr.push(`<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>`);
+          return `<w:r><w:rPr>${rPr.join('')}</w:rPr><w:t xml:space="preserve">${safe}</w:t></w:r>`;
+        };
+        const runs: string[] = [];
+        let bold = !!opts.bold, italic = !!opts.italic, underline = !!opts.underline;
+        let buf = '';
+        let idx = 0;
+        while (idx < text.length) {
+          if (text.substring(idx, idx + 3) === '***') {
+            if (buf) { runs.push(makeR(buf, bold, italic, underline)); buf = ''; }
+            bold = !bold; italic = !italic; idx += 3;
+          } else if (text.substring(idx, idx + 2) === '__') {
+            if (buf) { runs.push(makeR(buf, bold, italic, underline)); buf = ''; }
+            underline = !underline; idx += 2;
+          } else if (text.substring(idx, idx + 2) === '**') {
+            if (buf) { runs.push(makeR(buf, bold, italic, underline)); buf = ''; }
+            bold = !bold; idx += 2;
+          } else if (text[idx] === '*') {
+            if (buf) { runs.push(makeR(buf, bold, italic, underline)); buf = ''; }
+            italic = !italic; idx += 1;
+          } else {
+            buf += text[idx]; idx++;
+          }
+        }
+        if (buf) runs.push(makeR(buf, bold, italic, underline));
+        return runs.join('');
+      };
+
+      const stripMarkdownMarkers = (text: string): string => String(text || '').replace(/\*\*/g, '').replace(/__/g, '').replace(/[\*_]/g, '');
+
+      const buildBlueAllyLineRuns = (headingText: string, line: string): string => {
+        const clean = stripMarkdownMarkers(line.trim());
+        if (/^approach$/i.test(headingText)) {
+          if (/^Runtime Application Vulnerability Assessment$/i.test(clean) || /^This assessment report contains:$/i.test(clean)) {
+            return buildFormattedRuns(clean, { bold: true, font: 'Verdana', size: 22 });
+          }
+        }
+        if (/^scope$/i.test(headingText) && /^The scope for this security assessment included, but was not limited to, the following tests:$/i.test(clean)) {
+          return buildFormattedRuns(clean, { font: 'Verdana', size: 22 });
+        }
+        return buildFormattedRuns(line, { font: 'Verdana', size: 22 });
+      };
+
+      var blueAllyBodyPPr = `<w:pPr><w:keepNext w:val="0"/><w:keepLines w:val="0"/><w:pageBreakBefore w:val="0"/><w:widowControl w:val="1"/><w:pBdr><w:top w:space="0" w:sz="0" w:val="nil"/><w:left w:space="0" w:sz="0" w:val="nil"/><w:bottom w:space="0" w:sz="0" w:val="nil"/><w:right w:space="0" w:sz="0" w:val="nil"/><w:between w:space="0" w:sz="0" w:val="nil"/></w:pBdr><w:shd w:fill="auto" w:val="clear"/><w:spacing w:after="120" w:before="0" w:line="240" w:lineRule="auto"/><w:ind w:left="288" w:right="288" w:firstLine="0"/><w:jc w:val="both"/><w:rPr><w:rFonts w:ascii="Verdana" w:cs="Verdana" w:eastAsia="Verdana" w:hAnsi="Verdana"/><w:b w:val="0"/><w:bCs w:val="0"/><w:i w:val="0"/><w:iCs w:val="0"/><w:smallCaps w:val="0"/><w:strike w:val="0"/><w:color w:val="000000"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:u w:val="none"/><w:shd w:fill="auto" w:val="clear"/><w:vertAlign w:val="baseline"/></w:rPr></w:pPr>`;
+
+      var blueAllyBulletPPr = `<w:pPr><w:keepNext w:val="0"/><w:keepLines w:val="0"/><w:pageBreakBefore w:val="0"/><w:widowControl w:val="1"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr><w:pBdr><w:top w:space="0" w:sz="0" w:val="nil"/><w:left w:space="0" w:sz="0" w:val="nil"/><w:bottom w:space="0" w:sz="0" w:val="nil"/><w:right w:space="0" w:sz="0" w:val="nil"/><w:between w:space="0" w:sz="0" w:val="nil"/></w:pBdr><w:shd w:fill="auto" w:val="clear"/><w:spacing w:after="120" w:before="0" w:line="240" w:lineRule="auto"/><w:ind w:left="1008" w:right="288" w:hanging="360"/><w:jc w:val="both"/><w:rPr/></w:pPr>`;
+
+      const buildBlueAllyBodyParagraph = (headingText: string, text: string, opts?: { bullet?: boolean }): string => {
+        const runsXml = buildBlueAllyLineRuns(headingText, text);
+        return `<w:p>${opts?.bullet ? blueAllyBulletPPr : blueAllyBodyPPr}${runsXml}</w:p>`;
+      };
+
+      // Generate a table XML from DB table data
+      const generateTableXml = (tableData: { title?: string; headers: string[]; rows: string[][] }): string => {
+        const colCount = tableData.headers.length;
+        if (colCount === 0) return '';
+        const gridCols = Array.from({ length: colCount }, () => '  <w:gridCol w:w="9000"/>').join('\n');
+        const buildRow = (cells: string[], isHeader: boolean): string => {
+          const tcs = cells.map(cellText => {
+            const runsXml = isHeader
+              ? buildFormattedRuns(cellText, { bold: true, color: 'FFFFFF', font: 'Verdana', size: 22 })
+              : buildFormattedRuns(cellText, { font: 'Verdana', size: 22 });
+            const parasXml = `<w:p><w:pPr><w:spacing w:before="40" w:after="40" w:line="240" w:lineRule="auto"/></w:pPr>${runsXml}</w:p>`;
+            return [
+              '        <w:tc>',
+              isHeader ? '          <w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="001278"/><w:tcW w:w="9000" w:type="dxa"/></w:tcPr>' : '          <w:tcPr><w:tcW w:w="9000" w:type="dxa"/></w:tcPr>',
+              parasXml,
+              '        </w:tc>',
+            ].join('\n');
+          });
+          return [
+            '      <w:tr>',
+            isHeader ? '        <w:tblHeader/>' : '',
+            ...tcs,
+            '      </w:tr>',
+          ].filter(Boolean).join('\n');
+        };
+        const headerRow = buildRow(tableData.headers, true);
+        const dataRows = tableData.rows.map(row => {
+          const padded = [...row];
+          while (padded.length < colCount) padded.push('');
+          return buildRow(padded.slice(0, colCount), false);
+        });
+        const tblPr = '<w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr>';
+        return [
+          '<w:tbl>', tblPr, '    <w:tblGrid>', gridCols, '    </w:tblGrid>',
+          '    <w:tblBody>', headerRow, ...dataRows, '    </w:tblBody>', '</w:tbl>',
+        ].join('\n');
+      };
+
+      // Check if a DOCX table already exists between a heading and the next heading
+      const hasDocxTableBetween = (startNode: any): boolean => {
+        let scan = $(startNode).next();
+        while (scan.length) {
+          const n = scan[0];
+          const nTag = n.tagName || n.name || '';
+          if (nTag === 'w:tbl') return true;
+          if (nTag === 'w:p') {
+            const s = $(n).find('w\\:pPr > w\\:pStyle').attr('w:val');
+            if (s === 'Heading1' || s === 'Heading2') break;
+          }
+          if (nTag === 'w:sectPr') break;
+          scan = scan.next();
+        }
+        return false;
+      };
+
+      const hasDocxVisual = (pEl: any): boolean => {
+        const p = $(pEl);
+        return p.find('w\\:drawing, w\\:pict, v\\:shape').length > 0;
+      };
+
+      // Build content map: section name → section data from template_data.sections
+      const templateSections = data.template?.template_data?.sections || {};
+      const contentMap = new Map<string, any>();
+      for (const [key, section] of Object.entries(templateSections)) {
+        const sec = section as any;
+        if (sec && typeof sec === 'object' && (sec.body || sec.rich_body || sec.tables)) {
+          contentMap.set(key.toLowerCase(), sec);
+          // Also map by title if different from key
+          if (sec.title && sec.title.toLowerCase() !== key.toLowerCase()) {
+            contentMap.set(sec.title.toLowerCase(), sec);
+          }
+        }
+      }
+
+      // Process H1 sections: replace content between heading and next H1
+      const allChildren = body.children().toArray();
+      let i = 0;
+      while (i < allChildren.length) {
+        const node = allChildren[i];
+        const tagName = node.tagName || node.name || '';
+        if (tagName !== 'w:p') { i++; continue; }
+        const isH1 = $(node).find('w\\:pPr > w\\:pStyle').attr('w:val') === 'Heading1';
+        if (!isH1) { i++; continue; }
+        const headingText = paraText(node);
+        if (!headingText || /^Table of Contents$/i.test(headingText)) { i++; continue; }
+        // Skip dynamic sections
+        if (/detailed vulnerabilities/i.test(headingText)) { i++; continue; }
+        const dbSection = contentMap.get(headingText.toLowerCase());
+        if (!dbSection) { i++; continue; }
+        // Skip if no custom body content (backward compatible: use DOCX content)
+        if (!dbSection.body && !dbSection.rich_body && (!dbSection.tables || dbSection.tables.length === 0)) { i++; continue; }
+
+        // The BlueAlly scope section already has the correct paragraph/table order in the template.
+        // Update the existing nodes in place so spacing and layout remain intact.
+        if (/^scope$/i.test(headingText)) {
+          const scopeNodes: any[] = [];
+          let scan = $(node).next();
+          while (scan.length) {
+            const n = scan[0];
+            const nTag = n.tagName || n.name || '';
+            if (nTag === 'w:p') {
+              const nextStyle = $(n).find('w\\:pPr > w\\:pStyle').attr('w:val');
+              if (nextStyle === 'Heading1') break;
+            }
+            if (nTag === 'w:sectPr') break;
+            scopeNodes.push(n);
+            scan = scan.next();
+          }
+
+          const scopeParas = scopeNodes.filter((n: any) => (n.tagName || n.name || '') === 'w:p');
+          const updatePara = (idx: number, text: string) => {
+            const p = scopeParas[idx];
+            if (!p) return;
+            const $p = $(p);
+            $p.find('w\\:t').each((_: number, t: any) => $(t).text(''));
+            const first = $p.find('w\\:t').first();
+            if (first.length) first.text(text);
+            $p.find('w\\:highlight').remove();
+            $p.find('w\\:shd[w\\:fill="ffff00"], w\\:shd[w\\:fill="FFFF00"]').remove();
+          };
+
+          updatePara(0, `The assessment was conducted between ${startRange || 'Start Date'} and ${endRange || 'End Date'}. Testing was performed remotely.`);
+          updatePara(1, `The objective of the re-test was to assess the effectiveness of ${clientName}'s efforts to remediate the issues identified during the original penetration test.`);
+          updatePara(2, 'The following domains were considered within the scope of this assessment.');
+          // scopeParas[3] is the blank paragraph before the table in the template.
+          // scopeParas[4] is the blank paragraph after the table in the template.
+          updatePara(5, 'The scope for this security assessment included, but was not limited to, the following tests:');
+          updatePara(6, 'Identification of running services');
+          updatePara(7, 'Vulnerability Assessment');
+          updatePara(8, 'Penetration Testing of Web Application');
+          updatePara(9, 'Identification of vulnerable or outdated components and software in use');
+
+          let nextIndex = i + 1;
+          while (nextIndex < allChildren.length) {
+            const nextNode = allChildren[nextIndex];
+            const nextTag = nextNode.tagName || nextNode.name || '';
+            if (nextTag === 'w:p' && $(nextNode).find('w\\:pPr > w\\:pStyle').attr('w:val') === 'Heading1') break;
+            nextIndex++;
+          }
+          i = nextIndex;
+          continue;
+        }
+
+        // Collect paragraphs between this heading and next H1 (skip tables - preserve DOCX originals)
+        const parasToRemove: any[] = [];
+        let j = i + 1;
+        while (j < allChildren.length) {
+          const next = allChildren[j];
+          const nextTag = next.tagName || next.name || '';
+          if (nextTag === 'w:p') {
+            const nextStyle = $(next).find('w\\:pPr > w\\:pStyle').attr('w:val');
+            if (nextStyle === 'Heading1') break;
+            if (nextStyle === 'Heading2') { j++; continue; }
+            if (hasDocxVisual(next)) { j++; continue; }
+            parasToRemove.push(next);
+          }
+          // Skip tables and other non-paragraph elements (preserve DOCX tables)
+          j++;
+        }
+
+        // Remove only paragraph content, keep tables
+        for (const el of parasToRemove) $(el).remove();
+
+        // Insert DB paragraphs
+        const dbContent = getBodyText(dbSection);
+        const dbLines = dbContent.split('\n').filter((l: string) => l.trim());
+        let insertAfterNode = $(node);
+        const isScopeSection = /^scope$/i.test(headingText);
+        const shouldInsertScopeTables = isScopeSection && !!(dbSection.tables && dbSection.tables.length > 0) && !hasDocxTableBetween(node);
+        let scopeTablesInserted = false;
+
+        for (const line of dbLines) {
+          const isBullet = line.startsWith('- ');
+          const text = isBullet ? line.substring(2) : line;
+          const paraXml = buildBlueAllyBodyParagraph(headingText, text, { bullet: isBullet });
+          insertAfterNode.after(paraXml);
+          insertAfterNode = insertAfterNode.next();
+
+          if (shouldInsertScopeTables && !scopeTablesInserted && /^The scope for this security assessment included, but was not limited to, the following tests:$/i.test(text.trim())) {
+            for (const tblData of dbSection.tables || []) {
+              if (!tblData.headers || tblData.headers.length === 0) continue;
+              const tblXml = generateTableXml(tblData);
+              insertAfterNode.after(tblXml);
+              insertAfterNode = insertAfterNode.next();
+            }
+            scopeTablesInserted = true;
+          }
+        }
+
+        // Insert DB tables only if no DOCX table already exists in this section
+        if (dbSection.tables && dbSection.tables.length > 0 && !hasDocxTableBetween(node) && !scopeTablesInserted) {
+          for (const tblData of dbSection.tables) {
+            if (!tblData.headers || tblData.headers.length === 0) continue;
+            const tblXml = generateTableXml(tblData);
+            insertAfterNode.after(tblXml);
+            insertAfterNode = insertAfterNode.next();
+          }
+        }
+
+        if (isScopeSection && dbSection.tables && dbSection.tables.length > 0) {
+          const sectionNodes: any[] = [];
+          let scan = $(node).next();
+          while (scan.length) {
+            const n = scan[0];
+            const nTag = n.tagName || n.name || '';
+            if (nTag === 'w:p') {
+              const nextStyle = $(n).find('w\\:pPr > w\\:pStyle').attr('w:val');
+              if (nextStyle === 'Heading1') break;
+            }
+            if (nTag === 'w:sectPr') break;
+            sectionNodes.push(n);
+            scan = scan.next();
+          }
+
+          const domainPara = sectionNodes.find((n: any) => {
+            if ((n.tagName || n.name || '') !== 'w:p') return false;
+            return /^The following domains were considered within the scope of this assessment\.$/i.test(paraText(n));
+          });
+          const scopePara = sectionNodes.find((n: any) => {
+            if ((n.tagName || n.name || '') !== 'w:p') return false;
+            return /^The scope for this security assessment included, but was not limited to, the following tests:$/i.test(paraText(n));
+          });
+          const tables = sectionNodes.filter((n: any) => (n.tagName || n.name || '') === 'w:tbl');
+
+          if (domainPara && tables.length) {
+            let anchor = $(domainPara);
+            for (const tbl of tables) {
+              const $tbl = $(tbl);
+              $tbl.remove();
+              anchor.after($tbl);
+              anchor = $tbl;
+            }
+
+            if (scopePara) {
+              // Keep the "scope" sentence after the table even if the table was previously appended later.
+              $(scopePara).insertAfter(anchor);
+            }
+          }
+        }
+
+        i = j;
+      }
+
+      // Process H2 sub-sections: replace content between heading and next H1/H2
+      const allParasNow = $('w\\:p').toArray();
+      for (const p of allParasNow) {
+        const style = $(p).find('w\\:pPr > w\\:pStyle').attr('w:val');
+        if (style !== 'Heading2') continue;
+        const headingText = paraText(p);
+        if (!headingText) continue;
+        const dbSection = contentMap.get(headingText.toLowerCase());
+        if (!dbSection) continue;
+        if (!dbSection.body && !dbSection.rich_body && (!dbSection.tables || dbSection.tables.length === 0)) continue;
+
+        // Remove only paragraphs between H2 and next H2/H1 (preserve DOCX tables)
+        let nextSib = $(p).next();
+        while (nextSib.length) {
+          const n = nextSib[0];
+          const nTag = n.tagName || n.name || '';
+          if (nTag === 'w:p') {
+            const ns = $(n).find('w\\:pPr > w\\:pStyle').attr('w:val');
+            if (ns === 'Heading1' || ns === 'Heading2') break;
+            if (hasDocxVisual(n)) {
+              nextSib = nextSib.next();
+              continue;
+            }
+            const toRemove = nextSib;
+            nextSib = nextSib.next();
+            toRemove.remove();
+            continue;
+          }
+          if (nTag === 'w:sectPr') {
+            nextSib = nextSib.next();
+            continue;
+          }
+          // Skip tables and other elements — preserve DOCX originals
+          nextSib = nextSib.next();
+        }
+
+        // Insert DB content
+        let insertAfter = $(p);
+        const dbContent = getBodyText(dbSection);
+        const dbLines = dbContent.split('\n').filter((l: string) => l.trim());
+        for (const line of dbLines) {
+          const isBullet = line.startsWith('- ');
+          const text = isBullet ? line.substring(2) : line;
+          const paraXml = buildBlueAllyBodyParagraph(headingText, text, { bullet: isBullet });
+          insertAfter.after(paraXml);
+          insertAfter = insertAfter.next();
+        }
+
+        // Insert DB tables only if no DOCX table already exists in this H2 section
+        if (dbSection.tables && dbSection.tables.length > 0 && !hasDocxTableBetween(p)) {
+          for (const tblData of dbSection.tables) {
+            if (!tblData.headers || tblData.headers.length === 0) continue;
+            const tblXml = generateTableXml(tblData);
+            insertAfter.after(tblXml);
+            insertAfter = insertAfter.next();
+          }
+        }
       }
     }
 
@@ -485,8 +925,15 @@ export const BlueAllyRenderer: TemplateRenderer = {
     $('w\\:t').each((_: number, t: any) => {
       const v = String($(t).text() || '');
       if (!v) return;
-      if (v.trim() === 'Vulnerability Assessment and Penetration Test Report') {
+      if (/^blueally$/i.test(v.trim())) {
         $(t).text(projectName);
+      }
+      if (/^(Application\s+)?Vulnerability\s+Assessment\s+and\s+Penetration\s+Test\s+Report$/i.test(v.trim())) {
+        $(t).text(projectName);
+      }
+      // Clear standalone "Application" prefix (cover title split across w:t runs)
+      if (/^Application\s*$/i.test(v.trim()) && v.trim().length <= 15) {
+        $(t).text('');
       }
       if (/^Prepared\s+for\s*:/i.test(v.trim())) {
         $(t).text(`Prepared for: ${clientName}`);
@@ -496,21 +943,17 @@ export const BlueAllyRenderer: TemplateRenderer = {
       }
     });
 
-    // Some base templates split the report title across runs, e.g. "Application " + "Vulnerability Assessment...".
-    // After replacement, that can surface as "Application <ProjectName>". Strip the prefix on the cover only.
+    // After the w:t-level replacements, verify any remaining "Application" prefix
+    // that may be in the same paragraph as the project name is cleared.
     $('w\\:p').each((_: number, p: any) => {
       const ts = $(p).find('w\\:t').toArray();
       if (!ts.length) return;
-
       const texts = ts.map((t: any) => String($(t).text() || ''));
       const joined = texts.join('');
-      const looksLikeCoverTitle = joined.includes(projectName) && (joined.toLowerCase().includes('application') || joined.toLowerCase().includes('vulnerability assessment'));
-      if (!looksLikeCoverTitle) return;
-
-      // Only touch very short "Application" prefix runs.
+      if (!joined.includes(projectName)) return;
       for (let i = 0; i < ts.length; i++) {
         const raw = String($(ts[i]).text() || '');
-        if (raw === 'Application ' || raw.trim() === 'Application') {
+        if (/^Application\s*$/i.test(raw.trim()) && raw.trim().length <= 15) {
           $(ts[i]).text('');
         }
       }
@@ -652,11 +1095,11 @@ export const BlueAllyRenderer: TemplateRenderer = {
             if (!tcPr.length) { $hrow(tc).prepend('<w:tcPr/>'); tcPr = $hrow(tc).children('w\\:tcPr').first(); }
             let shd = tcPr.children('w\\:shd').first();
             if (!shd.length) {
-              tcPr.append('<w:shd w:val="clear" w:color="auto" w:fill="002060"/>');
+              tcPr.append('<w:shd w:val="clear" w:color="auto" w:fill="001278"/>');
             } else {
               shd.attr('w:val', 'clear');
               shd.attr('w:color', 'auto');
-              shd.attr('w:fill', '002060');
+              shd.attr('w:fill', '001278');
             }
             $hrow(tc)
               .find('w\\:r')
@@ -697,6 +1140,16 @@ export const BlueAllyRenderer: TemplateRenderer = {
               if (child.tagName !== 'w:tcPr') $r(child).remove();
             });
 
+            // Force a white body background so LO doesn't carry over theme shading.
+            let shd = tcPr.children('w\\:shd').first();
+            if (!shd.length) {
+              tcPr.append('<w:shd w:val="clear" w:color="auto" w:fill="FFFFFF"/>');
+            } else {
+              shd.attr('w:val', 'clear');
+              shd.attr('w:color', 'auto');
+              shd.attr('w:fill', 'FFFFFF');
+            }
+
             const mkPara = (inner: string) =>
               `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr>${inner}</w:p>`;
 
@@ -707,12 +1160,12 @@ export const BlueAllyRenderer: TemplateRenderer = {
               const rid = addHyperlinkRelationship(url);
               const safeText = url.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                paras.push(
-                 mkPara(
-                   // Use an explicit run style + color + underline so LibreOffice reliably
-                   // renders the link as blue and underlined in PDF output.
-                   `<w:hyperlink r:id="${rid}"><w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:color w:val="1155CC"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${safeText}</w:t></w:r></w:hyperlink>`
-                 )
-               );
+                  mkPara(
+                    // Use an explicit run style + color + underline so LibreOffice reliably
+                    // renders the link as blue and underlined in PDF output.
+                    `<w:hyperlink r:id="${rid}"><w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:color w:val="1155CC"/><w:u w:val="single"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">${safeText}</w:t></w:r></w:hyperlink>`
+                  )
+                );
             }
 
             // If there are no domains, keep an empty paragraph.
@@ -735,7 +1188,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
         $(tbl)
           .find('w\\:trHeight')
           .each((_: number, h: any) => {
-            $(h).attr('w:val', '120'); // tighter rows
+            $(h).attr('w:val', '400');
             $(h).attr('w:hRule', 'atLeast');
           });
 
@@ -789,7 +1242,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
     // 3.A) Ensure all table header rows stay dark blue in PDF.
     // LibreOffice can drop style-based shading and render headers as gray.
     {
-      const headerFill = '002060';
+      const headerFill = '001278';
       $('w\\:tbl').each((_: number, tbl: any) => {
         const headerRow = $(tbl).find('w\\:tr').toArray().find((tr: any) => $(tr).find('w\\:tblHeader[w\\:val="1"], w\\:tblHeader').length > 0);
         if (!headerRow) return;
@@ -1153,7 +1606,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
                   const caption = candidates.captions[0] || '';
                   if (caption) {
                     const capNode = clearAndSetParagraphText(tplStepText, '');
-                    const capOut = setParagraphRuns(capNode, [{ text: `Fig ${si + 1}: ${caption}`, bold: false }]);
+                    const capOut = setParagraphRuns(capNode, [{ text: `Fig: ${caption}`, bold: false }]);
                     const capEl = insertAfter(anchor, tightenParagraphSpacing(capOut, { line: 276 }));
                     // Match template fig captions: line=276, jc=center, no indentation, no after spacing.
                     $(capEl).find('w\\:pPr > w\\:spacing').removeAttr('w:after');
@@ -1169,8 +1622,8 @@ export const BlueAllyRenderer: TemplateRenderer = {
                       if (!rPr.length) { $(r).prepend('<w:rPr/>'); rPr = $(r).children('w\\:rPr').first(); }
                       if (!rPr.children('w\\:i').length) rPr.append('<w:i w:val="1"/><w:iCs w:val="1"/>');
                       let c = rPr.children('w\\:color').first();
-                      if (!c.length) rPr.append('<w:color w:val="9CA3AF"/>');
-                      else c.attr('w:val', '9CA3AF');
+                      if (!c.length) rPr.append('<w:color w:val="434343"/>');
+                      else c.attr('w:val', '434343');
                     });
                     anchor = capEl;
                   }
@@ -1195,7 +1648,7 @@ export const BlueAllyRenderer: TemplateRenderer = {
                     const caption = String(e?.caption || '').trim();
                     if (caption) {
                       const capNode = clearAndSetParagraphText(tplStepText, '');
-                      const capOut = setParagraphRuns(capNode, [{ text: `Fig ${figNo}: ${caption}`, bold: false }]);
+                      const capOut = setParagraphRuns(capNode, [{ text: `Fig: ${caption}`, bold: false }]);
                       const capEl = insertAfter(anchor, tightenParagraphSpacing(capOut, { line: 276 }));
                       // Match template fig captions: line=276, jc=center, no indentation, no after spacing.
                       $(capEl).find('w\\:pPr > w\\:spacing').removeAttr('w:after');
@@ -1211,8 +1664,8 @@ export const BlueAllyRenderer: TemplateRenderer = {
                         if (!rPr.length) { $(r).prepend('<w:rPr/>'); rPr = $(r).children('w\\:rPr').first(); }
                         if (!rPr.children('w\\:i').length) rPr.append('<w:i w:val="1"/><w:iCs w:val="1"/>');
                         let c = rPr.children('w\\:color').first();
-                        if (!c.length) rPr.append('<w:color w:val="9CA3AF"/>');
-                        else c.attr('w:val', '9CA3AF');
+                        if (!c.length) rPr.append('<w:color w:val="434343"/>');
+                        else c.attr('w:val', '434343');
                       });
                       anchor = capEl;
                       figNo += 1;

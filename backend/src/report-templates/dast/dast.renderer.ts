@@ -202,13 +202,63 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
 
   // --- Replace placeholders ---
   const clientName = String(data.project?.client_name || 'Client');
+  const projectName = String(data.project?.name || 'N/A');
   const startDate = data.project?.start_date ? formatDate(new Date(data.project.start_date), 'MMMM dd, yyyy') : '';
   const endDate = data.project?.end_date ? formatDate(new Date(data.project.end_date), 'MMMM dd, yyyy') : '';
+
+  // Extract plain text from BlockNote rich_body JSON
+  const richBodyToText = (richBody: any): string => {
+    if (!richBody) return '';
+    if (typeof richBody === 'string') return richBody;
+    const walk = (node: any): string => {
+      if (!node) return '';
+      if (node.type === 'text') return node.text || '';
+      if (node.type === 'paragraph' || node.type === 'heading') return (node.content || []).map(walk).join('');
+      if (node.type === 'bulletListItem' || node.type === 'numberedListItem' || node.type === 'listItem') return '- ' + (node.content || []).map(walk).join('');
+      if (Array.isArray(node)) return node.map(walk).join('\n');
+      if (Array.isArray(node.content)) return node.content.map(walk).join('\n');
+      return '';
+    };
+    try { return walk(richBody).trim(); } catch { return ''; }
+  };
+
+  const replacePlaceholders = (text: string): string => {
+    return text
+      .replace(/\{\{CLIENT_NAME\}\}/g, clientName)
+      .replace(/\{\{COMPANY_NAME\}\}/g, clientName)
+      .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
+      .replace(/\{\{DATE\}\}/g, startDate)
+      .replace(/Start Date/g, startDate)
+      .replace(/End Date/g, endDate)
+      .replace(/SilentPush/gi, clientName);
+  };
+
+  const getBodyText = (sec: any): string => {
+    let text = '';
+    if (sec.body) text = sec.body;
+    else if (sec.rich_body) text = richBodyToText(sec.rich_body);
+    if (sec.items && Array.isArray(sec.items) && sec.items.length > 0) {
+      const hasBullets = text.split('\n').some((line: string) => /^\s*(-|•)\s+/.test(line));
+      if (!hasBullets) {
+        const bulletLines = sec.items.map((item: string) => '- ' + item);
+        text = text ? text + '\n' + bulletLines.join('\n') : bulletLines.join('\n');
+      }
+    }
+    return text;
+  };
 
   body.find('w\\:p').each((_: number, p: any) => {
     let txt = paraText($, p);
     if (!txt) return;
     let changed = false;
+    // Replace {{...}} placeholders
+    if (txt.includes('{{')) {
+      txt = txt.replace(/\{\{CLIENT_NAME\}\}/g, clientName)
+        .replace(/\{\{COMPANY_NAME\}\}/g, clientName)
+        .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
+        .replace(/\{\{DATE\}\}/g, startDate);
+      changed = true;
+    }
     // Client name (case-insensitive SilentPush)
     if (txt.match(/SilentPush/i)) {
       txt = txt.replace(/SilentPush/gi, clientName);
@@ -297,6 +347,221 @@ async function generateDocxBuffer(args: { templatePath: string; data: DastRender
     const fill = String($(shd).attr('w:fill') || '').toUpperCase();
     if (fill === 'FFFF00' || fill === 'FF0') $(shd).remove();
   });
+
+  // ── Section content override from template_data.sections (single source of truth) ──
+  {
+    const buildFormattedRuns = (text: string, opts: { bold?: boolean; italic?: boolean; underline?: boolean; color?: string; font?: string } = {}): string => {
+      const font = opts.font || 'Roboto';
+      const makeR = (t: string, b: boolean, i: boolean, u: boolean): string => {
+        const safe = escapeXmlText(t);
+        if (!safe) return '';
+        const rPr: string[] = [];
+        if (b) rPr.push('<w:b/><w:bCs/>');
+        if (i) rPr.push('<w:i/><w:iCs/>');
+        if (u) rPr.push('<w:u w:val="single"/>');
+        if (opts.color) rPr.push(`<w:color w:val="${opts.color}"/>`);
+        rPr.push(`<w:rFonts w:ascii="${font}" w:hAnsi="${font}"/>`);
+        return `<w:r><w:rPr>${rPr.join('')}</w:rPr><w:t xml:space="preserve">${safe}</w:t></w:r>`;
+      };
+      const runs: string[] = [];
+      let bold = !!opts.bold, italic = !!opts.italic, underline = !!opts.underline;
+      let buf = '';
+      let idx = 0;
+      while (idx < text.length) {
+        if (text.substring(idx, idx + 3) === '***') {
+          if (buf) { runs.push(makeR(buf, bold, italic, underline)); buf = ''; }
+          bold = !bold; italic = !italic; idx += 3;
+        } else if (text.substring(idx, idx + 2) === '__') {
+          if (buf) { runs.push(makeR(buf, bold, italic, underline)); buf = ''; }
+          underline = !underline; idx += 2;
+        } else if (text.substring(idx, idx + 2) === '**') {
+          if (buf) { runs.push(makeR(buf, bold, italic, underline)); buf = ''; }
+          bold = !bold; idx += 2;
+        } else if (text[idx] === '*') {
+          if (buf) { runs.push(makeR(buf, bold, italic, underline)); buf = ''; }
+          italic = !italic; idx += 1;
+        } else {
+          buf += text[idx]; idx++;
+        }
+      }
+      if (buf) runs.push(makeR(buf, bold, italic, underline));
+      return runs.join('');
+    };
+
+    // Generate a table XML from DB table data
+    const generateTableXml = (tableData: { title?: string; headers: string[]; rows: string[][] }): string => {
+      const colCount = tableData.headers.length;
+      if (colCount === 0) return '';
+      const gridCols = Array.from({ length: colCount }, () => '  <w:gridCol w:w="9000"/>').join('\n');
+      const buildRow = (cells: string[], isHeader: boolean): string => {
+        const tcs = cells.map(rawCellText => {
+          const cellText = replacePlaceholders(rawCellText);
+          const runsXml = isHeader
+            ? buildFormattedRuns(cellText, { bold: true, color: 'FFFFFF', font: 'Roboto' })
+            : buildFormattedRuns(cellText, { font: 'Roboto' });
+          const parasXml = `<w:p><w:pPr><w:spacing w:before="40" w:after="40" w:line="240" w:lineRule="auto"/></w:pPr>${runsXml}</w:p>`;
+          return [
+            '        <w:tc>',
+            isHeader ? '          <w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="002060"/><w:tcW w:w="9000" w:type="dxa"/></w:tcPr>' : '          <w:tcPr><w:tcW w:w="9000" w:type="dxa"/></w:tcPr>',
+            parasXml, '        </w:tc>',
+          ].join('\n');
+        });
+        return ['      <w:tr>', isHeader ? '        <w:tblHeader/>' : '', ...tcs, '      </w:tr>'].filter(Boolean).join('\n');
+      };
+      const headerRow = buildRow(tableData.headers, true);
+      const dataRows = tableData.rows.map(row => {
+        const padded = [...row];
+        while (padded.length < colCount) padded.push('');
+        return buildRow(padded.slice(0, colCount), false);
+      });
+      const tblPr = '<w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr>';
+      return ['<w:tbl>', tblPr, '    <w:tblGrid>', gridCols, '    </w:tblGrid>', '    <w:tblBody>', headerRow, ...dataRows, '    </w:tblBody>', '</w:tbl>'].join('\n');
+    };
+
+    // Check if a DOCX table already exists between a heading and the next heading
+    const hasDocxTableBetween = (startNode: any): boolean => {
+      let scan = $(startNode).next();
+      while (scan.length) {
+        const n = scan[0];
+        const nTag = n.tagName || n.name || '';
+        if (nTag === 'w:tbl') return true;
+        if (nTag === 'w:p') {
+          const s = $(n).find('w\\:pPr > w\\:pStyle').attr('w:val');
+          if (s === 'Heading1' || s === 'Heading2') break;
+        }
+        if (nTag === 'w:sectPr') break;
+        scan = scan.next();
+      }
+      return false;
+    };
+
+    const templateSections = data.template?.template_data?.sections || {};
+    const contentMap = new Map<string, any>();
+    for (const [key, section] of Object.entries(templateSections)) {
+      const sec = section as any;
+      if (sec && typeof sec === 'object' && (sec.body || sec.rich_body || sec.tables)) {
+        contentMap.set(key.toLowerCase(), sec);
+        if (sec.title && sec.title.toLowerCase() !== key.toLowerCase()) {
+          contentMap.set(sec.title.toLowerCase(), sec);
+        }
+      }
+    }
+
+    // Process H1 sections
+    const allChildren = body.children().toArray();
+    let i = 0;
+    while (i < allChildren.length) {
+      const node = allChildren[i];
+      const tagName = node.tagName || node.name || '';
+      if (tagName !== 'w:p') { i++; continue; }
+      const isH1 = $(node).find('w\\:pPr > w\\:pStyle').attr('w:val') === 'Heading1';
+      if (!isH1) { i++; continue; }
+      const headingText = paraText($, node);
+      if (!headingText) { i++; continue; }
+      // Skip dynamic sections
+      if (/detailed vulnerabilities|true positive|false positive/i.test(headingText)) { i++; continue; }
+      const dbSection = contentMap.get(headingText.toLowerCase());
+      if (!dbSection) { i++; continue; }
+      if (!dbSection.body && !dbSection.rich_body && (!dbSection.tables || dbSection.tables.length === 0)) { i++; continue; }
+
+      // Only remove paragraphs, preserve DOCX tables
+      const parasToRemove: any[] = [];
+      let j = i + 1;
+      while (j < allChildren.length) {
+        const next = allChildren[j];
+        const nextTag = next.tagName || next.name || '';
+        if (nextTag === 'w:p') {
+          const nextStyle = $(next).find('w\\:pPr > w\\:pStyle').attr('w:val');
+          if (nextStyle === 'Heading1') break;
+          if (nextStyle === 'Heading2') { j++; continue; }
+          parasToRemove.push(next);
+        }
+        j++;
+      }
+      for (const el of parasToRemove) $(el).remove();
+
+      const dbContent = getBodyText(dbSection);
+      const dbLines = dbContent.split('\n').filter((l: string) => l.trim());
+      let insertAfterNode = $(node);
+      for (const line of dbLines) {
+        const isBullet = line.startsWith('- ');
+        const rawText = isBullet ? line.substring(2) : line;
+        const text = replacePlaceholders(rawText);
+        const runsXml = buildFormattedRuns(text, { font: 'Roboto' });
+        const pPrXml = isBullet
+          ? '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr><w:spacing w:before="0" w:after="60" w:line="276" w:lineRule="auto"/></w:pPr>'
+          : '<w:pPr><w:spacing w:before="0" w:after="120" w:line="276" w:lineRule="auto"/></w:pPr>';
+        insertAfterNode.after(`<w:p>${pPrXml}${runsXml}</w:p>`);
+        insertAfterNode = insertAfterNode.next();
+      }
+      // Insert DB tables only if no DOCX table already exists in this section
+      if (dbSection.tables && dbSection.tables.length > 0 && !hasDocxTableBetween(node)) {
+        for (const tblData of dbSection.tables) {
+          if (!tblData.headers || tblData.headers.length === 0) continue;
+          const tblXml = generateTableXml(tblData);
+          insertAfterNode.after(tblXml);
+          insertAfterNode = insertAfterNode.next();
+        }
+      }
+      i = j;
+    }
+
+    // Process H2 sub-sections
+    const allParasNow = $('w\\:p').toArray();
+    for (const p of allParasNow) {
+      const style = $(p).find('w\\:pPr > w\\:pStyle').attr('w:val');
+      if (style !== 'Heading2') continue;
+      const headingText = paraText($, p);
+      if (!headingText) continue;
+      const dbSection = contentMap.get(headingText.toLowerCase());
+      if (!dbSection) continue;
+      if (!dbSection.body && !dbSection.rich_body && (!dbSection.tables || dbSection.tables.length === 0)) continue;
+
+      // Only remove paragraphs, preserve DOCX tables
+      let nextSib = $(p).next();
+      while (nextSib.length) {
+        const n = nextSib[0];
+        const nTag = n.tagName || n.name || '';
+        if (nTag === 'w:p') {
+          const ns = $(n).find('w\\:pPr > w\\:pStyle').attr('w:val');
+          if (ns === 'Heading1' || ns === 'Heading2') break;
+          const toRemove = nextSib;
+          nextSib = nextSib.next();
+          toRemove.remove();
+          continue;
+        }
+        if (nTag === 'w:sectPr') {
+          nextSib = nextSib.next();
+          continue;
+        }
+        nextSib = nextSib.next();
+      }
+
+      let insertAfter = $(p);
+      const dbContent = getBodyText(dbSection);
+      const dbLines = dbContent.split('\n').filter((l: string) => l.trim());
+      for (const line of dbLines) {
+        const isBullet = line.startsWith('- ');
+        const rawText = isBullet ? line.substring(2) : line;
+        const text = replacePlaceholders(rawText);
+        const runsXml = buildFormattedRuns(text, { font: 'Roboto' });
+        const pPrXml = isBullet
+          ? '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr><w:spacing w:before="0" w:after="60" w:line="276" w:lineRule="auto"/></w:pPr>'
+          : '<w:pPr><w:spacing w:before="0" w:after="120" w:line="276" w:lineRule="auto"/></w:pPr>';
+        insertAfter.after(`<w:p>${pPrXml}${runsXml}</w:p>`);
+        insertAfter = insertAfter.next();
+      }
+      // Insert DB tables only if no DOCX table already exists in this H2 section
+      if (dbSection.tables && dbSection.tables.length > 0 && !hasDocxTableBetween(p)) {
+        for (const tblData of dbSection.tables) {
+          if (!tblData.headers || tblData.headers.length === 0) continue;
+          const tblXml = generateTableXml(tblData);
+          insertAfter.after(tblXml);
+          insertAfter = insertAfter.next();
+        }
+      }
+    }
+  }
 
   // --- Populate scope tables ---
   const allTables = body.find('w\\:tbl').toArray();

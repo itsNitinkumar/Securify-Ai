@@ -64,20 +64,62 @@ class AuthModel {
 
   static async create(name: string, email: string, password: string): Promise<User> {
     return retryQuery(async () => {
-      const result = await pool.query(
-        'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING *',
-        [name, email, password]
+      // Get the reporter role_id (default role for all new users)
+      const roleResult = await pool.query(
+        "SELECT id FROM roles WHERE slug = 'reporter' LIMIT 1"
       );
+      
+      if (roleResult.rows.length === 0) {
+        throw new Error('Reporter role not found in database');
+      }
+      
+      const reporterRoleId = roleResult.rows[0].id;
+      
+      // Create user with reporter role and pending status (awaiting approval)
+      const result = await pool.query(
+        'INSERT INTO users (name, email, password, role, role_id, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [name, email, password, 'reporter', reporterRoleId, 'pending']
+      );
+      
+      console.log('✅ User created with reporter role (pending approval):', {
+        id: result.rows[0].id,
+        email: result.rows[0].email,
+        role: result.rows[0].role,
+        role_id: result.rows[0].role_id,
+        status: result.rows[0].status
+      });
+      
       return result.rows[0];
     });
   }
 
   static async createOAuthUser(name: string, email: string, provider: string, oauthId: string): Promise<User> {
     return retryQuery(async () => {
-      const result = await pool.query(
-        'INSERT INTO users (name, email, oauth_provider, oauth_id) VALUES ($1, $2, $3, $4) RETURNING *',
-        [name, email, provider, oauthId]
+      // Get the reporter role_id (default role for all new users)
+      const roleResult = await pool.query(
+        "SELECT id FROM roles WHERE slug = 'reporter' LIMIT 1"
       );
+      
+      if (roleResult.rows.length === 0) {
+        throw new Error('Reporter role not found in database');
+      }
+      
+      const reporterRoleId = roleResult.rows[0].id;
+      
+      // Create user with reporter role and active status
+      const result = await pool.query(
+        'INSERT INTO users (name, email, oauth_provider, oauth_id, role, role_id, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+        [name, email, provider, oauthId, 'reporter', reporterRoleId, 'active']
+      );
+      
+      console.log('✅ OAuth user created with reporter role:', {
+        id: result.rows[0].id,
+        email: result.rows[0].email,
+        role: result.rows[0].role,
+        role_id: result.rows[0].role_id,
+        status: result.rows[0].status
+      });
+      
       return result.rows[0];
     });
   }

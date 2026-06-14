@@ -5,6 +5,7 @@ import { evidenceApi, Evidence } from '@/api/evidenceApi';
 import FindingWorkflowButtons from './FindingWorkflowButtons';
 import EditFindingDialog from './EditFindingDialog';
 import CommentableSection from '@/components/comments/CommentableSection';
+import { getImageUrl } from '@/config/env';
 import {
   Dialog,
   DialogContent,
@@ -397,7 +398,7 @@ const FindingViewer = ({
                   {evidence.map((item) => (
                     <a
                       key={item.id}
-                      href={`http://localhost:3000${item.file_path}`}
+                      href={getImageUrl(item.file_path) || '#'}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="p-3 bg-surface-low border border-outline-variant rounded-md hover:border-primary/50 transition-colors cursor-pointer group"

@@ -1,6 +1,9 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from '../layouts/MainLayout';
 import ProtectedRoute from '../components/auth/ProtectedRoute';
+import RoleGuard from '../components/auth/RoleGuard';
+import PermissionGuard from '../components/auth/PermissionGuard';
+import { useAuth } from '../contexts/AuthContext';
 import DashboardPage from '../pages/DashboardPage';
 import UsersManagementPage from '../pages/UsersManagementPage';
 import SignInPage from '../pages/SignInPage';
@@ -28,6 +31,16 @@ import CreateManagerPage from '../pages/CreateManagerPage';
 import EditUserPage from '../pages/EditUserPage';
 import RoleRequestPage from '../pages/RoleRequestPage';
 
+// Component to redirect based on role
+const RoleBasedHome = () => {
+  const { hasRole } = useAuth();
+  const isAdminOrManager = hasRole('admin', 'manager');
+  
+  // Managers and Admins see Dashboard
+  // Reporters see Projects
+  return isAdminOrManager ? <DashboardPage /> : <Navigate to="/projects" replace />;
+};
+
 const AppRoutes = () => {
   return (
     <Routes>
@@ -45,27 +58,93 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DashboardPage />} />
-        <Route path="projects" element={<ProjectsPage />} />
-        <Route path="projects/new" element={<CreateProjectPage />} />
+        {/* Home - Role-based redirect */}
+        <Route index element={<RoleBasedHome />} />
+        
+        {/* Projects - All authenticated users with permission */}
+        <Route path="projects" element={
+          <PermissionGuard requiredPermissions={['view_projects']}>
+            <ProjectsPage />
+          </PermissionGuard>
+        } />
+        
+        {/* Create Project - Admin/Manager only */}
+        <Route path="projects/new" element={
+          <RoleGuard allowedRoles={['admin', 'manager']}>
+            <CreateProjectPage />
+          </RoleGuard>
+        } />
+        
         <Route path="projects/:projectId" element={<ProjectDetailPage />} />
-        <Route path="projects/:projectId/review" element={<ProjectReviewPage />} />
+        
+        {/* Project Review - Manager/Admin only */}
+        <Route path="projects/:projectId/review" element={
+          <RoleGuard allowedRoles={['admin', 'manager']}>
+            <ProjectReviewPage />
+          </RoleGuard>
+        } />
+        
         <Route path="projects/:projectId/findings/new" element={<CreateFindingPage />} />
         <Route path="projects/:projectId/findings/generate" element={<GenerateFindingAIPage />} />
         <Route path="projects/:projectId/report" element={<ReportBuilderPage />} />
         <Route path="projects/:projectId/report/import" element={<ImportFindingsPage />} />
         <Route path="reports/:projectId/view" element={<ReportViewPage />} />
-        <Route path="templates" element={<ReportTemplatesPage />} />
+        
+        {/* Templates - Users with permission */}
+        <Route path="templates" element={
+          <PermissionGuard requiredPermissions={['view_templates']}>
+            <ReportTemplatesPage />
+          </PermissionGuard>
+        } />
         <Route path="templates/:templateId" element={<TemplateEditorPage />} />
-        <Route path="search" element={<SearchIntelPage />} />
+        
+        {/* Search - Admin/Manager only */}
+        <Route path="search" element={
+          <RoleGuard allowedRoles={['admin', 'manager']}>
+            <SearchIntelPage />
+          </RoleGuard>
+        } />
+        
         <Route path="findings/:id" element={<FindingDetailPage />} />
-        <Route path="users" element={<UsersManagementPage />} />
-        <Route path="users/create-manager" element={<CreateManagerPage />} />
-        <Route path="users/:userId/approve" element={<ApproveUserPage />} />
-        <Route path="users/:userId/edit" element={<EditUserPage />} />
-        <Route path="settings" element={<RBACSettingsPage />} />
+        
+        {/* Users Management - Users with permission */}
+        <Route path="users" element={
+          <PermissionGuard requiredPermissions={['view_users']}>
+            <UsersManagementPage />
+          </PermissionGuard>
+        } />
+        
+        {/* Create Manager - Admin only */}
+        <Route path="users/create-manager" element={
+          <RoleGuard allowedRoles={['admin']}>
+            <CreateManagerPage />
+          </RoleGuard>
+        } />
+        
+        {/* User Management - Permission-based */}
+        <Route path="users/:userId/approve" element={
+          <PermissionGuard requiredPermissions={['approve_users']}>
+            <ApproveUserPage />
+          </PermissionGuard>
+        } />
+        <Route path="users/:userId/edit" element={
+          <PermissionGuard requiredPermissions={['edit_users']}>
+            <EditUserPage />
+          </PermissionGuard>
+        } />
+        
+        {/* RBAC Settings - Admin only */}
+        <Route path="settings" element={
+          <RoleGuard allowedRoles={['admin']}>
+            <RBACSettingsPage />
+          </RoleGuard>
+        } />
+        
+        {/* Profile - All authenticated users */}
         <Route path="profile" element={<ProfileSettingsPage />} />
         <Route path="profile/role-request" element={<RoleRequestPage />} />
+        
+        {/* 404 */}
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

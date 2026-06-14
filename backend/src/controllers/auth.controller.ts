@@ -24,7 +24,8 @@ class AuthController {
     res.cookie('token', result.token, {
       httpOnly: true,
       secure: config.env === 'production',
-      sameSite: config.env === 'production' ? 'none' : 'lax',
+      sameSite: 'lax',
+      path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
@@ -41,7 +42,8 @@ class AuthController {
     res.cookie('token', result.token, {
       httpOnly: true,
       secure: config.env === 'production',
-      sameSite: config.env === 'production' ? 'none' : 'lax',
+      sameSite: 'lax',
+      path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
@@ -56,7 +58,7 @@ class AuthController {
       clearSessionActivity(req.user.id);
     }
 
-    res.clearCookie('token');
+    res.clearCookie('token', { path: '/' });
     ApiResponse.success(res, 200, 'Logout successful');
   });
 

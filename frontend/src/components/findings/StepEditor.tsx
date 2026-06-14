@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { uploadApi } from '@/api/uploadApi';
 import { toast } from 'react-hot-toast';
+import { getImageUrl } from '@/config/env';
 
 interface Step {
   stepNumber: number;
@@ -17,14 +18,6 @@ interface StepEditorProps {
   steps: Step[];
   onChange: (steps: Step[]) => void;
 }
-
-const getImageUrl = (imagePath: string | undefined): string => {
-  if (!imagePath) return '';
-  if (imagePath.startsWith('data:') || imagePath.startsWith('blob:')) return imagePath;
-  if (imagePath.startsWith('http')) return imagePath;
-  if (imagePath.startsWith('/')) return `http://localhost:3000${imagePath}`;
-  return imagePath;
-};
 
 const StepEditor = ({ steps, onChange }: StepEditorProps) => {
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);

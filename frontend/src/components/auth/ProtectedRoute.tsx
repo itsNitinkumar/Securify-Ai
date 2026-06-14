@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { authApi } from '@/api/authApi';
+import axios from '@/api/axios';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -9,23 +11,49 @@ interface ProtectedRouteProps {
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { hydrateSession } = useAuth();
 
   useEffect(() => {
     checkAuth();
   }, []);
 
   const checkAuth = async () => {
+    console.log('🔐 ProtectedRoute: Checking authentication...');
+    
     try {
       // Try to get profile - this will work if cookie is valid
+      console.log('📡 ProtectedRoute: Calling /api/v1/auth/profile');
       const response = await authApi.getProfile();
       
-      if (response.data.data) {
+      console.log('✅ ProtectedRoute: Profile response:', response.data);
+      
+      const userData = response.data.data as any;
+      if (userData) {
+        let permissions: string[] | undefined;
+        try {
+          const permResponse = await axios.get('/auth/permissions');
+          permissions = permResponse.data?.data || [];
+        } catch {
+          // ignore permission failures here; profile auth is enough to proceed
+        }
+
+        hydrateSession(userData, permissions);
+
+        console.log('✅ ProtectedRoute: User authenticated:', {
+          email: userData.email,
+          role: userData.role
+        });
         setIsAuthenticated(true);
       } else {
+        console.warn('⚠️ ProtectedRoute: No user data in response');
         setIsAuthenticated(false);
       }
-    } catch (error) {
-      console.error('Auth check failed:', error);
+    } catch (error: any) {
+      console.error('❌ ProtectedRoute: Auth check failed:', {
+        status: error.response?.status,
+        message: error.response?.data?.message || error.message,
+        error
+      });
       setIsAuthenticated(false);
     } finally {
       setIsLoading(false);

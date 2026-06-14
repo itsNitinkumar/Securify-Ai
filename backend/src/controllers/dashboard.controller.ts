@@ -6,9 +6,12 @@ class DashboardController {
   static getOverallStats = asyncHandler(async (req: Request, res: Response) => {
     const user = (req as any).user;
     const permissions = (req as any).permissions || [];
+    const role = String(user?.role || '').toLowerCase();
 
     let stats;
-    if (permissions.includes('create_findings') && !permissions.includes('approve_findings')) {
+    if (role === 'manager' || role === 'admin') {
+      stats = await DashboardService.getOverallStats();
+    } else if (permissions.includes('create_findings') && !permissions.includes('approve_findings')) {
       stats = await DashboardService.getUserActivitySummary(user.id);
     } else {
       stats = await DashboardService.getOverallStats();

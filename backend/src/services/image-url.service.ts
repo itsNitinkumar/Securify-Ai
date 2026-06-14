@@ -1,4 +1,5 @@
 import s3Service from './s3.service';
+import { config } from '../config/env';
 
 /**
  * Image URL Service
@@ -8,6 +9,28 @@ import s3Service from './s3.service';
  * This service generates fresh signed URLs on each request
  */
 class ImageUrlService {
+  /**
+   * Get base URL from environment configuration
+   */
+  private getBaseUrl(): string {
+    // Get backend URL from config
+    // If running on different port than 3000, adjust accordingly
+    const port = config.port || 3000;
+    const protocol = config.env === 'production' ? 'https' : 'http';
+    
+    // Extract hostname from frontend URL as a reference
+    // In production, backend might be on same domain or api subdomain
+    const frontendUrl = new URL(config.frontendUrl);
+    const hostname = frontendUrl.hostname;
+    
+    // In development, use localhost with backend port
+    if (config.env === 'development' || hostname.includes('localhost')) {
+      return `http://localhost:${port}`;
+    }
+    
+    // In production, construct from frontend URL
+    return `${protocol}://${hostname}`;
+  }
   /**
    * Check if a string is an S3 key (not a URL)
    */
@@ -45,8 +68,11 @@ class ImageUrlService {
    * - If it's an expired signed URL → extract key and regenerate
    * - If it's a local path → convert to full URL (legacy support)
    */
-  async getAccessibleUrl(imagePath: string | undefined, baseUrl: string = 'http://localhost:3000'): Promise<string | null> {
+  async getAccessibleUrl(imagePath: string | undefined, baseUrl?: string): Promise<string | null> {
     if (!imagePath) return null;
+    
+    // Use provided baseUrl or get from config
+    const resolvedBaseUrl = baseUrl || this.getBaseUrl();
 
     // Case 1: It's an S3 key (preferred format)
     if (this.isS3Key(imagePath)) {
@@ -96,7 +122,7 @@ class ImageUrlService {
    */
   async processStepsImages(
     steps: any[] | undefined,
-    baseUrl: string = 'http://localhost:3000'
+    baseUrl?: string
   ): Promise<any[]> {
     if (!steps || !Array.isArray(steps)) return [];
 

@@ -1,41 +1,24 @@
 import { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 
+/**
+ * AuthCallbackPage - Handles OAuth redirects
+ * 
+ * Note: With cookie-based auth, this page is mostly obsolete.
+ * Google OAuth now redirects directly to home with cookie already set.
+ * This page is kept for backward compatibility.
+ */
 const AuthCallbackPage = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    const userParam = searchParams.get('user');
+    const timer = window.setTimeout(() => {
+      navigate('/', { replace: true });
+    }, 300);
 
-    console.log('🔐 Auth Callback - Token:', token ? 'Present' : 'Missing');
-    console.log('👤 Auth Callback - User:', userParam ? 'Present' : 'Missing');
-
-    if (token && userParam) {
-      try {
-        // Store token and user data
-        localStorage.setItem('token', token);
-        localStorage.setItem('user', userParam);
-        
-        console.log('✅ Token and user stored in localStorage');
-
-        // Redirect to dashboard after a brief delay
-        setTimeout(() => {
-          navigate('/', { replace: true });
-          // Force reload to ensure axios picks up the new token
-          window.location.reload();
-        }, 500);
-      } catch (error) {
-        console.error('❌ Error storing auth data:', error);
-        navigate('/signin?error=auth_failed', { replace: true });
-      }
-    } else {
-      console.error('❌ Missing token or user data');
-      navigate('/signin?error=missing_credentials', { replace: true });
-    }
-  }, [searchParams, navigate]);
+    return () => window.clearTimeout(timer);
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center">

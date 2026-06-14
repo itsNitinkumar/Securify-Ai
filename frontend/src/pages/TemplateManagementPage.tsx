@@ -87,9 +87,10 @@ const TemplateManagementPage = () => {
       await axios.delete(`/reports/templates/${templateId}`);
       toast.success('Template deleted successfully');
       loadTemplates();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete template:', error);
-      toast.error('Failed to delete template');
+      const msg = error?.response?.data?.error || error?.response?.data?.message || 'Failed to delete template';
+      toast.error(msg);
     }
   };
 

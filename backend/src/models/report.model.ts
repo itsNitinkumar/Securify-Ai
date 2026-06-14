@@ -147,6 +147,16 @@ class ReportModel {
         return result.rows[0] || null;
     }
 
+    static async getTemplateUsageCount(id: number): Promise<{ projectCount: number }> {
+        const projectResult = await pool.query(
+            'SELECT COUNT(*)::int AS count FROM projects WHERE template_id = $1',
+            [id]
+        );
+        return {
+            projectCount: projectResult.rows[0]?.count ?? 0,
+        };
+    }
+
     static async deleteTemplate(id: number): Promise<boolean> {
         const result = await pool.query(
             'DELETE FROM report_templates WHERE id = $1',

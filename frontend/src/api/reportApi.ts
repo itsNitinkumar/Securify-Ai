@@ -101,4 +101,9 @@ export const reportApi = {
     const response = await axios.delete(`/reports/templates/${id}`);
     return response.data;
   },
+
+  cloneTemplate: async (id: number) => {
+    const response = await axios.post(`/reports/templates/${id}/clone`);
+    return response.data;
+  },
 };

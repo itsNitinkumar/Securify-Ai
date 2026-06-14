@@ -1058,6 +1058,7 @@ class ReportService {
 
     const { project } = data as any;
     const clientName = String(project?.client_name || project?.clientName || 'N/A');
+    const projectName = String(project?.name || 'N/A');
     const startDate = project?.start_date ? formatDate(new Date(project.start_date), 'MMMM dd, yyyy') : null;
     const originalTest = startDate ? `Original Test: ${startDate}` : 'Original Test: N/A';
 
@@ -1087,8 +1088,21 @@ class ReportService {
       doc.image(logo, logoX, logoY, { width: logoW });
 
       // Middle texts
-      doc.fillColor('#001278').font('/home/nitin/.local/share/fonts/spectral/Spectral-Bold.ttf').fontSize(24);
-      doc.text('blueAlly', 0, 415, { width: pageW, align: 'center' });
+      const titleFont = '/home/nitin/.local/share/fonts/spectral/Spectral-Bold.ttf';
+      const fitFontSize = (text: string, maxWidth: number, startSize: number, minSize: number): number => {
+        let size = startSize;
+        doc.font(titleFont).fontSize(size);
+        while (size > minSize && doc.widthOfString(text) > maxWidth) {
+          size -= 1;
+          doc.fontSize(size);
+        }
+        return size;
+      };
+
+      doc.fillColor('#001278').font(titleFont);
+      const titleSize = fitFontSize(projectName, pageW - 120, 22, 12);
+      doc.fontSize(titleSize);
+      doc.text(projectName, 0, 415, { width: pageW, align: 'center' });
 
       doc.fontSize(16);
       doc.text(`Prepared for: ${clientName}`, 0, 460, { width: pageW, align: 'center' });
@@ -2023,10 +2037,10 @@ class ReportService {
             }
           };
 
-          // Header row dark blue, remaining rows no fill.
-          $(rows[0]).find('w\\:tc').toArray().forEach((tc: any) => setCellFill(tc, '002060'));
+          // Header row dark blue, remaining rows white.
+          $(rows[0]).find('w\\:tc').toArray().forEach((tc: any) => setCellFill(tc, '001278'));
           for (let i = 1; i < rows.length; i++) {
-            $(rows[i]).find('w\\:tc').toArray().forEach((tc: any) => setCellFill(tc, null));
+            $(rows[i]).find('w\\:tc').toArray().forEach((tc: any) => setCellFill(tc, 'FFFFFF'));
           }
 
           scopeTablesPatched++;
@@ -2300,6 +2314,8 @@ class ReportService {
 
   private static buildDocxTemplateData(data: ReportData) {
     const { project, findings, metadata } = data;
+    const templateKey = data.template ? getTemplateKey(data.template) : 'unknown';
+    const isDast = templateKey === 'dast';
 
     const asLines = (v: any): string => {
       if (!v) return '';
@@ -2417,6 +2433,20 @@ class ReportService {
     ];
     const riskMatrixImagePath = riskImageCandidates.find((p) => fs.existsSync(p)) || null;
 
+    const templateData = (data.template as any)?.template_data && typeof (data.template as any).template_data === 'object'
+      ? { ...(data.template as any).template_data }
+      : (data.template as any)?.template_data;
+    if (isDast && templateData && typeof templateData === 'object') {
+      for (const key of ['table_of_contents', 'application_details', 'user_roles', 'tools', 'vulnerabilities']) {
+        delete templateData[key];
+      }
+      if (templateData.sections && typeof templateData.sections === 'object') {
+        for (const key of ['table_of_contents', 'application_details', 'user_roles', 'tools', 'vulnerabilities']) {
+          delete templateData.sections[key];
+        }
+      }
+    }
+
     // Keep both flat keys and nested objects so the template can use either style.
     return {
       CLIENT_NAME: project.client_name || 'N/A',
@@ -2425,7 +2455,7 @@ class ReportService {
       // For docxtemplater-image-module-free (tag: {%logo}) we pass a path when available.
       logo: logoPath,
       template: data.template,
-      template_data: (data.template as any)?.template_data,
+      template_data: templateData,
       project,
       metadata,
       findings: findingsForTemplate,
@@ -2845,6 +2875,7 @@ class ReportService {
 
     const templateKey = data.template ? getTemplateKey(data.template) : 'unknown';
     const isDast = templateKey === 'dast';
+    const isProfessional = templateKey === 'securify' || templateKey === 'unknown';
 
     if (!isDast) {
       replaceAllParagraphText('Client Name', data.project.client_name || 'N/A');
@@ -3508,7 +3539,7 @@ class ReportService {
       });
     };
 
-    if (!isDast) {
+    if (isProfessional) {
       replaceSectionParagraphBlock('Confidentiality and Distribution Restrictions', ['Table of Contents'], sectionBody('confidentiality', normalizedTemplate.confidentiality_text || ''));
       replaceSectionParagraphBlock('Introduction', ['Approach'], sectionBody('introduction', normalizedTemplate.introduction_text || ''));
 
@@ -3534,7 +3565,7 @@ class ReportService {
       }
     }
 
-    if (!isDast) {
+    if (isProfessional) {
       replaceSectionParagraphBlock('Assessment Limitation', ['Findings and Recommendation'], sectionBody('assessment_limitation', ''));
       replaceSectionParagraphBlock('Risk Classification', ['Measurement of Impact'], sectionBody('risk_classification', ''));
       replaceSectionParagraphBlock('Measurement of Impact', ['Measurement of Likelihood'], sectionBody('measurement_impact', ''));
@@ -3646,7 +3677,7 @@ class ReportService {
       }
     }
 
-    if (!isDast) {
+    if (isProfessional) {
       replaceSectionParagraphBlock('Summary', ['Detailed Vulnerabilities'], sectionBody('summary', ''));
       replaceSectionParagraphBlock('Appendix A', [], sectionBody('appendix_a', normalizedTemplate.appendix_text || ''));
     }
@@ -3662,7 +3693,7 @@ class ReportService {
       }
     }
 
-    if (!isDast) {
+    if (isProfessional) {
       replaceAllParagraphText('Table of Contents', sectionTitle('table_of_contents', 'Table of Contents'));
       replaceAllParagraphText('Confidentiality and Distribution Restrictions', sectionTitle('confidentiality', 'Confidentiality and Distribution Restrictions'));
       replaceAllParagraphText('Introduction', sectionTitle('introduction', 'Introduction'));
@@ -3789,7 +3820,7 @@ class ReportService {
       }
     };
 
-    if (!isDast) {
+    if (isProfessional) {
       if (tables[0]) {
         setTableHeader(tables[0], ['Name', 'URL']);
         setTableRows(tables[0], applications.map((r: any) => [String(r.name || ''), String(r.url || '')]));
@@ -3809,7 +3840,7 @@ class ReportService {
 
     // Inject Out Of Scope Endpoints table (optional) below User Roles and above Tools.
     // Keep this insertion-only and reuse existing table markup for consistent styling.
-    if (!isDast && includeOutOfScopeEndpoints && outOfScopeEndpoints.length && tables[0] && tables[1] && tables[2]) {
+    if (isProfessional && includeOutOfScopeEndpoints && outOfScopeEndpoints.length && tables[0] && tables[1] && tables[2]) {
       const toolsTbl = tables[2];
 
       // Clone the Application Details table (same two-column structure: Name/URL).
@@ -3845,7 +3876,7 @@ class ReportService {
     }
 
     // Insert standalone heading paragraphs before each scope table
-    if (!isDast) {
+    if (isProfessional) {
       const tableHeadings = [
         { tblIdx: 0, heading: String(getSection('scope')?.fields?.application_details_title || 'Application Details') },
         { tblIdx: 1, heading: String(getSection('scope')?.fields?.user_roles_title || 'User Roles (Web application & API)') },
@@ -3880,7 +3911,7 @@ class ReportService {
     }
 
     // Insert out-of-scope content after tables but before Assessment Limitation
-    if (!isDast) {
+    if (isProfessional) {
       const outOfScopeSection = getSection('out_of_scope');
       const oosBody = typeof outOfScopeSection?.body === 'string' ? resolvePlaceholders(outOfScopeSection.body) : '';
       const oosItems = Array.isArray(outOfScopeSection?.items) ? outOfScopeSection.items.map((item: any) => resolvePlaceholders(String(item || ''))) : [];
@@ -4232,7 +4263,7 @@ class ReportService {
       }
     }
 
-    if (!isDast) {
+    if (isProfessional) {
       if (tables[3]) applySimpleTableTheme(tables[3]);
       if (tables[4]) applySimpleTableTheme(tables[4]);
       if (tables[6]) applySimpleTableTheme(tables[6], { headerFill: '4CC51F', bodyFill: 'E4F4DE' });
@@ -4672,6 +4703,7 @@ class ReportService {
             console.log(`   - Inserting ${evidenceItems.length} evidence items`);
             for (let ei = 0; ei < evidenceItems.length; ei++) {
               const item = evidenceItems[ei];
+              const captionColor = isProfessional ? '666666' : '9ca3af';
               if (item.imageKey && typeof item.imageKey === 'string') {
                 const findingId = finding.id || 0;
                 console.log(`       - Processing evidence image ${ei}: ${item.imageKey}`);
@@ -4702,7 +4734,7 @@ class ReportService {
                   p.prepend('<w:pPr><w:jc w:val="center"/></w:pPr>');
                 }
                 setParagraphSegments(sectionDoc, captionPara.get(0), [
-                  { text: `Fig: ${item.caption}`, italic: true, color: '9ca3af' },
+                  { text: `Fig: ${item.caption}`, italic: true, color: captionColor },
                 ]);
                 sectionDoc(backPara || titlePara).before(sectionDoc.xml(captionPara));
                 console.log(`       - Evidence caption added (centered): ${item.caption}`);
@@ -4713,6 +4745,7 @@ class ReportService {
             console.log(`   - Inserting ${steps.length} steps`);
             for (let si = 0; si < steps.length; si++) {
               const step = steps[si];
+              const captionColor = isProfessional ? '666666' : '9ca3af';
               console.log(`     Step ${step.stepNumber}: "${step.description.substring(0, 50)}..."`);
               appendSectionSplitParagraph(
                 recLabel || backPara || titlePara,
@@ -4756,7 +4789,7 @@ class ReportService {
                   p.prepend('<w:pPr><w:jc w:val="center"/></w:pPr>');
                 }
                 setParagraphSegments(sectionDoc, captionPara.get(0), [
-                  { text: `Fig ${step.stepNumber}: ${step.caption}`, italic: true, color: '9ca3af' },
+                  { text: isProfessional ? `Fig: ${step.caption}` : `Fig ${step.stepNumber}: ${step.caption}`, italic: true, color: captionColor },
                 ]);
                 sectionDoc(recLabel || backPara || titlePara).before(sectionDoc.xml(captionPara));
                 console.log(`       - Caption added (centered): ${step.caption}`);
@@ -5163,7 +5196,47 @@ class ReportService {
   }
 
   static async deleteTemplate(id: number) {
+    const template = await ReportModel.getTemplateById(id);
+    if (!template) {
+      throw new ApiError(404, 'Template not found');
+    }
+
+    const usage = await ReportModel.getTemplateUsageCount(id);
+    if (usage.projectCount > 0) {
+      throw new ApiError(
+        409,
+        `Cannot delete template "${template.name}": it is still assigned to ${usage.projectCount} project(s). Reassign those projects to a different template first.`
+      );
+    }
+
     return await ReportModel.deleteTemplate(id);
+  }
+
+  static async cloneTemplate(originalId: number, userId: number) {
+    const original = await ReportModel.getTemplateById(originalId);
+    if (!original) {
+      throw new ApiError(404, 'Template not found');
+    }
+
+    const clonedData = JSON.parse(JSON.stringify(original.template_data || {}));
+
+    return await ReportModel.createTemplate({
+      name: `${original.name} (Copy)`,
+      description: original.description || '',
+      template_data: clonedData,
+      logo_path: original.logo_path,
+      is_default: false,
+      created_by: userId,
+      confidentiality_text: original.confidentiality_text,
+      introduction_text: original.introduction_text,
+      approach_text: original.approach_text,
+      scope_text: original.scope_text,
+      scope_applications: original.scope_applications,
+      scope_user_roles: original.scope_user_roles,
+      scope_tools: original.scope_tools,
+      appendix_text: original.appendix_text,
+      highlight_color: original.highlight_color,
+    });
   }
 }
 

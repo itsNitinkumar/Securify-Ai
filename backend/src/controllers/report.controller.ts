@@ -258,6 +258,25 @@ class ReportController {
       });
     }
   }
+
+  static async cloneTemplate(req: Request, res: Response) {
+    try {
+      const templateId = parseInt(req.params.id as string);
+      const userId = (req as any).user.id;
+
+      if (isNaN(templateId)) {
+        throw new ApiError(400, 'Invalid template ID');
+      }
+
+      const cloned = await ReportService.cloneTemplate(templateId, userId);
+      res.status(201).json(cloned);
+    } catch (error: any) {
+      console.error('❌ Clone template error:', error);
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to clone template',
+      });
+    }
+  }
 }
 
 export default ReportController;

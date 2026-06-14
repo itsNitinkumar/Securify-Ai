@@ -41,35 +41,26 @@ router.get('/google/callback',
       try {
         // Generate JWT token
         const token = jwt.sign(
-  { id: user.id, email: user.email },
-  config.jwt.secret,
-  {
-    expiresIn: config.jwt.expire as SignOptions["expiresIn"],
-  }
-);
+          { id: user.id, email: user.email },
+          config.jwt.secret,
+          { expiresIn: config.jwt.expire as SignOptions["expiresIn"] }
+        );
 
-        // Set cookie (for cookie-based auth if needed)
+        // Set httpOnly cookie - Same configuration as regular signin
         res.cookie('token', token, {
           httpOnly: true,
-          secure: config.env === 'production',
-          sameSite: 'lax',
+          secure: true,
+          sameSite: 'none',
           maxAge: 7 * 24 * 60 * 60 * 1000,
+          path: '/',
         });
 
         console.log('✅ Google OAuth successful for user:', user.email);
+        console.log('✅ Cookie set, redirecting to frontend');
         
-        // Redirect to frontend with token in URL (for localStorage)
-        const userData = encodeURIComponent(JSON.stringify({
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role
-        }));
-        
-        const redirectUrl = `${config.frontendUrl}/auth/callback?token=${token}&user=${userData}`;
-        console.log('🔄 Redirecting to:', redirectUrl);
-        
-        res.redirect(redirectUrl);
+        // Redirect directly to frontend home - Cookie is already set!
+        // No need to pass token in URL
+        res.redirect(config.frontendUrl);
       } catch (error) {
         console.error('❌ Error generating token:', error);
         res.redirect(`${config.frontendUrl}/signin?error=token_generation_failed`);

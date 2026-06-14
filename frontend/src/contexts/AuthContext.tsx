@@ -16,6 +16,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
+  hydrateSession: (user: User, permissions?: string[]) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -118,6 +119,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const hydrateSession = (userData: User, permissions?: string[]) => {
+    setUser(permissions ? { ...userData, permissions } : userData);
+    setToken('cookie-based');
+  };
+
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -141,6 +147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         token,
         login,
+        hydrateSession,
         logout,
         isAuthenticated: !!token,
         isLoading,

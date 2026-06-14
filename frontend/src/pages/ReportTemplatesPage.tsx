@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, FileText, Loader2, MoreVertical, Pencil, Star, Trash2 } from 'lucide-react';
+import { Copy, Eye, FileText, Loader2, MoreVertical, Pencil, Star, Trash2 } from 'lucide-react';
 import { reportApi, ReportTemplate } from '@/api/reportApi';
 import { toast } from 'react-hot-toast';
 import { buildTemplateContent } from '@/components/templates/templateSchema';
@@ -45,9 +45,21 @@ const ReportTemplatesPage = () => {
       await reportApi.deleteTemplate(template.id);
       toast.success('Template deleted');
       await loadTemplates();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete template:', error);
-      toast.error('Failed to delete template');
+      const msg = error?.response?.data?.error || error?.response?.data?.message || 'Failed to delete template';
+      toast.error(msg);
+    }
+  };
+
+  const handleClone = async (template: ReportTemplate) => {
+    try {
+      const cloned = await reportApi.cloneTemplate(template.id);
+      toast.success(`Cloned "${template.name}"`);
+      navigate(`/templates/${cloned.id}?mode=edit`);
+    } catch (error) {
+      console.error('Failed to clone template:', error);
+      toast.error('Failed to clone template');
     }
   };
 
@@ -100,13 +112,8 @@ const ReportTemplatesPage = () => {
         ) : (
           templates.map((template) => {
             const content = buildTemplateContent(template as any);
-            const summary = [
-              content.sections.confidentiality.title,
-              content.sections.introduction.title,
-              content.sections.scope.title,
-              content.sections.risk_classification.title,
-              content.sections.appendix_a.title,
-            ].join(' • ');
+            const sectionKeys = Object.keys(content.sections);
+            const summary = sectionKeys.slice(0, 5).map((k) => content.sections[k]?.title || k).join(' • ');
 
             return (
               <div
@@ -162,6 +169,14 @@ const ReportTemplatesPage = () => {
                       >
                         <Pencil className="h-4 w-4" />
                         Edit Data
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleClone(template)}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-200 hover:bg-[#242424]"
+                      >
+                        <Copy className="h-4 w-4" />
+                        Clone Template
                       </button>
                       {!template.is_default ? (
                         <button

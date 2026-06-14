@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { uploadApi } from '@/api/uploadApi';
 import { toast } from 'react-hot-toast';
+import { getImageUrl } from '@/config/env';
 
 interface EvidenceItem {
   imageKey?: string;
@@ -15,14 +16,6 @@ interface EvidenceItemEditorProps {
   items: EvidenceItem[];
   onChange: (items: EvidenceItem[]) => void;
 }
-
-const getImageUrl = (imagePath: string | undefined): string => {
-  if (!imagePath) return '';
-  if (imagePath.startsWith('data:') || imagePath.startsWith('blob:')) return imagePath;
-  if (imagePath.startsWith('http')) return imagePath;
-  if (imagePath.startsWith('/')) return `http://localhost:3000${imagePath}`;
-  return imagePath;
-};
 
 const EvidenceItemEditor = ({ items, onChange }: EvidenceItemEditorProps) => {
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);

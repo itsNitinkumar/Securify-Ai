@@ -19,7 +19,7 @@ router.get('/remediation-velocity', authorize(Permissions.VIEW_DASHBOARD), Dashb
 router.get('/client-risk', authorize(Permissions.VIEW_DASHBOARD), DashboardController.getClientRiskBreakdown);
 router.get('/comments', authorize(Permissions.VIEW_DASHBOARD), DashboardController.getCommentActivity);
 router.get('/projects-by-status', authorize(Permissions.VIEW_DASHBOARD), DashboardController.getProjectsByStatus);
-router.get('/reporters/top', authorize(Permissions.VIEW_USERS), DashboardController.getTopReporters);
+router.get('/reporters/top', authorize(Permissions.VIEW_DASHBOARD, Permissions.VIEW_USERS), DashboardController.getTopReporters);
 router.get('/projects/:project_id/stats', authorize(Permissions.VIEW_DASHBOARD), DashboardController.getProjectStats);
 
 export default router;

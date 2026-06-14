@@ -160,6 +160,17 @@ class TemplateModel {
     return result.rows[0] || null;
   }
 
+  // Check if template is referenced by any active projects
+  static async getUsageCount(id: number): Promise<{ projectCount: number }> {
+    const projectResult = await pool.query(
+      'SELECT COUNT(*)::int AS count FROM projects WHERE template_id = $1',
+      [id]
+    );
+    return {
+      projectCount: projectResult.rows[0]?.count ?? 0,
+    };
+  }
+
   // Delete template
   static async delete(id: number): Promise<boolean> {
     const result = await pool.query(
