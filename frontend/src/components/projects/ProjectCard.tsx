@@ -1,15 +1,40 @@
-import { FolderOpen, Calendar, User, Building2, ExternalLink } from 'lucide-react';
+import { FolderOpen, Calendar, User, Building2, ExternalLink, Trash2, Loader2 } from 'lucide-react';
 import { Project } from '@/api/projectApi';
+import { projectApi } from '@/api/projectApi';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useState } from 'react';
+import { toast } from 'react-hot-toast';
 
 interface ProjectCardProps {
   project: Project;
   onClick: () => void;
+  canDelete?: boolean;
+  onDeleted?: () => void;
 }
 
-const ProjectCard = ({ project, onClick }: ProjectCardProps) => {
+const ProjectCard = ({ project, onClick, canDelete, onDeleted }: ProjectCardProps) => {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const count = project.findings_count || 0;
+    const msg = count > 0
+      ? `This project has ${count} finding${count !== 1 ? 's' : ''}. Deleting the project will also permanently delete all ${count} finding${count !== 1 ? 's' : ''}. Are you sure?`
+      : 'Are you sure you want to delete this project?';
+    if (!window.confirm(msg)) return;
+    setDeleting(true);
+    try {
+      await projectApi.deleteProject(project.id);
+      toast.success('Project deleted');
+      onDeleted?.();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to delete project');
+    } finally {
+      setDeleting(false);
+    }
+  };
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString('en-US', {
       month: 'short',
@@ -103,6 +128,17 @@ const ProjectCard = ({ project, onClick }: ProjectCardProps) => {
               </div>
             )}
           </div>
+          {canDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-error hover:text-error/80"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"

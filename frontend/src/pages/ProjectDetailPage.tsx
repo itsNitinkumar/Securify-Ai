@@ -724,7 +724,7 @@ const ProjectDetailPage = () => {
       </div>
 
       {(() => {
-        const canEdit = hasPermission('edit_projects') || (hasPermission('create_findings') && (project as any).assigned_reporter_id && Number(user?.id) === (project as any).assigned_reporter_id);
+        const canEdit = hasRole('manager') || hasRole('admin') || hasPermission('edit_projects') || (hasPermission('create_findings') && (project as any).assigned_reporter_id && Number(user?.id) === (project as any).assigned_reporter_id);
         return canEdit ? (
         <Card className="mb-6 p-3 sm:p-4 bg-surface-high border-outline">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">

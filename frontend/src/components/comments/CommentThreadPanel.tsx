@@ -26,7 +26,7 @@ const CommentThreadPanel = ({ projectId, findingId, sectionType, sectionKey, onC
   const [confirmDeleteReplyId, setConfirmDeleteReplyId] = useState<number | null>(null);
 
   const canComment = hasPermission('create_comments') || hasRole('manager', 'admin');
-  const canManageAll = hasPermission('manage_roles') || hasPermission('approve_findings');
+  const canManageAll = hasRole('manager') || hasRole('admin') || hasPermission('manage_roles') || hasPermission('approve_findings');
   const isClient = hasRole('client');
 
   useEffect(() => {

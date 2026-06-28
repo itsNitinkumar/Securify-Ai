@@ -272,7 +272,8 @@ class FindingController {
     }
 
     // Access control
-    const canViewAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
+    const canViewAll = user.role === 'admin' || user.role === 'manager' ||
+      permissions.includes('approve_findings') || permissions.includes('manage_roles');
 
     if (!canViewAll && permissions.includes('create_findings') && finding.created_by !== user.id) {
       // Check if user is assigned to the project this finding belongs to
@@ -333,7 +334,8 @@ class FindingController {
     }
 
     // Access control
-    const canEditAll = permissions.includes('approve_findings') || permissions.includes('manage_roles');
+    const canEditAll = user.role === 'admin' || user.role === 'manager' ||
+      permissions.includes('approve_findings') || permissions.includes('manage_roles');
 
     if (!canEditAll && (permissions.includes('create_findings') || permissions.includes('edit_findings'))) {
       // Reporter: can edit own findings or findings in assigned project
@@ -464,7 +466,8 @@ class FindingController {
     }
 
     // Permission check
-    const canDeleteAll = permissions.includes('manage_roles') || permissions.includes('approve_findings');
+    const canDeleteAll = user.role === 'admin' || user.role === 'manager' ||
+      permissions.includes('manage_roles') || permissions.includes('approve_findings');
     if (!canDeleteAll && !(permissions.includes('delete_findings') && finding.created_by === user.id)) {
       throw new ApiError(403, 'Access denied');
     }

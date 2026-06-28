@@ -83,7 +83,9 @@ class ProjectModel {
     end_date?: string;
     search?: string;
   }): Promise<Project[]> {
-    let query = 'SELECT p.*, u.name as assigned_reporter_name FROM projects p LEFT JOIN users u ON p.assigned_reporter_id = u.id WHERE 1=1';
+    let query = `SELECT p.*, u.name as assigned_reporter_name,
+      (SELECT COUNT(*) FROM findings f WHERE f.project_id = p.id) as findings_count
+      FROM projects p LEFT JOIN users u ON p.assigned_reporter_id = u.id WHERE 1=1`;
     const params: any[] = [];
     let param = 1;
 

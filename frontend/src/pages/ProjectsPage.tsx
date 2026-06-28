@@ -16,7 +16,7 @@ const PROJECT_STATUSES = ['draft', 'pending_review', 'pending_comment_resolution
 
 const ProjectsPage = () => {
   const navigate = useNavigate();
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasRole } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -287,6 +287,8 @@ const ProjectsPage = () => {
               key={project.id}
               project={project}
               onClick={() => handleProjectClick(project)}
+              canDelete={hasPermission('delete_projects') || hasRole('manager', 'admin')}
+              onDeleted={loadProjects}
             />
           ))}
         </div>

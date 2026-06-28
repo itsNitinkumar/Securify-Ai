@@ -24,7 +24,7 @@ const FindingComments = ({ findingId, currentUserId }: FindingCommentsProps) => 
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const canComment = hasPermission('create_comments') || hasRole('manager', 'admin');
-  const canManageAll = hasPermission('manage_roles') || hasPermission('approve_findings');
+  const canManageAll = hasRole('manager') || hasRole('admin') || hasPermission('manage_roles') || hasPermission('approve_findings');
 
   useEffect(() => {
     loadComments();

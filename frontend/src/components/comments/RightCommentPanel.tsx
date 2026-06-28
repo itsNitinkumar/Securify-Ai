@@ -64,7 +64,7 @@ const RightCommentPanel = ({
   const seededSectionRef = useRef<string>('');
 
   const canComment = hasPermission('create_comments') || hasRole('manager', 'admin');
-  const canManageAll = hasPermission('manage_roles') || hasPermission('approve_findings');
+  const canManageAll = hasRole('manager') || hasRole('admin') || hasPermission('manage_roles') || hasPermission('approve_findings');
   const isClient = hasRole('client');
   const currentUserId = parseInt(user?.id || '0');
 

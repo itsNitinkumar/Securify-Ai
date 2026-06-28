@@ -56,6 +56,26 @@ export const authorize = (...requiredPermissions: PermissionSlug[]): any => {
         throw new ApiError(401, 'Not authenticated');
       }
 
+      const user = req.user;
+
+      // Admin bypasses everything
+      if (user.role === 'admin') {
+        req.permissions = [];
+        console.log('✅ Authorization SUCCESS (admin role bypass)');
+        return next();
+      }
+
+      // Manager bypasses most permissions except admin-only ones
+      const adminOnlyPermissions = ['manage_roles', 'manage_permissions', 'delete_users'];
+      if (user.role === 'manager') {
+        const needsAdminOnly = requiredPermissions.some((p) => adminOnlyPermissions.includes(p));
+        if (!needsAdminOnly) {
+          req.permissions = [];
+          console.log('✅ Authorization SUCCESS (manager role bypass)');
+          return next();
+        }
+      }
+
       const permissions = await UserModel.getPermissions(req.user.id);
       req.permissions = permissions;
 
@@ -98,6 +118,9 @@ export const authorizeProjectAccess = (projectIdParam: string = 'projectId'): an
       req.permissions = permissions;
 
       // Admins and Managers have full project access
+      if (req.user.role === 'admin' || req.user.role === 'manager') {
+        return next();
+      }
       if (permissions.includes('assign_projects' as PermissionSlug) ||
           permissions.includes('manage_roles' as PermissionSlug)) {
         return next();
@@ -149,6 +172,9 @@ export const authorizeFindingAccess = (findingIdParam: string = 'id'): any => {
       req.permissions = permissions;
 
       // Admin/Manager bypass
+      if (req.user.role === 'admin' || req.user.role === 'manager') {
+        return next();
+      }
       if (permissions.includes('approve_findings' as PermissionSlug) ||
           permissions.includes('manage_roles' as PermissionSlug)) {
         return next();

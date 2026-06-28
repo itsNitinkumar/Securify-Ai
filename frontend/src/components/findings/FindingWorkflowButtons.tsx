@@ -19,12 +19,12 @@ const FindingWorkflowButtons = ({
   onUpdate,
   onEditClick,
 }: FindingWorkflowButtonsProps) => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasRole } = useAuth();
   const [loading, setLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState<null | 'submit' | 'delete'>(null);
 
   const isCreator = finding.created_by === currentUserId;
-  const canManageAll = hasPermission('manage_roles') || hasPermission('approve_findings');
+  const canManageAll = hasRole('manager') || hasRole('admin') || hasPermission('manage_roles') || hasPermission('approve_findings');
   const canCreateFindings = hasPermission('create_findings');
   const canDeleteFindings = hasPermission('delete_findings');
 

@@ -18,7 +18,8 @@ class EvidenceController {
     permissions: string[],
     finding: any
   ): Promise<boolean> {
-    if (permissions.includes('approve_findings') || permissions.includes('manage_roles')) {
+    if (user.role === 'admin' || user.role === 'manager' ||
+        permissions.includes('approve_findings') || permissions.includes('manage_roles')) {
       return true;
     }
     if (!permissions.includes('create_findings')) {

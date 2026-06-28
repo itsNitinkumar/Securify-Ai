@@ -18,6 +18,7 @@ const canEditProject = asyncHandler(async (req: any, _res: Response, next: NextF
   const permissions = req.permissions || await UserModel.getPermissions(req.user.id);
   req.permissions = permissions;
 
+  if (req.user.role === 'admin' || req.user.role === 'manager') return next();
   if (permissions.includes(Permissions.EDIT_PROJECTS)) return next();
 
   if (permissions.includes(Permissions.CREATE_FINDINGS)) {
@@ -37,6 +38,7 @@ const canPerformWorkflowAction = asyncHandler(async (req: any, _res: Response, n
   req.permissions = permissions;
 
   // Manager/Admin can perform all workflow actions
+  if (req.user.role === 'admin' || req.user.role === 'manager') return next();
   if (permissions.includes(Permissions.APPROVE_FINDINGS) || permissions.includes('manage_roles' as any)) return next();
 
   // Reporter can submit for review (on assigned projects)

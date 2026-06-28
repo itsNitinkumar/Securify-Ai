@@ -145,7 +145,8 @@ class ProjectController {
     if (search) filters.search = search as string;
 
     // Admin/Manager bypass: see all projects (with filters)
-    if (permissions.includes('manage_roles' as any) || permissions.includes('approve_findings' as any)) {
+    if (user.role === 'admin' || user.role === 'manager' ||
+        permissions.includes('manage_roles' as any) || permissions.includes('approve_findings' as any)) {
       const projects = await ProjectModel.findAll(filters);
       return res.json({ success: true, data: projects });
     }
